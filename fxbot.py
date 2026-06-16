@@ -457,7 +457,7 @@ async def check_alerts(application):
                         except Exception as e:
                             log.error(f"خطا در ارسال هشدار: {e}")
     except Exception as e:
-        log.error(f"خطا در بررسی هشدارها: {e")
+        log.error(f"خطا در بررسی هشدارها: {e}")  # ✅ درست (یک } اضافه شد)
 
 # ══════════════════════════════════════════════════════════════════════
 # ⌨️  کیبوردهای Inline
