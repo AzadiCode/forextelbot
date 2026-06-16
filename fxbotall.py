@@ -9,17 +9,15 @@ import logging
 from datetime import datetime
 from flask import Flask
 from telegram import Bot
-from telegram.ext import Application, MessageHandler, filters
- 
+from telegram.error import BadRequest, Forbidden, RetryAfter, TimedOut
+from telegram.ext import Application, MessageHandler, CommandHandler, filters
+
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     level=logging.INFO
 )
 log = logging.getLogger("RandomReactionBot")
 
-# ══════════════════════════════════════════════════════════════════════
-# 🔑  توکن‌ها
-# ══════════════════════════════════════════════════════════════════════
 BOT_TOKENS = [
     os.environ.get("TOKEN_1", ""),
     os.environ.get("TOKEN_2", ""),
@@ -44,9 +42,6 @@ BOT_TOKENS = [
 ]
 BOT_TOKENS = [token for token in BOT_TOKENS if token.strip()]
 
-# ══════════════════════════════════════════════════════════════════════
-# 🎲  Reactionها و کلمات تریگر
-# ══════════════════════════════════════════════════════════════════════
 REACTIONS = [
     "👍", "👎", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
     "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "🤓", "🥱", "💯",
@@ -60,22 +55,18 @@ TRIGGER_KEYWORDS = [
     "تبریک", "مبارک", "فوق‌العاده", "سود", "رشد"
 ]
 
-# ══════════════════════════════════════════════════════════════════════
-# ⏱  تنظیمات زمانی
-# ══════════════════════════════════════════════════════════════════════
-MIN_DELAY = 2.0
-MAX_DELAY = 4.0
-COOLDOWN = 10
+# ⚠️ تنظیمات بهینه برای کانال
+MIN_DELAY = 5.0   # حداقل ۵ ثانیه (قبلاً ۲ بود)
+MAX_DELAY = 8.0   # حداکثر ۸ ثانیه (قبلاً ۴ بود)
+COOLDOWN = 30     # ۳۰ ثانیه بین پیام‌ها (قبلاً ۱۰ بود)
+INITIAL_WAIT = 3  # ۳ ثانیه صبر قبل از شروع (قبلاً ۲ بود)
 MIN_MESSAGE_LENGTH = 3
 
-# ══════════════════════════════════════════════════════════════════════
-# 🌐  Flask
-# ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
-    return f"🎯 Random Reaction Bot v5 (Simple & Working)\n\n🤖 ربات‌ها: {len(BOT_TOKENS)}"
+    return f"🎯 Random Reaction Bot v8 (Optimized for Channels)\n\n🤖 ربات‌ها: {len(BOT_TOKENS)}\n⏱ فاصله: {MIN_DELAY}-{MAX_DELAY}s"
 
 @flask_app.route('/health')
 def health():
@@ -85,9 +76,6 @@ def run_flask():
     port = int(os.environ.get('PORT', 5000))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# ══════════════════════════════════════════════════════════════════════
-# 🔍  تشخیص تریگر
-# ══════════════════════════════════════════════════════════════════════
 def should_trigger(text):
     if not text or len(text) < MIN_MESSAGE_LENGTH:
         return False
@@ -95,15 +83,15 @@ def should_trigger(text):
     return any(kw in text_lower for kw in TRIGGER_KEYWORDS)
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎲  ارسال Reactionها (ساده مثل نسخه /boost)
+# 🎲  ارسال Reactionها (با فاصله بیشتر برای کانال)
 # ══════════════════════════════════════════════════════════════════════
-async def send_all_reactions(chat_id, message_id):
-    """دقیقاً مثل نسخه /boost - ساده و مطمئن"""
+async def send_all_reactions(chat_id, message_id, is_channel=False):
+    """ارسال Reaction با فاصله بیشتر و مدیریت دقیق Rate Limit"""
     
     success = 0
     fail = 0
+    rate_limited = 0
     
-    # Shuffle Reactionها
     available_reactions = REACTIONS.copy()
     random.shuffle(available_reactions)
     
@@ -111,16 +99,21 @@ async def send_all_reactions(chat_id, message_id):
         available_reactions.extend(REACTIONS)
         random.shuffle(available_reactions)
     
-    log.info(f"🚀 شروع ارسال Reaction برای پیام {message_id}")
+    chat_type = "کانال" if is_channel else "گروه"
+    log.info(f"🚀 [{chat_type}] شروع Reaction برای پیام {message_id}")
+    log.info(f"⏱ فاصله بین Reactionها: {MIN_DELAY}-{MAX_DELAY} ثانیه")
+    
+    # صبر اولیه قبل از شروع
+    log.info(f"⏳ صبر اولیه {INITIAL_WAIT} ثانیه...")
+    await asyncio.sleep(INITIAL_WAIT)
     
     for i, token in enumerate(BOT_TOKENS, 1):
         reaction = available_reactions[i - 1]
         
         try:
-            # ساخت Bot (دقیقاً مثل نسخه /boost)
             bot = Bot(token)
             
-            # ارسال Reaction
+            # تلاش برای Reaction
             await bot.set_message_reaction(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -131,28 +124,49 @@ async def send_all_reactions(chat_id, message_id):
             success += 1
             log.info(f"✅ [{i}/{len(BOT_TOKENS)}] ربات {i} → {reaction}")
             
+        except RetryAfter as e:
+            # Rate Limit - تلگرام گفته صبر کن
+            rate_limited += 1
+            wait_time = e.retry_after
+            log.warning(f"⏳ [{i}] 🚫 Rate Limit! صبر {wait_time}s")
+            
+            # اگه Rate Limit خورد، صبر کن و بعدی رو ادامه بده
+            await asyncio.sleep(wait_time)
+            
+        except Forbidden as e:
+            fail += 1
+            error_msg = str(e).lower()
+            
+            if is_channel and ("not authorized" in error_msg or "admin" in error_msg):
+                log.error(f"❌ [{i}] 🔴 ربات {i} ادمین کانال نیست!")
+            else:
+                log.warning(f"❌ [{i}] Forbidden: {str(e)[:60]}")
+                
+        except BadRequest as e:
+            fail += 1
+            error_msg = str(e).lower()
+            
+            if "chat not found" in error_msg:
+                log.warning(f"❌ [{i}] ربات عضو {chat_type} نیست")
+            else:
+                log.warning(f"❌ [{i}] BadRequest: {str(e)[:60]}")
+                
         except Exception as e:
             fail += 1
-            error_msg = str(e)[:80]
-            
-            # لاگ دقیق نوع خطا
-            if "Chat not found" in error_msg:
-                log.warning(f"❌ [{i}] ربات عضو گروه نیست")
-            elif "Bad Request" in error_msg:
-                log.warning(f"❌ [{i}] BadRequest: {error_msg}")
-            elif "Forbidden" in error_msg:
-                log.warning(f"❌ [{i}] دسترسی نداره")
-            elif "Retry after" in error_msg.lower():
-                log.warning(f"⏳ [{i}] Rate Limit: {error_msg}")
-            else:
-                log.warning(f"❌ [{i}] خطا: {error_msg}")
+            log.warning(f"❌ [{i}] {type(e).__name__}: {str(e)[:60]}")
         
-        # فاصله بین هر Reaction (مهم!)
+        # فاصله رندوم بین هر Reaction (مهم برای کانال!)
         delay = random.uniform(MIN_DELAY, MAX_DELAY)
+        log.debug(f"⏱ صبر {delay:.1f}s قبل از ربات بعدی...")
         await asyncio.sleep(delay)
     
-    log.info(f"📊 پایان: ✅ {success} موفق | ❌ {fail} ناموفق")
-    return success, fail
+    log.info(f"📊 [{chat_type}] پایان:")
+    log.info(f"   ✅ موفق: {success}")
+    log.info(f"   ❌ ناموفق: {fail}")
+    log.info(f"   ⏳ Rate Limited: {rate_limited}")
+    log.info(f"   📈 مجموع: {len(BOT_TOKENS)}")
+    
+    return success, fail, rate_limited
 
 # ══════════════════════════════════════════════════════════════════════
 # 🤖  هندلر اصلی
@@ -160,8 +174,6 @@ async def send_all_reactions(chat_id, message_id):
 last_reaction_time = {}
 
 async def auto_reaction_handler(update, context):
-    """هندلر خودکار"""
-    
     # ── پست کانال ──
     if update.channel_post:
         message = update.channel_post
@@ -174,10 +186,11 @@ async def auto_reaction_handler(update, context):
         
         log.info(f"📢 [کانال] تریگر: {message.text[:40]}...")
         
-        # ⚠️ صبر ۲ ثانیه برای ثبت کامل پیام در سرور تلگرام
-        await asyncio.sleep(2)
-        
-        await send_all_reactions(message.chat_id, message.message_id)
+        await send_all_reactions(
+            message.chat_id,
+            message.message_id,
+            is_channel=True
+        )
         return
     
     # ── پیام عادی ──
@@ -188,12 +201,12 @@ async def auto_reaction_handler(update, context):
     if message.chat.type not in ['group', 'supergroup']:
         return
     
-    # Cooldown
     chat_id = message.chat_id
     current_time = datetime.now().timestamp()
     
     if chat_id in last_reaction_time:
         if current_time - last_reaction_time[chat_id] < COOLDOWN:
+            log.debug(f"⏱ Cooldown فعال: {int(COOLDOWN - (current_time - last_reaction_time[chat_id]))}s")
             return
     
     if not should_trigger(message.text):
@@ -203,10 +216,11 @@ async def auto_reaction_handler(update, context):
     
     last_reaction_time[chat_id] = current_time
     
-    # ⚠️ صبر ۲ ثانیه برای ثبت کامل پیام در سرور تلگرام
-    await asyncio.sleep(2)
-    
-    await send_all_reactions(message.chat_id, message.message_id)
+    await send_all_reactions(
+        message.chat_id,
+        message.message_id,
+        is_channel=False
+    )
 
 # ══════════════════════════════════════════════════════════════════════
 # 🎯  شروع
@@ -216,7 +230,9 @@ def main():
         log.error("❌ هیچ توکنی تنظیم نشده!")
         return
     
-    log.info(f"🚀 Random Reaction Bot v5 با {len(BOT_TOKENS)} ربات")
+    log.info(f"🚀 Random Reaction Bot v8 با {len(BOT_TOKENS)} ربات")
+    log.info(f"⏱ فاصله: {MIN_DELAY}-{MAX_DELAY}s | Cooldown: {COOLDOWN}s")
+    log.info(f"📢 بهینه شده برای کانال (Rate Limit کمتر)")
     
     threading.Thread(target=run_flask, daemon=True).start()
     
