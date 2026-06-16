@@ -406,133 +406,197 @@ def get_historical_prices(symbol, interval="5m", range_period="1d"):
 # ══════════════════════════════════════════════════════════════════════
 def create_price_chart(symbol, range_period="1h", interval="1m"):
     """
-    رسم نمودار با scaling دقیق مخصوص اسکلپ
-    range_period: 1h, 4h, 1d, 5d, 1mo
-    interval: 1m, 5m, 15m, 1h, 1d
+    رسم نمودار حرفه‌ای مخصوص اسکلپ
+    - فونت انگلیسی (بدون مشکل)
+    - Scaling دقیق برای نوسانات کوچک
+    - داده‌های Yahoo Spot (نه Futures)
     """
     asset = ASSETS[symbol]
     
-    # دریافت داده‌های تاریخی
-    times, prices = get_historical_prices(symbol, interval=interval, range_period=range_period)
+    # نگاشت به نمادهای Spot در Yahoo (نه Futures)
+    yahoo_symbols = {
+        "XAUUSD": "XAUUSD=X",  # Spot Gold
+        "EURUSD": "EURUSD=X",
+        "USDJPY": "USDJPY=X"
+    }
     
-    if not times or len(times) < 5:
-        log.warning(f"⚠️ داده کافی نیست: {len(times) if times else 0} نقطه")
+    yahoo_sym = yahoo_symbols.get(symbol)
+    if not yahoo_sym:
         return None
     
-    # ─── محاسبات آماری ───
+    # دریافت داده‌ها از Yahoo
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
+    params = {"interval": interval, "range": range_period}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        if response.status_code != 200:
+            return None
+        
+        data = response.json()
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        closes = result['indicators']['quote'][0]['close']
+        
+        times = []
+        prices = []
+        for ts, price in zip(timestamps, closes):
+            if price is not None:
+                times.append(datetime.fromtimestamp(ts))
+                prices.append(float(price))
+        
+        if len(prices) < 5:
+            return None
+            
+    except Exception as e:
+        log.error(f"خطا در داده‌های نمودار {symbol}: {e}")
+        return None
+    
+    # ═══════════════════════════════════════════════════
+    # محاسبات آماری
+    # ═══════════════════════════════════════════════════
     current_price = prices[-1]
+    start_price = prices[0]
     min_price = min(prices)
     max_price = max(prices)
-    change = current_price - prices[0]
-    change_pct = (change / prices[0]) * 100 if prices[0] else 0
+    change = current_price - start_price
+    change_pct = (change / start_price) * 100 if start_price else 0
     
-    # ─── تنظیمات استایل ───
+    # ═══════════════════════════════════════════════════
+    # تنظیمات نمودار
+    # ═══════════════════════════════════════════════════
     plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(11, 6.5))
+    fig, ax = plt.subplots(figsize=(12, 7))
+    fig.patch.set_facecolor('#0d1117')
+    ax.set_facecolor('#0d1117')
     
     # رنگ بر اساس روند
-    color = '#00ff88' if change >= 0 else '#ff4444'
-    trend_emoji = "📈" if change >= 0 else "📉"
+    is_up = change >= 0
+    main_color = '#00d97e' if is_up else '#ff4757'
+    bg_color = '#00d97e' if is_up else '#ff4757'
     
-    # ═══ مقیاس دقیق Y (مهم برای اسکلپ!) ═══
+    # ═══════════════════════════════════════════════════
+    # Scaling دقیق برای اسکلپ (مهم!)
+    # ═══════════════════════════════════════════════════
     price_range = max_price - min_price
-    if price_range < 0.0001:  # اگه نوسان خیلی کم بود
-        price_range = current_price * 0.001  # حداقل 0.1%
-    padding = price_range * 0.15  # فقط 15% padding
+    
+    # اگه نوسان خیلی کم بود (مثلاً 0.1% یا کمتر)
+    if price_range < current_price * 0.0005:
+        # حداقل 0.15% padding از بالا و پایین
+        padding = current_price * 0.0015
+    else:
+        # 10% padding استاندارد
+        padding = price_range * 0.10
+    
     ax.set_ylim(min_price - padding, max_price + padding)
     
-    # ═══ رسم نمودار ═══
-    ax.plot(times, prices, color=color, linewidth=1.8, alpha=0.95)
-    ax.fill_between(times, prices, min_price - padding, alpha=0.08, color=color)
+    # ═══════════════════════════════════════════════════
+    # رسم خطوط
+    # ═══════════════════════════════════════════════════
     
-    # خط قیمت فعلی (برجسته)
-    ax.axhline(y=current_price, color=color, linestyle='-', 
-               alpha=0.7, linewidth=1.5)
+    # خط اصلی قیمت
+    ax.plot(times, prices, color=main_color, linewidth=2.2, zorder=3)
+    
+    # Fill زیر خط
+    ax.fill_between(times, prices, min_price - padding, 
+                    alpha=0.12, color=bg_color, zorder=1)
+    
+    # خط قیمت فعلی (پررنگ)
+    ax.axhline(y=current_price, color=main_color, linestyle='-', 
+               alpha=0.9, linewidth=2, zorder=2)
+    
+    # برچسب قیمت فعلی (سمت راست)
+    price_decimals = 4 if symbol != "XAUUSD" else 2
     ax.text(times[-1], current_price, 
-            f' {current_price:.4f} ',
-            color='white', fontsize=10, fontweight='bold',
+            f' {current_price:.{price_decimals}f} ',
+            color='white', fontsize=11, fontweight='bold',
             va='center', ha='right',
-            bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.8))
+            bbox=dict(boxstyle='round,pad=0.4', 
+                     facecolor=main_color, alpha=0.95, edgecolor='none'),
+            zorder=4)
     
-    # خط شروع (متفاوت)
-    ax.axhline(y=prices[0], color='#888888', linestyle=':', 
-               alpha=0.5, linewidth=1)
+    # خط قیمت شروع (خاکستری)
+    ax.axhline(y=start_price, color='#6c757d', linestyle=':', 
+               alpha=0.6, linewidth=1.2, zorder=1)
     
-    # ═══ Min/Max با marker ═══
+    # ═══════════════════════════════════════════════════
+    # Min/Max markers
+    # ═══════════════════════════════════════════════════
     min_idx = prices.index(min_price)
     max_idx = prices.index(max_price)
     
-    ax.plot(times[min_idx], min_price, 'v', color='#00aaff', markersize=10)
-    ax.plot(times[max_idx], max_price, '^', color='#ffaa00', markersize=10)
+    ax.plot(times[min_idx], min_price, 'v', color='#00a8ff', 
+            markersize=12, zorder=5)
+    ax.plot(times[max_idx], max_price, '^', color='#ffa502', 
+            markersize=12, zorder=5)
     
-    ax.annotate(f'Low: {min_price:.4f}', 
-                xy=(times[min_idx], min_price),
-                xytext=(0, -25), textcoords='offset points',
-                color='#00aaff', fontsize=9, fontweight='bold',
-                ha='center',
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='#1a1a1a', 
-                          edgecolor='#00aaff', alpha=0.8))
+    # برچسب Min
+    ax.text(times[min_idx], min_price - padding * 0.4,
+            f'LOW: {min_price:.{price_decimals}f}',
+            color='#00a8ff', fontsize=9, fontweight='bold',
+            ha='center', va='top',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#0d1117',
+                     edgecolor='#00a8ff', alpha=0.9),
+            zorder=5)
     
-    ax.annotate(f'High: {max_price:.4f}',
-                xy=(times[max_idx], max_price),
-                xytext=(0, 25), textcoords='offset points',
-                color='#ffaa00', fontsize=9, fontweight='bold',
-                ha='center',
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='#1a1a1a', 
-                          edgecolor='#ffaa00', alpha=0.8))
+    # برچسب Max
+    ax.text(times[max_idx], max_price + padding * 0.4,
+            f'HIGH: {max_price:.{price_decimals}f}',
+            color='#ffa502', fontsize=9, fontweight='bold',
+            ha='center', va='bottom',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#0d1117',
+                     edgecolor='#ffa502', alpha=0.9),
+            zorder=5)
     
-    # ═══ عنوان با جزئیات ═══
-    range_text = {
-        "1h": "۱ ساعت گذشته",
-        "4h": "۴ ساعت گذشته",
-        "1d": "۲۴ ساعت گذشته",
-        "5d": "۵ روز گذشته",
-        "1mo": "۱ ماه گذشته"
-    }.get(range_period, range_period)
+    # ═══════════════════════════════════════════════════
+    # Grid
+    # ═══════════════════════════════════════════════════
+    ax.grid(True, alpha=0.25, linestyle='-', color='#2a2f3a', 
+            linewidth=0.8, zorder=0)
+    ax.tick_params(colors='#8b949e', labelsize=9)
     
-    interval_text = {
-        "1m": "هر دقیقه",
-        "5m": "هر ۵ دقیقه",
-        "15m": "هر ۱۵ دقیقه",
-        "1h": "هر ساعت",
-        "1d": "هر روز"
-    }.get(interval, interval)
+    # ═══════════════════════════════════════════════════
+    # عنوان (انگلیسی - بدون مشکل فونت)
+    # ═══════════════════════════════════════════════════
+    sign = "+" if is_up else ""
     
-    change_sign = "+" if change >= 0 else ""
-    ax.set_title(
-        f"{asset['emoji']} {asset['name']} • {range_text}\n"
-        f"💰 {current_price:.4f}  •  {trend_emoji} {change_sign}{change:.4f} ({change_sign}{change_pct:.2f}%)\n"
-        f"📊 {len(prices)} نقطه • {interval_text}",
-        fontsize=12, color='white', pad=12, linespacing=1.4
+    title_text = (
+        f"{asset['symbol']}  |  {asset['name']}\n"
+        f"Price: {current_price:.{price_decimals}f}  |  "
+        f"{sign}{change:.{price_decimals}f} ({sign}{change_pct:.2f}%)\n"
+        f"{len(prices)} points  |  Range: {range_period}  |  Interval: {interval}"
     )
     
-    ax.set_xlabel("زمان", fontsize=9, color='#aaaaaa')
-    ax.set_ylabel("قیمت", fontsize=9, color='#aaaaaa')
+    ax.set_title(title_text, fontsize=13, color='white', 
+                 fontweight='bold', pad=15, linespacing=1.5)
     
-    # ═══ فرمت محور X ═══
-    if range_period in ["1h", "4h"]:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    elif range_period == "1d":
+    ax.set_xlabel("Time", fontsize=10, color='#8b949e')
+    ax.set_ylabel("Price", fontsize=10, color='#8b949e')
+    
+    # ═══════════════════════════════════════════════════
+    # فرمت محور X
+    # ═══════════════════════════════════════════════════
+    if range_period in ["1h", "4h", "1d"]:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     else:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
     
-    plt.xticks(rotation=45, fontsize=8)
+    plt.xticks(rotation=45, fontsize=9)
     plt.yticks(fontsize=9)
     
-    # grid دقیق
-    ax.grid(True, alpha=0.2, linestyle='-', color='#444444', linewidth=0.5)
-    ax.grid(True, which='major', alpha=0.3, linestyle='-', color='#555555')
-    
-    # حذف border اضافی
+    # حذف border
     for spine in ax.spines.values():
-        spine.set_color('#333333')
+        spine.set_color('#2a2f3a')
+        spine.set_linewidth(0.8)
     
     plt.tight_layout()
     
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=130, bbox_inches='tight',
-                facecolor='#1a1a1a', edgecolor='none')
+    plt.savefig(buf, format='png', dpi=140, bbox_inches='tight',
+                facecolor='#0d1117', edgecolor='none')
     buf.seek(0)
     plt.close()
     
@@ -687,34 +751,34 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_all_prices(update, context)
 
 async def show_all_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش همه قیمت‌ها"""
+    """نمایش همه قیمت‌ها - سازگار با گروه و PV"""
     user_id = update.effective_user.id
     cloud.increment_request(user_id)
     
-    text = "💱 <b>قیمت‌های لحظه‌ای</b>\n\n"
+    text = "💱 <b>Live Prices</b>\n\n"
     
     for symbol, asset in ASSETS.items():
         price = get_price(symbol)
         if price:
-            # ذخیره در تاریخچه
             cloud.add_price(symbol, price)
             text += f"{asset['emoji']} <b>{asset['name']}</b>\n"
             text += f"   💰 <code>{price}</code>\n\n"
         else:
             text += f"{asset['emoji']} <b>{asset['name']}</b>\n"
-            text += f"   ⚠️ <i>خطا در دریافت</i>\n\n"
+            text += f"   ⚠️ <i>Error</i>\n\n"
     
     text += f"⏱ <i>{tehran_str()}</i>"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
-            text, 
+            text,
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu_keyboard()
         )
     else:
-        await update.message.reply_text(
-            text,
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu_keyboard()
         )
@@ -793,22 +857,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("asset:"):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
+        chat_id = query.message.chat_id
         price = get_price(symbol)
         
         if price:
             cloud.add_price(symbol, price)
             text = (
                 f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
-                f"💰 <b>قیمت:</b> <code>{price}</code>\n"
+                f"💰 <b>Price:</b> <code>{price}</code>\n"
                 f"⏱ <i>{tehran_str()}</i>\n\n"
-                "یک گزینه را انتخاب کنید:"
+                "Choose an option:"
             )
         else:
-            text = (
-                f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
-                f"⚠️ <i>خطا در دریافت قیمت</i>\n\n"
-                "یک گزینه را انتخاب کنید:"
-            )
+            text = f"{asset['emoji']} <b>{asset['name']}</b>\n\n⚠️ Price error"
         
         await query.edit_message_text(
             text,
@@ -844,10 +905,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("chart:"):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
+        chat_id = query.message.chat_id
         
         await query.edit_message_text(
-            f"📈 <b>انتخاب تایم‌فریم برای {asset['name']}</b>\n\n"
-            f"💡 <b>پیشنهاد اسکلپ:</b> ⚡ ۱ ساعت (هر دقیقه)",
+            f"📈 <b>Select Timeframe for {asset['name']}</b>\n\n"
+            f"💡 <b>Scalp Suggestion:</b> ⚡ 1 Hour (1 minute interval)",
             parse_mode=ParseMode.HTML,
             reply_markup=timeframe_keyboard(symbol)
         )
@@ -860,49 +922,59 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         range_period = parts[2]
         interval = parts[3]
         asset = ASSETS[symbol]
+        chat_id = query.message.chat_id
         
-        await query.edit_message_text(
-            f"📈 در حال رسم نمودار {asset['name']}..."
-        )
+        await query.edit_message_text("📈 Drawing chart...")
         
         chart_buf = create_price_chart(symbol, range_period, interval)
         
         if chart_buf:
             try:
-                await query.message.reply_photo(
+                # 🎯 مرحله ۱: ارسال نمودار (بدون دکمه)
+                await context.bot.send_photo(
+                    chat_id=chat_id,
                     photo=chart_buf,
                     caption=(
-                        f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
+                        f"{asset['emoji']} <b>{asset['name']} Chart</b>\n\n"
                         f"⏱ <i>{tehran_str('%H:%M:%S')}</i>"
                     ),
                     parse_mode=ParseMode.HTML
                 )
                 
-                await query.message.reply_text(
-                    f"⬇️ <b>عملیات بیشتر:</b>",
+                # 🎯 مرحله ۲: ارسال دکمه‌ها در پیام جدا (مهم برای گروه!)
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"⬇️ <b>Actions for {asset['name']}:</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([
                         [
-                            InlineKeyboardButton("🔄 تایم‌فریم دیگر", callback_data=f"chart:{symbol}"),
-                            InlineKeyboardButton("💰 قیمت لحظه‌ای", callback_data=f"price:{symbol}")
+                            InlineKeyboardButton("🔄 Other Timeframe", 
+                                                  callback_data=f"chart:{symbol}"),
+                            InlineKeyboardButton("💰 Live Price", 
+                                                  callback_data=f"price:{symbol}")
                         ],
-                        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"asset:{symbol}")]
+                        [InlineKeyboardButton("🔙 Back", 
+                                              callback_data=f"asset:{symbol}")]
                     ])
                 )
                 
+                # حذف پیام "در حال رسم..."
                 try:
                     await query.message.delete()
                 except:
                     pass
+                    
             except Exception as e:
                 log.error(f"خطا در ارسال نمودار: {e}")
-                await query.message.reply_text(
-                    "⚠️ خطا در رسم نمودار.",
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="⚠️ Chart error.",
                     reply_markup=main_menu_keyboard()
                 )
         else:
-            await query.message.reply_text(
-                f"⚠️ داده کافی برای نمودار نیست.",
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⚠️ Not enough data for {asset['name']} chart.",
                 reply_markup=timeframe_keyboard(symbol)
             )
         return
@@ -1149,3 +1221,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
