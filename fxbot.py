@@ -167,19 +167,48 @@ def run_flask():
     flask_app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 # ══════════════════════════════════════════════════════════════════════
-# 💰  دریافت قیمت طلا (زنده - بدون کش)
+# 💰  دریافت قیمت طلای Spot (XAU/USD) - دقیقاً مطابق TradingView
 # ══════════════════════════════════════════════════════════════════════
+
 def get_gold_price():
-    try:
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        response = requests.get(url, headers=headers, timeout=20)
-        if response.status_code == 200:
-            data = response.json()
-            price = data['chart']['result'][0]['meta']['regularMarketPrice']
-            return round(price, 2)
-    except Exception as e:
-        log.error(f"خطا در دریافت قیمت: {e}")
+    """
+    دریافت قیمت لحظه‌ای طلای Spot (XAU/USD)
+    دقیقاً همون قیمتی که در TradingView با نماد XAUUSD می‌بینی
+    """
+    
+    # لیست منابع به ترتیب اولویت (هر کدوم کار نکرد، بعدی امتحان میشه)
+    sources = [
+        {
+            "name": "XAU/USD Spot",
+            "url": "https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X",
+            "parser": lambda data: data['chart']['result'][0]['meta']['regularMarketPrice']
+        },
+        {
+            "name": "XAU/USD Alternative",
+            "url": "https://query1.finance.yahoo.com/v8/finance/chart/XAU=X",
+            "parser": lambda data: data['chart']['result'][0]['meta']['regularMarketPrice']
+        }
+    ]
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    for source in sources:
+        try:
+            response = requests.get(source["url"], headers=headers, timeout=20)
+            if response.status_code == 200:
+                data = response.json()
+                price = source["parser"](data)
+                log.info(f"✅ قیمت از {source['name']}: {price}")
+                return round(price, 2)
+            else:
+                log.warning(f"⚠️ {source['name']} وضعیت {response.status_code}")
+        except Exception as e:
+            log.warning(f"⚠️ خطا از {source['name']}: {e}")
+            continue
+    
+    log.error("❌ همه منابع ناموفق بودن")
     return None
 
 # ══════════════════════════════════════════════════════════════════════
