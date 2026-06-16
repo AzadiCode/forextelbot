@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║     🎯 Random Reaction Bot  ·  Unique Reactions  ·  Multi-Account   ║
-║     ربات Reaction رندوم - هر ربات Reaction متفاوت میزنه             ║
+║     🎯 Random Reaction Bot v3  ·  No Crash  ·  Multi-Account       ║
+║     ربات Reaction رندوم - بدون کرش با خطا                           ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 from flask import Flask
 from telegram import Bot
+from telegram.error import BadRequest, Forbidden, RetryAfter, TimedOut, NetworkError
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 # ══════════════════════════════════════════════════════════════════════
@@ -55,18 +56,18 @@ BOT_TOKENS = [
 BOT_TOKENS = [token for token in BOT_TOKENS if token.strip()]
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎲  لیست کامل Reactionهای رندوم (هر ربات یکی متفاوت)
+# 🎲  Reactionهای رندوم (۵۰ تا)
 # ══════════════════════════════════════════════════════════════════════
 REACTIONS = [
     "👍", "👎", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
     "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "🤓", "🥱", "💯",
-    "🌟", "⭐", "💫", "✨", "💥", "💢", "💤", "💦", "💨", "🕳️",
-    "🎈", "🎁", "🏆", "🥇", "🥈", "🥉", "⚽", "🏀", "🏈", "⚾",
+    "🌟", "⭐", "💫", "✨", "💥", "💢", "🎈", "🎁", "🏆", "🥇",
+    "🥈", "🥉", "⚽", "🏀", "🎮", "🎨", "🎭", "🎪", "🎯", "🎲",
     "🍕", "🍔", "🍟", "🌭", "🍿", "🧁", "🍩", "🍪", "🎂", "🍰"
 ]
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎯  کلمات کلیدی برای تریگر (فقط برای شروع)
+# 🎯  کلمات تریگر
 # ══════════════════════════════════════════════════════════════════════
 TRIGGER_KEYWORDS = [
     "طلا", "gold", "قیمت", "xau", "انس",
@@ -78,28 +79,27 @@ TRIGGER_KEYWORDS = [
 # ══════════════════════════════════════════════════════════════════════
 # ⏱  تنظیمات زمانی
 # ══════════════════════════════════════════════════════════════════════
-MIN_DELAY = 1  # حداقل فاصله بین Reactionها (ثانیه)
-MAX_DELAY = 3  # حداکثر فاصله
-COOLDOWN = 60  # فاصله بین تریگرها (ثانیه) - جلوگیری از اسپم
-MIN_MESSAGE_LENGTH = 3  # حداقل طول پیام برای تریگر
+MIN_DELAY = 1.5  # حداقل فاصله (ثانیه)
+MAX_DELAY = 3.5  # حداکثر فاصله
+COOLDOWN = 60    # فاصله بین تریگرها (ثانیه)
+MIN_MESSAGE_LENGTH = 3
 
 # ══════════════════════════════════════════════════════════════════════
-# 🌐  Flask - سیستم بیداری
+# 🌐  Flask
 # ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
     return f"""
-🎯 Random Reaction Bot is alive!
+🎯 Random Reaction Bot v3 is alive!
 
 🤖 ربات‌های فعال: {len(BOT_TOKENS)}
 🎲 Reactionهای موجود: {len(REACTIONS)}
-🎯 کلمات تریگر: {len(TRIGGER_KEYWORDS)}
 ⏱ Cooldown: {COOLDOWN}s
 ⏰ زمان: {datetime.now().strftime('%H:%M:%S')}
 
-💡 هر ربات Reaction متفاوت میزنه!
+✅ فیکس شده: بدون کرش با خطا
 """
 
 @flask_app.route('/health')
@@ -111,51 +111,86 @@ def run_flask():
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # ══════════════════════════════════════════════════════════════════════
-# 🔍  تشخیص کلمات کلیدی (فقط برای تریگر)
+# 🔍  تشخیص کلمات کلیدی
 # ══════════════════════════════════════════════════════════════════════
 def should_trigger(text):
-    """آیا پیام شامل کلمه تریگر هست؟"""
     text_lower = text.lower()
-    
-    # حداقل طول پیام
     if len(text) < MIN_MESSAGE_LENGTH:
         return False
-    
-    # بررسی کلمات کلیدی
     for keyword in TRIGGER_KEYWORDS:
         if keyword.lower() in text_lower:
             return True
-    
     return False
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎲  ارسال Reactionهای رندوم و متفاوت
+# 🛡  پردازش خطای هر ربات
+# ══════════════════════════════════════════════════════════════════════
+def handle_bot_error(error, bot_index):
+    """تشخیص و لاگ دقیق خطاهای هر ربات"""
+    error_name = type(error).__name__
+    error_msg = str(error).lower()
+    
+    if isinstance(error, BadRequest):
+        if "message not found" in error_msg or "message to react" in error_msg:
+            log.warning(f"❌ ربات {bot_index}: پیام پیدا نشد (حذف شده؟)")
+        elif "chat not found" in error_msg:
+            log.warning(f"❌ ربات {bot_index}: عضو چت نیست")
+        elif "reactions too much" in error_msg:
+            log.warning(f"⚠️ ربات {bot_index}: Reaction محدود شده")
+        else:
+            log.warning(f"❌ ربات {bot_index}: BadRequest - {str(error)[:60]}")
+    
+    elif isinstance(error, Forbidden):
+        if "bot was blocked" in error_msg:
+            log.warning(f"❌ ربات {bot_index}: بلاک شده")
+        elif "bot can't" in error_msg or "not authorized" in error_msg:
+            log.warning(f"❌ ربات {bot_index}: دسترسی نداره (Admin کن در کانال)")
+        else:
+            log.warning(f"❌ ربات {bot_index}: Forbidden")
+    
+    elif isinstance(error, RetryAfter):
+        wait_time = getattr(error, 'retry_after', 5)
+        log.warning(f"⏳ ربات {bot_index}: Rate Limit، صبر {wait_time}s")
+        return wait_time  # برگردوندن زمان صبر
+    
+    elif isinstance(error, (TimedOut, NetworkError)):
+        log.warning(f"⏱ ربات {bot_index}: Timeout یا خطای شبکه")
+    
+    else:
+        log.warning(f"❌ ربات {bot_index}: {error_name} - {str(error)[:60]}")
+    
+    return 0  # بدون صبر
+
+# ══════════════════════════════════════════════════════════════════════
+# 🎲  ارسال Reactionهای رندوم (بدون کرش!)
 # ══════════════════════════════════════════════════════════════════════
 async def send_random_reactions(chat_id, message_id):
     """
-    هر ربات یه Reaction متفاوت و رندوم میزنه
-    هیچ دو رباتی Reaction یکسان نمی‌زنن (تا جای ممکن)
+    هر ربات یه Reaction متفاوت میزنه
+    اگه یکی خطا داد، بقیه ادامه میدن!
     """
     
     success = 0
     fail = 0
+    skipped = 0
     
-    # ایجاد لیست رندوم از Reactionها (shuffle)
+    # Shuffle Reactionها
     available_reactions = REACTIONS.copy()
     random.shuffle(available_reactions)
     
-    # اگه تعداد ربات‌ها بیشتر از Reactionها باشه، لیست رو گسترش میدیم
+    # اگه تعداد ربات‌ها بیشتر بود، گسترش بده
     while len(available_reactions) < len(BOT_TOKENS):
         available_reactions.extend(REACTIONS)
         random.shuffle(available_reactions)
     
     for i, token in enumerate(BOT_TOKENS, 1):
+        reaction = available_reactions[i - 1]
+        
         try:
+            # ساخت bot برای این توکن
             bot = Bot(token)
             
-            # هر ربات Reaction متفاوت میزنه
-            reaction = available_reactions[i - 1]
-            
+            # تلاش برای Reaction
             await bot.set_message_reaction(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -168,15 +203,16 @@ async def send_random_reactions(chat_id, message_id):
             
         except Exception as e:
             fail += 1
-            error_msg = str(e)[:50]
             
-            # تشخیص نوع خطا
-            if "not found" in error_msg.lower():
-                log.warning(f"❌ [{i}] ربات عضو گروه نیست")
-            elif "not authorized" in error_msg.lower():
-                log.warning(f"❌ [{i}] دسترسی Reaction نداره")
-            else:
-                log.warning(f"❌ [{i}] خطا: {error_msg}")
+            # پردازش خطا و ادامه حلقه (کرش نکن!)
+            wait_time = handle_bot_error(e, i)
+            
+            # اگه Rate Limit بود، صبر کن
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+            
+            # ادامه حلقه (مهم‌ترین خط!)
+            continue
         
         # فاصله رندوم بین هر Reaction
         delay = random.uniform(MIN_DELAY, MAX_DELAY)
@@ -185,35 +221,34 @@ async def send_random_reactions(chat_id, message_id):
     return success, fail
 
 # ══════════════════════════════════════════════════════════════════════
-# 🤖  هندلر اصلی - تشخیص خودکار
+# 🤖  هندلر اصلی
 # ══════════════════════════════════════════════════════════════════════
-
-# ذخیره زمان آخرین Reaction برای هر چت
 last_reaction_time = {}
 
 async def auto_reaction_handler(update, context):
-    """هندلر خودکار - تشخیص کلمات و Reaction رندوم"""
+    """هندلر خودکار با پشتیبانی از کانال و گروه"""
     
-    # ── پشتیبانی از کانال (channel_post) ──
+    # ── پست کانال ──
     if update.channel_post:
         message = update.channel_post
         
-        if not message.text:
+        if not message or not message.text:
             return
         
-        # تشخیص کلمه تریگر
         if not should_trigger(message.text):
             return
         
         log.info(f"📢 [کانال] تریگر: {message.text[:40]}...")
         
-        # ارسال Reactionهای رندوم
-        success, fail = await send_random_reactions(
-            message.chat_id,
-            message.message_id
-        )
+        try:
+            success, fail = await send_random_reactions(
+                message.chat_id,
+                message.message_id
+            )
+            log.info(f"📊 کانال: ✅ {success} موفق | ❌ {fail} ناموفق")
+        except Exception as e:
+            log.error(f"💥 خطای کلی کانال: {e}")
         
-        log.info(f"📊 نتیجه کانال: ✅ {success} | ❌ {fail}")
         return
     
     # ── پیام عادی ──
@@ -221,35 +256,32 @@ async def auto_reaction_handler(update, context):
     if not message or not message.text:
         return
     
-    # فقط در گروه‌ها (نه PV)
     if message.chat.type not in ['group', 'supergroup']:
         return
     
-    # بررسی Cooldown
+    # Cooldown
     chat_id = message.chat_id
     current_time = datetime.now().timestamp()
     
     if chat_id in last_reaction_time:
-        time_diff = current_time - last_reaction_time[chat_id]
-        if time_diff < COOLDOWN:
+        if current_time - last_reaction_time[chat_id] < COOLDOWN:
             return
     
-    # تشخیص کلمه تریگر
     if not should_trigger(message.text):
         return
     
     log.info(f"👥 [گروه] تریگر: {message.text[:40]}...")
     
-    # آپدیت زمان آخرین Reaction
     last_reaction_time[chat_id] = current_time
     
-    # ارسال Reactionهای رندوم و متفاوت
-    success, fail = await send_random_reactions(
-        message.chat_id,
-        message.message_id
-    )
-    
-    log.info(f"📊 نتیجه گروه: ✅ {success} | ❌ {fail}")
+    try:
+        success, fail = await send_random_reactions(
+            message.chat_id,
+            message.message_id
+        )
+        log.info(f"📊 گروه: ✅ {success} موفق | ❌ {fail} ناموفق")
+    except Exception as e:
+        log.error(f"💥 خطای کلی گروه: {e}")
 
 # ══════════════════════════════════════════════════════════════════════
 # 🎯  شروع
@@ -259,22 +291,17 @@ def main():
         log.error("❌ هیچ توکنی تنظیم نشده!")
         return
     
-    log.info(f"🚀 Random Reaction Bot با {len(BOT_TOKENS)} ربات")
-    log.info(f"🎲 {len(REACTIONS)} Reaction رندوم موجود")
-    log.info(f"🎯 {len(TRIGGER_KEYWORDS)} کلمه تریگر")
-    log.info(f"⏱ Cooldown: {COOLDOWN}s | فاصله Reaction: {MIN_DELAY}-{MAX_DELAY}s")
+    log.info(f"🚀 Random Reaction Bot v3 با {len(BOT_TOKENS)} ربات")
+    log.info(f"🎲 {len(REACTIONS)} Reaction رندوم")
+    log.info(f"⏱ Cooldown: {COOLDOWN}s | فاصله: {MIN_DELAY}-{MAX_DELAY}s")
+    log.info(f"🛡 حالت ضد کرش: فعال")
     
-    # شروع Flask
     threading.Thread(target=run_flask, daemon=True).start()
     log.info("🌐 Flask اجرا شد")
     
-    # استفاده از توکن اول
     main_token = BOT_TOKENS[0]
-    
-    # ساخت Application
     application = Application.builder().token(main_token).build()
     
-    # هندلر خودکار - پیام‌های متنی + پست کانال
     application.add_handler(
         MessageHandler(
             (filters.TEXT & ~filters.COMMAND) | filters.UpdateType.CHANNEL_POST,
@@ -282,10 +309,9 @@ def main():
         )
     )
     
-    # شروع polling
-    log.info("🤖 آماده - هر ربات Reaction متفاوت میزنه!")
+    log.info("🤖 آماده - بدون کرش با خطا!")
     application.run_polling(
-        allowed_updates=["message", "channel_post"],  # ← پشتیبانی از کانال
+        allowed_updates=["message", "channel_post"],
         drop_pending_updates=True,
     )
 
