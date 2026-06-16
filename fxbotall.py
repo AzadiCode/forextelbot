@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║     🎯 Reaction Booster Bot  ·  Multiple Accounts  ·  Sequential    ║
-║     ربات Reaction چند اکانتی با فاصله زمانی                         ║
+║     🎯 Reaction Booster Bot v2  ·  Multi-Account  ·  Smart Retry   ║
+║     ربات Reaction چند اکانتی با مدیریت خطا و Retry                 ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -15,7 +15,8 @@ import logging
 from datetime import datetime
 from flask import Flask
 from telegram import Bot
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.error import BadRequest, Forbidden, RetryAfter
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ══════════════════════════════════════════════════════════════════════
 # ⚙️  تنظیمات
@@ -27,9 +28,8 @@ logging.basicConfig(
 log = logging.getLogger("ReactionBot")
 
 # ══════════════════════════════════════════════════════════════════════
-# 🔑  لیست توکن‌های ربات‌ها (۲۰ تا)
+# 🔑  لیست توکن‌های ربات‌ها
 # ══════════════════════════════════════════════════════════════════════
-# می‌تونی اینجا هاردکد کنی یا از Environment Variable بخونی
 BOT_TOKENS = [
     os.environ.get("TOKEN_1", ""),
     os.environ.get("TOKEN_2", ""),
@@ -53,31 +53,33 @@ BOT_TOKENS = [
     os.environ.get("TOKEN_20", ""),
 ]
 
-# فیلتر کردن توکن‌های خالی
 BOT_TOKENS = [token for token in BOT_TOKENS if token.strip()]
 
 # ══════════════════════════════════════════════════════════════════════
-# ❤️  Reactionهای مجاز (استاندارد تلگرام)
+# ❤️  Reactionهای مجاز
 # ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["👍", "👎", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏"]
+REACTIONS = ["👍", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🎉", "🤩", "🙏"]
 
 # ══════════════════════════════════════════════════════════════════════
-# ⏱  تنظیمات زمانی
+# ⏱  تنظیمات زمانی (بهبود یافته)
 # ══════════════════════════════════════════════════════════════════════
-DELAY_BETWEEN_REACTIONS = 2  # ثانیه فاصله بین هر Reaction
-RANDOM_DELAY = True  # فاصله رندوم بین 1 تا 3 ثانیه
+MIN_DELAY = 3  # حداقل فاصله (ثانیه)
+MAX_DELAY = 6  # حداکثر فاصله (ثانیه)
+MAX_RETRIES = 2  # تعداد تلاش مجدد
 
 # ══════════════════════════════════════════════════════════════════════
-# 🌐  Flask - سیستم بیداری
+# 🌐  Flask
 # ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
     return f"""
-🎯 Reaction Booster Bot is alive!
+🎯 Reaction Booster Bot v2 is alive!
 
 🤖 تعداد ربات‌های فعال: {len(BOT_TOKENS)}
+⏱ فاصله زمانی: {MIN_DELAY}-{MAX_DELAY} ثانیه
+🔄 Retry: {MAX_RETRIES} بار
 ⏰ زمان: {datetime.now().strftime('%H:%M:%S')}
 """
 
@@ -90,150 +92,270 @@ def run_flask():
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # ══════════════════════════════════════════════════════════════════════
-# 🚀  تابع اصلی Reaction زدن
+# 🚀  تابع اصلی Reaction با Retry و لاگ دقیق
 # ══════════════════════════════════════════════════════════════════════
 async def send_reactions_sequential(chat_id, message_id, status_message=None):
-    """ارسال Reaction از همه ربات‌ها به ترتیب با فاصله زمانی"""
+    """ارسال Reaction با مدیریت خطا و Retry"""
     
     success_count = 0
     fail_count = 0
+    results = []  # ذخیره نتیجه هر ربات
     
     for i, token in enumerate(BOT_TOKENS, 1):
-        try:
-            bot = Bot(token)
-            reaction = random.choice(REACTIONS)
-            
-            await bot.set_message_reaction(
-                chat_id=chat_id,
-                message_id=message_id,
-                reaction=reaction,
-                is_big=False
-            )
-            
+        reaction = random.choice(REACTIONS)
+        success = False
+        error_msg = ""
+        
+        # تلاش مجدد
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                bot = Bot(token)
+                
+                await bot.set_message_reaction(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reaction=reaction,
+                    is_big=False
+                )
+                
+                success = True
+                break
+                
+            except BadRequest as e:
+                error_msg = f"BadRequest: {str(e)[:50]}"
+                if "message to react not found" in str(e).lower():
+                    error_msg = "پیام یافت نشد (حذف شده؟)"
+                    break
+                elif "chat not found" in str(e).lower():
+                    error_msg = "ربات عضو گروه نیست!"
+                    break
+                    
+            except Forbidden as e:
+                error_msg = f"دسترسی نداره: {str(e)[:50]}"
+                break
+                
+            except RetryAfter as e:
+                wait_time = e.retry_after
+                error_msg = f"Rate Limit: صبر {wait_time}s"
+                log.warning(f"⏳ [{i}] Rate Limit، صبر {wait_time} ثانیه...")
+                await asyncio.sleep(wait_time)
+                
+            except Exception as e:
+                error_msg = f"{type(e).__name__}: {str(e)[:50]}"
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(2)
+        
+        # ذخیره نتیجه
+        if success:
             success_count += 1
-            log.info(f"✅ [{i}/{len(BOT_TOKENS)}] Reaction {reaction} از ربات {i}")
-            
-            # آپدیت وضعیت (هر 5 تا)
-            if status_message and i % 5 == 0:
-                try:
-                    await status_message.edit_text(
-                        f"⏳ در حال Reaction زدن...\n\n"
-                        f"✅ موفق: {success_count}\n"
-                        f"❌ ناموفق: {fail_count}\n"
-                        f"📊 پیشرفت: {i}/{len(BOT_TOKENS)}"
-                    )
-                except:
-                    pass
-            
-            # فاصله زمانی
-            if RANDOM_DELAY:
-                delay = random.uniform(1, 3)
-            else:
-                delay = DELAY_BETWEEN_REACTIONS
-            await asyncio.sleep(delay)
-            
-        except Exception as e:
+            log.info(f"✅ [{i}/{len(BOT_TOKENS)}] {reaction} موفق")
+            results.append(f"✅ ربات {i}: {reaction}")
+        else:
             fail_count += 1
-            log.error(f"❌ [{i}/{len(BOT_TOKENS)}] خطا در ربات {i}: {e}")
+            log.error(f"❌ [{i}/{len(BOT_TOKENS)}] {error_msg}")
+            results.append(f"❌ ربات {i}: {error_msg}")
+        
+        # آپدیت وضعیت
+        if status_message and i % 3 == 0:
+            try:
+                await status_message.edit_text(
+                    f"⏳ <b>در حال Reaction زدن...</b>\n\n"
+                    f"✅ موفق: {success_count}\n"
+                    f"❌ ناموفق: {fail_count}\n"
+                    f"📊 پیشرفت: {i}/{len(BOT_TOKENS)}\n\n"
+                    f"⏱ فاصله: {MIN_DELAY}-{MAX_DELAY}s",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        
+        # فاصله رندوم
+        delay = random.uniform(MIN_DELAY, MAX_DELAY)
+        await asyncio.sleep(delay)
     
-    return success_count, fail_count
+    return success_count, fail_count, results
 
 # ══════════════════════════════════════════════════════════════════════
-# 🤖  هندلرهای ربات
+# 🤖  هندلرها
 # ══════════════════════════════════════════════════════════════════════
 
 async def start_handler(update, context):
-    """دستور /start"""
     text = (
-        f"🎯 <b>Reaction Booster Bot</b>\n\n"
-        f"🤖 <b>تعداد ربات‌های فعال:</b> {len(BOT_TOKENS)}\n\n"
-        f"📌 <b>نحوه استفاده:</b>\n"
-        f"1️⃣ روی پیام مورد نظر Reply کن\n"
-        f"2️⃣ دستور /boost رو بفرست\n\n"
-        f"💡 همه ربات‌ها به ترتیب Reaction می‌زنن!"
+        f"🎯 <b>Reaction Booster Bot v2</b>\n\n"
+        f"🤖 <b>ربات‌های فعال:</b> {len(BOT_TOKENS)}\n"
+        f"⏱ <b>فاصله:</b> {MIN_DELAY}-{MAX_DELAY}s\n"
+        f"🔄 <b>Retry:</b> {MAX_RETRIES}x\n\n"
+        f"📌 <b>استفاده:</b>\n"
+        f"1️⃣ Reply روی پیام\n"
+        f"2️⃣ /boost\n\n"
+        f"📋 /diagnose - بررسی ربات‌ها"
     )
     await update.message.reply_text(text, parse_mode='HTML')
 
 async def boost_handler(update, context):
-    """دستور /boost - شروع Reaction زدن"""
-    
-    # بررسی Reply
     if not update.message.reply_to_message:
         await update.message.reply_text(
-            "⚠️ <b>خطا!</b>\n\n"
-            "لطفاً روی پیام مورد نظر Reply کن و بعد /boost رو بزن.",
+            "⚠️ روی پیام Reply کن و بعد /boost بزن!",
             parse_mode='HTML'
         )
         return
     
-    target_message = update.message.reply_to_message
+    target = update.message.reply_to_message
     
-    # ارسال پیام وضعیت
     status_msg = await update.message.reply_text(
-        f"🚀 <b>شروع Reaction زدن!</b>\n\n"
-        f"🎯 هدف: پیام از {target_message.from_user.first_name}\n"
-        f"🤖 تعداد ربات‌ها: {len(BOT_TOKENS)}\n"
-        f"⏳ لطفاً صبر کنید...",
+        f"🚀 <b>شروع عملیات!</b>\n\n"
+        f"🎯 هدف: {target.from_user.first_name}\n"
+        f"🤖 ربات‌ها: {len(BOT_TOKENS)}\n"
+        f"⏳ صبر کنید...",
         parse_mode='HTML'
     )
     
-    # شروع Reaction زدن
-    success, fail = await send_reactions_sequential(
-        target_message.chat_id,
-        target_message.message_id,
+    success, fail, results = await send_reactions_sequential(
+        target.chat_id,
+        target.message_id,
         status_msg
     )
     
-    # پیام نهایی
-    await status_msg.edit_text(
+    # گزارش نهایی
+    report = (
         f"✅ <b>پایان عملیات!</b>\n\n"
-        f"🎯 هدف: پیام از {target_message.from_user.first_name}\n\n"
+        f"🎯 هدف: {target.from_user.first_name}\n\n"
         f"✅ <b>موفق:</b> {success}\n"
         f"❌ <b>ناموفق:</b> {fail}\n"
-        f"📊 <b>مجموع:</b> {len(BOT_TOKENS)}",
+        f"📊 <b>مجموع:</b> {len(BOT_TOKENS)}\n\n"
+        f"📋 <b>جزئیات:</b>\n"
+    )
+    
+    # اضافه کردن ۵ نتیجه آخر
+    for result in results[-5:]:
+        report += f"{result}\n"
+    
+    if fail > 0:
+        report += f"\n💡 <b>نکته:</b> برای دیدن همه نتایج /diagnose بزن"
+    
+    await status_msg.edit_text(report, parse_mode='HTML')
+
+async def diagnose_handler(update, context):
+    """بررسی وضعیت همه ربات‌ها"""
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "⚠️ روی یه پیام Reply کن و /diagnose بزن تا ببینم کدوم ربات‌ها کار می‌کنن!",
+            parse_mode='HTML'
+        )
+        return
+    
+    target = update.message.reply_to_message
+    
+    status_msg = await update.message.reply_text(
+        f"🔍 <b>در حال بررسی ربات‌ها...</b>\n\n"
+        f"🤖 {len(BOT_TOKENS)} ربات",
         parse_mode='HTML'
     )
+    
+    results = []
+    working = 0
+    
+    for i, token in enumerate(BOT_TOKENS, 1):
+        try:
+            bot = Bot(token)
+            
+            # تست با یه Reaction ساده
+            await bot.set_message_reaction(
+                chat_id=target.chat_id,
+                message_id=target.message_id,
+                reaction="👍",
+                is_big=False
+            )
+            
+            # اگه موفق بود، Reaction رو حذف کن (با یه Reaction دیگه)
+            await asyncio.sleep(0.5)
+            
+            results.append(f"✅ ربات {i}: کار می‌کنه")
+            working += 1
+            log.info(f"✅ ربات {i}: OK")
+            
+        except Exception as e:
+            error_type = type(e).__name__
+            error_detail = str(e)[:80]
+            
+            if "chat not found" in error_detail.lower():
+                results.append(f"❌ ربات {i}: عضو گروه نیست")
+            elif "not authorized" in error_detail.lower():
+                results.append(f"❌ ربات {i}: دسترسی Reaction نداره")
+            elif "bad request" in error_type.lower():
+                results.append(f"❌ ربات {i}: BadRequest")
+            else:
+                results.append(f"❌ ربات {i}: {error_type}")
+            
+            log.error(f"❌ ربات {i}: {error_detail}")
+        
+        await asyncio.sleep(1)
+        
+        # آپدیت وضعیت
+        if i % 5 == 0:
+            try:
+                await status_msg.edit_text(
+                    f"🔍 <b>بررسی ربات‌ها...</b>\n\n"
+                    f"✅ کار می‌کنه: {working}\n"
+                    f"📊 پیشرفت: {i}/{len(BOT_TOKENS)}",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+    
+    # گزارش نهایی
+    report = f"🔍 <b>نتیجه بررسی:</b>\n\n"
+    report += f"✅ <b>سالم:</b> {working}/{len(BOT_TOKENS)}\n"
+    report += f"❌ <b>خراب:</b> {len(BOT_TOKENS) - working}/{len(BOT_TOKENS)}\n\n"
+    report += "<b>جزئیات:</b>\n"
+    
+    for result in results:
+        report += f"{result}\n"
+    
+    if working < len(BOT_TOKENS):
+        report += (
+            f"\n💡 <b>راه‌حل:</b>\n"
+            f"1️⃣ همه ربات‌ها رو به گروه اضافه کن\n"
+            f"2️⃣ Privacy Mode همه رو خاموش کن (BotFather)\n"
+            f"3️⃣ ربات‌ها رو حذف و دوباره اضافه کن"
+        )
+    
+    await status_msg.edit_text(report, parse_mode='HTML')
 
 async def status_handler(update, context):
-    """دستور /status - نمایش وضعیت"""
     text = (
-        f"📊 <b>وضعیت ربات</b>\n\n"
-        f"🤖 <b>تعداد ربات‌های فعال:</b> {len(BOT_TOKENS)}\n"
-        f"❤️ <b>Reactionهای مجاز:</b> {len(REACTIONS)}\n"
-        f"⏱ <b>فاصله زمانی:</b> {DELAY_BETWEEN_REACTIONS} ثانیه\n"
-        f"🎲 <b>فاصله رندوم:</b> {'بله' if RANDOM_DELAY else 'خیر'}\n\n"
-        f"⏰ <i>{datetime.now().strftime('%H:%M:%S')}</i>"
+        f"📊 <b>وضعیت</b>\n\n"
+        f"🤖 ربات‌ها: {len(BOT_TOKENS)}\n"
+        f"❤️ Reactionها: {len(REACTIONS)}\n"
+        f"⏱ فاصله: {MIN_DELAY}-{MAX_DELAY}s\n"
+        f"🔄 Retry: {MAX_RETRIES}x\n\n"
+        f"⏰ {datetime.now().strftime('%H:%M:%S')}"
     )
     await update.message.reply_text(text, parse_mode='HTML')
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎯  نقطه شروع
+# 🎯  شروع
 # ══════════════════════════════════════════════════════════════════════
 def main():
     if not BOT_TOKENS:
         log.error("❌ هیچ توکنی تنظیم نشده!")
         return
     
-    log.info(f"🚀 Reaction Bot با {len(BOT_TOKENS)} ربات در حال راه‌اندازی...")
+    log.info(f"🚀 Reaction Bot v2 با {len(BOT_TOKENS)} ربات")
     
-    # شروع Flask در پس‌زمینه
     threading.Thread(target=run_flask, daemon=True).start()
     log.info("🌐 Flask اجرا شد")
     
-    # استفاده از توکن اول به عنوان ربات اصلی
     main_token = BOT_TOKENS[0]
-    
-    # ساخت Application
     application = Application.builder().token(main_token).build()
     
-    # افزودن هندلرها
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("help", start_handler))
     application.add_handler(CommandHandler("boost", boost_handler))
+    application.add_handler(CommandHandler("diagnose", diagnose_handler))
     application.add_handler(CommandHandler("status", status_handler))
     
-    # شروع polling
-    log.info("🤖 ربات آماده است...")
+    log.info("🤖 آماده...")
     application.run_polling(
         allowed_updates=["message"],
         drop_pending_updates=True,
