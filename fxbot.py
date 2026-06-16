@@ -332,74 +332,146 @@ def get_price(symbol):
     return None
 
 # ══════════════════════════════════════════════════════════════════════
+# 📈  دریافت داده‌های تاریخی (۲۴ ساعت گذشته)
+# ══════════════════════════════════════════════════════════════════════
+def get_historical_prices(symbol, interval="5m", range_period="1d"):
+    """
+    دریافت داده‌های تاریخی از Yahoo Finance
+    - interval: فاصله بین نقاط (5m, 15m, 1h, 1d)
+    - range_period: بازه زمانی (1d, 5d, 1mo)
+    """
+    # نگاشت symbol به نماد Yahoo
+    yahoo_symbols = {
+        "XAUUSD": "GC=F",     # Gold Futures
+        "EURUSD": "EURUSD=X",
+        "USDJPY": "USDJPY=X"
+    }
+    
+    yahoo_sym = yahoo_symbols.get(symbol)
+    if not yahoo_sym:
+        return None, None
+    
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
+    params = {
+        "interval": interval,
+        "range": range_period
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        if response.status_code != 200:
+            log.warning(f"⚠️ Yahoo historical {symbol}: {response.status_code}")
+            return None, None
+        
+        data = response.json()
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        closes = result['indicators']['quote'][0]['close']
+        
+        times = []
+        prices = []
+        for ts, price in zip(timestamps, closes):
+            if price is not None:
+                times.append(datetime.fromtimestamp(ts))
+                prices.append(float(price))
+        
+        log.info(f"✅ داده‌های تاریخی {symbol}: {len(prices)} نقطه")
+        return times, prices
+        
+    except Exception as e:
+        log.warning(f"⚠️ خطا در داده‌های تاریخی {symbol}: {str(e)[:60]}")
+        return None, None
+
+# ══════════════════════════════════════════════════════════════════════
 # 📊  رسم نمودار قیمت
 # ══════════════════════════════════════════════════════════════════════
 def create_price_chart(symbol):
-    """رسم نمودار قیمت و برگردوندن به صورت bytes"""
-    history = cloud.data.get("price_history", {}).get(symbol, [])
-    
-    if len(history) < 2:
-        return None
-    
+    """رسم نمودار با داده‌های تاریخی (نه فقط تاریخچه محلی)"""
     asset = ASSETS[symbol]
     
-    # استخراج داده‌ها
-    times = []
-    prices = []
-    for item in history[-50:]:  # ۵۰ مورد آخر
-        try:
-            t = datetime.fromisoformat(item["time"])
-            times.append(t)
-            prices.append(item["price"])
-        except:
-            continue
+    # اولویت ۱: داده‌های تاریخی Yahoo (۲۴ ساعت گذشته)
+    times, prices = get_historical_prices(symbol, interval="5m", range_period="1d")
     
-    if len(times) < 2:
+    # اولویت ۲: تاریخچه محلی (اگه Yahoo کار نکرد)
+    if not times or len(times) < 5:
+        history = cloud.data.get("price_history", {}).get(symbol, [])
+        if len(history) >= 2:
+            times = []
+            prices = []
+            for item in history[-50:]:
+                try:
+                    t = datetime.fromisoformat(item["time"])
+                    times.append(t)
+                    prices.append(item["price"])
+                except:
+                    continue
+    
+    if not times or len(times) < 2:
         return None
     
-    # تنظیم استایل نمودار
+    # تنظیم استایل
     plt.style.use('dark_background')
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # رنگ بر اساس روند
     color = '#00ff88' if prices[-1] >= prices[0] else '#ff4444'
+    trend_emoji = "📈" if prices[-1] >= prices[0] else "📉"
     
     # رسم خط
-    ax.plot(times, prices, color=color, linewidth=2, marker='o', markersize=4)
-    ax.fill_between(times, prices, alpha=0.2, color=color)
+    ax.plot(times, prices, color=color, linewidth=2)
+    ax.fill_between(times, prices, alpha=0.15, color=color)
     
-    # عنوان و برچسب‌ها
-    ax.set_title(f"{asset['emoji']} {asset['name']} ({asset['symbol']})", 
-                 fontsize=16, color='white', pad=15)
-    ax.set_xlabel("زمان", fontsize=11, color='white')
-    ax.set_ylabel("قیمت", fontsize=11, color='white')
+    # محاسبه تغییر
+    change = prices[-1] - prices[0]
+    change_pct = (change / prices[0]) * 100 if prices[0] else 0
+    
+    # عنوان
+    ax.set_title(
+        f"{asset['emoji']} {asset['name']} ({asset['symbol']}) {trend_emoji}\n"
+        f"قیمت: {prices[-1]:.4f} | تغییر: {change:+.4f} ({change_pct:+.2f}%)",
+        fontsize=13, color='white', pad=15
+    )
+    ax.set_xlabel("زمان", fontsize=10, color='white')
+    ax.set_ylabel("قیمت", fontsize=10, color='white')
     
     # فرمت محور X
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plt.xticks(rotation=45)
+    if len(times) > 1 and (times[-1] - times[0]).days < 2:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    else:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+    plt.xticks(rotation=45, fontsize=9)
     
-    # خطوط grid
-    ax.grid(True, alpha=0.3, linestyle='--', color='gray')
+    # grid
+    ax.grid(True, alpha=0.25, linestyle='--', color='gray')
     
-    # اضافه کردن قیمت فعلی
+    # خط قیمت فعلی
     current_price = prices[-1]
-    ax.axhline(y=current_price, color=color, linestyle='--', alpha=0.5)
-    ax.text(times[-1], current_price, f'  {current_price}', 
-            color=color, fontsize=11, va='center')
+    ax.axhline(y=current_price, color=color, linestyle='--', alpha=0.5, linewidth=1)
     
-    # min/max
-    min_price = min(prices)
-    max_price = max(prices)
-    ax.text(times[0], min_price, f' Min: {min_price}', 
-            color='#ffaa00', fontsize=9, va='bottom')
-    ax.text(times[0], max_price, f' Max: {max_price}', 
-            color='#ffaa00', fontsize=9, va='top')
+    # min/max با دایره
+    min_idx = prices.index(min(prices))
+    max_idx = prices.index(max(prices))
+    ax.plot(times[min_idx], prices[min_idx], 'o', color='#ffaa00', markersize=8)
+    ax.plot(times[max_idx], prices[max_idx], 'o', color='#ffaa00', markersize=8)
+    ax.annotate(f'Min: {min(prices):.4f}', 
+                xy=(times[min_idx], prices[min_idx]),
+                xytext=(10, -15), textcoords='offset points',
+                color='#ffaa00', fontsize=9,
+                arrowprops=dict(arrowstyle='->', color='#ffaa00', alpha=0.5))
+    ax.annotate(f'Max: {max(prices):.4f}',
+                xy=(times[max_idx], prices[max_idx]),
+                xytext=(10, 15), textcoords='offset points',
+                color='#ffaa00', fontsize=9,
+                arrowprops=dict(arrowstyle='->', color='#ffaa00', alpha=0.5))
     
     plt.tight_layout()
     
-    # تبدیل به bytes
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', 
+                facecolor='#1a1a1a', edgecolor='none')
     buf.seek(0)
     plt.close()
     
@@ -694,34 +766,42 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
         
-        # اگه داده کافی نیست، اول قیمت رو بگیر
-        history = cloud.data.get("price_history", {}).get(symbol, [])
-        if len(history) < 2:
-            price = get_price(symbol)
-            if price:
-                cloud.add_price(symbol, price)
+        # نمایش پیام "در حال بارگذاری"
+        await query.edit_message_text(f"📈 در حال رسم نمودار {asset['name']}...")
         
         chart_buf = create_price_chart(symbol)
         
         if chart_buf:
             try:
-                await query.edit_message_text("📈 در حال ارسال نمودار...")
+                # 🎯 مرحله ۱: ارسال نمودار (بدون دکمه)
                 await query.message.reply_photo(
                     photo=chart_buf,
-                    caption=f"{asset['emoji']} <b>نمودار {asset['name']}</b>\n\n⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>",
+                    caption=f"{asset['emoji']} <b>نمودار {asset['name']}</b> (۲۴ ساعت گذشته)\n\n⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>",
+                    parse_mode=ParseMode.HTML
+                )
+                
+                # 🎯 مرحله ۲: ارسال پیام متنی جدا با دکمه‌ها
+                await query.message.reply_text(
+                    f"⬇️ <b>عملیات بیشتر روی {asset['name']}:</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=asset_keyboard(symbol)
                 )
+                
+                # حذف پیام "در حال بارگذاری"
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                    
             except Exception as e:
                 log.error(f"خطا در ارسال نمودار: {e}")
-                await query.edit_message_text(
-                    f"⚠️ داده کافی برای رسم نمودار وجود ندارد.\n\nچند بار قیمت را چک کنید تا تاریخچه ذخیره شود.",
-                    reply_markup=asset_keyboard(symbol)
+                await query.message.reply_text(
+                    "⚠️ خطا در رسم نمودار.",
+                    reply_markup=main_menu_keyboard()
                 )
         else:
             await query.edit_message_text(
-                f"⚠️ <b>داده کافی برای نمودار نیست!</b>\n\n"
-                f"حداقل ۲ بار قیمت را چک کنید.",
+                f"⚠️ داده کافی برای رسم نمودار {asset['name']} نیست.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=asset_keyboard(symbol)
             )
