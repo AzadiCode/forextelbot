@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Flask
 from telegram import Bot
 from telegram.error import BadRequest, Forbidden, RetryAfter
-from telegram.ext import Application, MessageHandler, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, filters
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -42,7 +42,6 @@ BOT_TOKENS = [
 ]
 BOT_TOKENS = [token for token in BOT_TOKENS if token.strip()]
 
-# 🎲 Reactionها (هر ربات یکی رندوم انتخاب می‌کنه - تکراری هم مجاز!)
 REACTIONS = [
     "👍", "👎", "❤️", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
     "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "🤓", "🥱", "💯",
@@ -65,7 +64,7 @@ flask_app = Flask(__name__)
 
 @flask_app.route('/')
 def home():
-    return f"🎯 Random Reaction Bot v10 (Duplicates OK)\n\n🤖 ربات‌ها: {len(BOT_TOKENS)}"
+    return f"🎯 Random Reaction Bot v11 (Debug Mode)\n\n🤖 ربات‌ها: {len(BOT_TOKENS)}"
 
 @flask_app.route('/health')
 def health():
@@ -82,12 +81,93 @@ def should_trigger(text):
     return any(kw in text_lower for kw in TRIGGER_KEYWORDS)
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎲  ارسال Reactionها (تکراری مجاز - ساده)
+# 🔧  دستور /debug - تست تک تک ربات‌ها در کانال
+# ══════════════════════════════════════════════════════════════════════
+async def debug_handler(update, context):
+    """تست تک تک ربات‌ها با فاصله ۱۰ ثانیه"""
+    
+    chat = update.effective_chat
+    
+    if chat.type != 'channel':
+        await update.message.reply_text("⚠️ این دستور فقط در کانال کار می‌کنه!")
+        return
+    
+    # پیام reply شده یا پیام فعلی؟
+    target_msg = update.message.reply_to_message or update.message
+    
+    status = await update.message.reply_text(
+        f"🔧 <b>حالت Debug</b>\n\n"
+        f"📍 کانال: {chat.title}\n"
+        f"🤖 تست {len(BOT_TOKENS)} ربات با فاصله ۱۰ ثانیه...\n\n"
+        f"⏳ لطفاً صبر کنید (حدود {len(BOT_TOKENS) * 10 // 60} دقیقه)",
+        parse_mode='HTML'
+    )
+    
+    results = []
+    
+    for i, token in enumerate(BOT_TOKENS, 1):
+        reaction = random.choice(REACTIONS)
+        
+        try:
+            bot = Bot(token)
+            
+            # ⚠️ مرحله ۱: اول چت رو fetch کن (اتصال به کانال)
+            await bot.get_chat(chat.id)
+            log.info(f"🔗 ربات {i}: اتصال به کانال موفق")
+            
+            # ⚠️ مرحله ۲: حالا Reaction بزن
+            await bot.set_message_reaction(
+                chat_id=chat.id,
+                message_id=target_msg.message_id,
+                reaction=reaction,
+                is_big=False
+            )
+            
+            results.append(f"✅ ربات {i}: {reaction}")
+            log.info(f"✅ ربات {i}: Reaction {reaction} موفق")
+            
+        except Forbidden as e:
+            results.append(f"❌ ربات {i}: ادمین نیست")
+            log.error(f"❌ ربات {i}: Forbidden - {e}")
+            
+        except BadRequest as e:
+            results.append(f"❌ ربات {i}: BadRequest")
+            log.error(f"❌ ربات {i}: BadRequest - {e}")
+            
+        except RetryAfter as e:
+            results.append(f"⏳ ربات {i}: Rate Limit ({e.retry_after}s)")
+            log.warning(f"⏳ ربات {i}: Rate Limit - {e.retry_after}s")
+            await asyncio.sleep(e.retry_after)
+            
+        except Exception as e:
+            results.append(f"❌ ربات {i}: {type(e).__name__}")
+            log.error(f"❌ ربات {i}: {type(e).__name__} - {e}")
+        
+        # فاصله ۱۰ ثانیه بین هر ربات
+        if i < len(BOT_TOKENS):
+            await asyncio.sleep(10)
+        
+        # آپدیت وضعیت
+        if i % 5 == 0:
+            await status.edit_text(
+                f"🔧 <b>در حال تست...</b>\n\n"
+                f"📊 پیشرفت: {i}/{len(BOT_TOKENS)}",
+                parse_mode='HTML'
+            )
+    
+    # گزارش نهایی
+    report = f"🔧 <b>نتیجه Debug</b>\n\n"
+    for result in results:
+        report += f"{result}\n"
+    
+    await status.edit_text(report, parse_mode='HTML')
+
+# ══════════════════════════════════════════════════════════════════════
+# 🎲  ارسال Reactionها (با get_chat قبل از Reaction)
 # ══════════════════════════════════════════════════════════════════════
 async def send_all_reactions(chat_id, message_id, is_channel=False):
     """
-    هر ربات به صورت مستقل یک Reaction رندوم انتخاب می‌کنه
-    Reaction تکراری هم مجاز است (چند ربات می‌تونن یکسان بزنن)
+    قبل از هر Reaction، ربات چت رو fetch می‌کنه (اتصال)
     """
     
     success = 0
@@ -96,16 +176,19 @@ async def send_all_reactions(chat_id, message_id, is_channel=False):
     chat_type = "کانال" if is_channel else "گروه"
     log.info(f"🚀 [{chat_type}] شروع Reaction برای پیام {message_id}")
     
-    # صبر اولیه
     await asyncio.sleep(2)
     
     for i, token in enumerate(BOT_TOKENS, 1):
-        # 🎲 هر ربات به صورت مستقل یک Reaction رندوم انتخاب می‌کنه
         reaction = random.choice(REACTIONS)
         
         try:
             bot = Bot(token)
             
+            # ⚠️ مهم: اول چت رو fetch کن
+            if is_channel:
+                await bot.get_chat(chat_id)
+            
+            # حالا Reaction بزن
             await bot.set_message_reaction(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -120,6 +203,7 @@ async def send_all_reactions(chat_id, message_id, is_channel=False):
             wait_time = e.retry_after
             log.warning(f"⏳ [{i}] Rate Limit! صبر {wait_time}s")
             await asyncio.sleep(wait_time)
+            fail += 1
             
         except Forbidden as e:
             fail += 1
@@ -143,7 +227,6 @@ async def send_all_reactions(chat_id, message_id, is_channel=False):
             fail += 1
             log.warning(f"❌ [{i}] {type(e).__name__}: {str(e)[:60]}")
         
-        # فاصله بین هر Reaction
         delay = random.uniform(MIN_DELAY, MAX_DELAY)
         await asyncio.sleep(delay)
     
@@ -200,14 +283,17 @@ def main():
         log.error("❌ هیچ توکنی تنظیم نشده!")
         return
     
-    log.info(f"🚀 Random Reaction Bot v10 با {len(BOT_TOKENS)} ربات")
-    log.info(f"🎲 Reaction تکراری مجاز (مثلاً چند ربات می‌تونن ❤️ بزنن)")
+    log.info(f"🚀 Random Reaction Bot v11 با {len(BOT_TOKENS)} ربات")
     
     threading.Thread(target=run_flask, daemon=True).start()
     
     main_token = BOT_TOKENS[0]
     application = Application.builder().token(main_token).build()
     
+    # دستور debug
+    application.add_handler(CommandHandler("debug", debug_handler))
+    
+    # هندلر خودکار
     application.add_handler(
         MessageHandler(
             (filters.TEXT & ~filters.COMMAND) | filters.UpdateType.CHANNEL_POST,
@@ -215,7 +301,7 @@ def main():
         )
     )
     
-    log.info("🤖 آماده!")
+    log.info("🤖 آماده! دستور /debug رو در کانال تست کن")
     application.run_polling(
         allowed_updates=["message", "channel_post"],
         drop_pending_updates=True,
