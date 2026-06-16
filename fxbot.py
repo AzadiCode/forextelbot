@@ -751,34 +751,34 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_all_prices(update, context)
 
 async def show_all_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش همه قیمت‌ها - سازگار با گروه و PV"""
+    """نمایش همه قیمت‌ها"""
     user_id = update.effective_user.id
     cloud.increment_request(user_id)
     
-    text = "💱 <b>Live Prices</b>\n\n"
+    text = "💱 <b>قیمت‌های لحظه‌ای</b>\n\n"
     
     for symbol, asset in ASSETS.items():
         price = get_price(symbol)
         if price:
+            # ذخیره در تاریخچه
             cloud.add_price(symbol, price)
             text += f"{asset['emoji']} <b>{asset['name']}</b>\n"
             text += f"   💰 <code>{price}</code>\n\n"
         else:
             text += f"{asset['emoji']} <b>{asset['name']}</b>\n"
-            text += f"   ⚠️ <i>Error</i>\n\n"
+            text += f"   ⚠️ <i>خطا در دریافت</i>\n\n"
     
     text += f"⏱ <i>{tehran_str()}</i>"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
-            text,
+            text, 
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu_keyboard()
         )
     else:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
+        await update.message.reply_text(
+            text,
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu_keyboard()
         )
@@ -857,19 +857,22 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("asset:"):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
-        chat_id = query.message.chat_id
         price = get_price(symbol)
         
         if price:
             cloud.add_price(symbol, price)
             text = (
                 f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
-                f"💰 <b>Price:</b> <code>{price}</code>\n"
+                f"💰 <b>قیمت:</b> <code>{price}</code>\n"
                 f"⏱ <i>{tehran_str()}</i>\n\n"
-                "Choose an option:"
+                "یک گزینه را انتخاب کنید:"
             )
         else:
-            text = f"{asset['emoji']} <b>{asset['name']}</b>\n\n⚠️ Price error"
+            text = (
+                f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
+                f"⚠️ <i>خطا در دریافت قیمت</i>\n\n"
+                "یک گزینه را انتخاب کنید:"
+            )
         
         await query.edit_message_text(
             text,
@@ -905,11 +908,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("chart:"):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
-        chat_id = query.message.chat_id
         
         await query.edit_message_text(
-            f"📈 <b>Select Timeframe for {asset['name']}</b>\n\n"
-            f"💡 <b>Scalp Suggestion:</b> ⚡ 1 Hour (1 minute interval)",
+            f"📈 <b>انتخاب تایم‌فریم برای {asset['name']}</b>\n\n"
+            f"💡 <b>پیشنهاد اسکلپ:</b> ⚡ ۱ ساعت (هر دقیقه)",
             parse_mode=ParseMode.HTML,
             reply_markup=timeframe_keyboard(symbol)
         )
@@ -922,59 +924,49 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         range_period = parts[2]
         interval = parts[3]
         asset = ASSETS[symbol]
-        chat_id = query.message.chat_id
         
-        await query.edit_message_text("📈 Drawing chart...")
+        await query.edit_message_text(
+            f"📈 در حال رسم نمودار {asset['name']}..."
+        )
         
         chart_buf = create_price_chart(symbol, range_period, interval)
         
         if chart_buf:
             try:
-                # 🎯 مرحله ۱: ارسال نمودار (بدون دکمه)
-                await context.bot.send_photo(
-                    chat_id=chat_id,
+                await query.message.reply_photo(
                     photo=chart_buf,
                     caption=(
-                        f"{asset['emoji']} <b>{asset['name']} Chart</b>\n\n"
+                        f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
                         f"⏱ <i>{tehran_str('%H:%M:%S')}</i>"
                     ),
                     parse_mode=ParseMode.HTML
                 )
                 
-                # 🎯 مرحله ۲: ارسال دکمه‌ها در پیام جدا (مهم برای گروه!)
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"⬇️ <b>Actions for {asset['name']}:</b>",
+                await query.message.reply_text(
+                    f"⬇️ <b>عملیات بیشتر:</b>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([
                         [
-                            InlineKeyboardButton("🔄 Other Timeframe", 
-                                                  callback_data=f"chart:{symbol}"),
-                            InlineKeyboardButton("💰 Live Price", 
-                                                  callback_data=f"price:{symbol}")
+                            InlineKeyboardButton("🔄 تایم‌فریم دیگر", callback_data=f"chart:{symbol}"),
+                            InlineKeyboardButton("💰 قیمت لحظه‌ای", callback_data=f"price:{symbol}")
                         ],
-                        [InlineKeyboardButton("🔙 Back", 
-                                              callback_data=f"asset:{symbol}")]
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"asset:{symbol}")]
                     ])
                 )
                 
-                # حذف پیام "در حال رسم..."
                 try:
                     await query.message.delete()
                 except:
                     pass
-                    
             except Exception as e:
                 log.error(f"خطا در ارسال نمودار: {e}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⚠️ Chart error.",
+                await query.message.reply_text(
+                    "⚠️ خطا در رسم نمودار.",
                     reply_markup=main_menu_keyboard()
                 )
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"⚠️ Not enough data for {asset['name']} chart.",
+            await query.message.reply_text(
+                f"⚠️ داده کافی برای نمودار نیست.",
                 reply_markup=timeframe_keyboard(symbol)
             )
         return
