@@ -167,48 +167,68 @@ def run_flask():
     flask_app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 # ══════════════════════════════════════════════════════════════════════
-# 💰  دریافت قیمت طلای Spot (XAU/USD) - دقیقاً مطابق TradingView
+# 💰  دریافت قیمت طلای Spot (XAU/USD) - چند منبعی و پایدار
 # ══════════════════════════════════════════════════════════════════════
 
 def get_gold_price():
     """
     دریافت قیمت لحظه‌ای طلای Spot (XAU/USD)
-    دقیقاً همون قیمتی که در TradingView با نماد XAUUSD می‌بینی
+    با استفاده از چند منبع معتبر - دقیقاً مطابق TradingView
     """
     
-    # لیست منابع به ترتیب اولویت (هر کدوم کار نکرد، بعدی امتحان میشه)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    
+    # ═══ لیست منابع به ترتیب اولویت ═══
     sources = [
         {
-            "name": "XAU/USD Spot",
-            "url": "https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X",
-            "parser": lambda data: data['chart']['result'][0]['meta']['regularMarketPrice']
+            "name": "GoldPrice.org",
+            "url": "https://data-asg.goldprice.org/dbXRates/USD",
+            "parser": lambda data: data['items'][0]['xauPrice']
         },
         {
-            "name": "XAU/USD Alternative",
-            "url": "https://query1.finance.yahoo.com/v8/finance/chart/XAU=X",
+            "name": "Swissquote Forex",
+            "url": "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD",
+            "parser": lambda data: (float(data[0]['spreadProfilePrices'][0]['ask']) + float(data[0]['spreadProfilePrices'][0]['bid'])) / 2
+        },
+        {
+            "name": "Metals.dev (Demo)",
+            "url": "https://api.metals.dev/v1/latest?api_key=demo&currency=USD&unit=toz",
+            "parser": lambda data: data['metals']['gold']
+        },
+        {
+            "name": "Yahoo Finance (Backup)",
+            "url": "https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X",
             "parser": lambda data: data['chart']['result'][0]['meta']['regularMarketPrice']
         }
     ]
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
+    # ═══ امتحان کردن هر منبع ═══
     for source in sources:
         try:
-            response = requests.get(source["url"], headers=headers, timeout=20)
+            response = requests.get(source["url"], headers=headers, timeout=15)
+            
             if response.status_code == 200:
                 data = response.json()
                 price = source["parser"](data)
-                log.info(f"✅ قیمت از {source['name']}: {price}")
-                return round(price, 2)
+                
+                # اعتبارسنجی قیمت (بین 1000 تا 10000 دلار)
+                if 1000 < price < 10000:
+                    log.info(f"✅ قیمت از {source['name']}: {price}")
+                    return round(price, 2)
+                else:
+                    log.warning(f"⚠️ قیمت نامعتبر از {source['name']}: {price}")
             else:
                 log.warning(f"⚠️ {source['name']} وضعیت {response.status_code}")
+                
         except Exception as e:
-            log.warning(f"⚠️ خطا از {source['name']}: {e}")
+            log.warning(f"⚠️ خطا از {source['name']}: {str(e)[:80]}")
             continue
     
-    log.error("❌ همه منابع ناموفق بودن")
+    log.error("❌ همه ۴ منبع ناموفق بودن!")
     return None
 
 # ══════════════════════════════════════════════════════════════════════
