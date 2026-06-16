@@ -167,7 +167,7 @@ class CloudStorage:
             return
         if not force and not self._dirty:
             return
-        self.data["last_updated"] = datetime.now().isoformat()
+        self.data["last_updated"] = tehran_now().isoformat()
         try:
             if self.bin_id:
                 response = requests.put(
@@ -195,7 +195,7 @@ class CloudStorage:
         if uid not in self.data["users"]:
             self.data["users"][uid] = {
                 "username": username,
-                "joined_at": datetime.now().isoformat(),
+                "joined_at": tehran_now().isoformat(),
                 "requests": 0
             }
             self._dirty = True
@@ -213,7 +213,7 @@ class CloudStorage:
             self.data["price_history"][symbol] = []
         self.data["price_history"][symbol].append({
             "price": price,
-            "time": datetime.now().isoformat()
+            "time": tehran_now().isoformat()
         })
         # محدود کردن به ۱۰۰ رکورد
         if len(self.data["price_history"][symbol]) > 100:
@@ -231,7 +231,7 @@ class CloudStorage:
         alert = {
             "direction": direction,  # "up" یا "down"
             "target": target_price,
-            "created_at": datetime.now().isoformat(),
+            "created_at": tehran_now().isoformat(),
             "triggered": False
         }
         self.data["alerts"][uid][symbol].append(alert)
@@ -290,7 +290,7 @@ def home():
 💱 Forex Bot is alive!
 👥 کاربران: {total_users}
 📊 درخواست‌ها: {total_requests}
-⏰ زمان: {datetime.now().strftime('%H:%M:%S')}
+⏰ زمان: {tehran_str()}
 """
 
 @flask_app.route('/health')
@@ -299,6 +299,22 @@ def health():
 
 def run_flask():
     flask_app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+
+
+from datetime import datetime, timedelta, timezone
+
+# ══════════════════════════════════════════════════════════════════════
+# 🕐  تابع تایم ایران (UTC+3:30)
+# ══════════════════════════════════════════════════════════════════════
+IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+
+def tehran_now():
+    """زمان فعلی به وقت ایران"""
+    return datetime.now(IRAN_TZ)
+
+def tehran_str(fmt="%H:%M:%S"):
+    """زمان فعلی ایران به صورت رشته"""
+    return tehran_now().strftime(fmt)
 
 # ══════════════════════════════════════════════════════════════════════
 # 💰  دریافت قیمت (چند منبعی - همه دارایی‌ها)
@@ -388,89 +404,134 @@ def get_historical_prices(symbol, interval="5m", range_period="1d"):
 # ══════════════════════════════════════════════════════════════════════
 # 📊  رسم نمودار قیمت
 # ══════════════════════════════════════════════════════════════════════
-def create_price_chart(symbol):
-    """رسم نمودار با داده‌های تاریخی (نه فقط تاریخچه محلی)"""
+def create_price_chart(symbol, range_period="1h", interval="1m"):
+    """
+    رسم نمودار با scaling دقیق مخصوص اسکلپ
+    range_period: 1h, 4h, 1d, 5d, 1mo
+    interval: 1m, 5m, 15m, 1h, 1d
+    """
     asset = ASSETS[symbol]
     
-    # اولویت ۱: داده‌های تاریخی Yahoo (۲۴ ساعت گذشته)
-    times, prices = get_historical_prices(symbol, interval="5m", range_period="1d")
+    # دریافت داده‌های تاریخی
+    times, prices = get_historical_prices(symbol, interval=interval, range_period=range_period)
     
-    # اولویت ۲: تاریخچه محلی (اگه Yahoo کار نکرد)
     if not times or len(times) < 5:
-        history = cloud.data.get("price_history", {}).get(symbol, [])
-        if len(history) >= 2:
-            times = []
-            prices = []
-            for item in history[-50:]:
-                try:
-                    t = datetime.fromisoformat(item["time"])
-                    times.append(t)
-                    prices.append(item["price"])
-                except:
-                    continue
-    
-    if not times or len(times) < 2:
+        log.warning(f"⚠️ داده کافی نیست: {len(times) if times else 0} نقطه")
         return None
     
-    # تنظیم استایل
-    plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # رنگ بر اساس روند
-    color = '#00ff88' if prices[-1] >= prices[0] else '#ff4444'
-    trend_emoji = "📈" if prices[-1] >= prices[0] else "📉"
-    
-    # رسم خط
-    ax.plot(times, prices, color=color, linewidth=2)
-    ax.fill_between(times, prices, alpha=0.15, color=color)
-    
-    # محاسبه تغییر
-    change = prices[-1] - prices[0]
+    # ─── محاسبات آماری ───
+    current_price = prices[-1]
+    min_price = min(prices)
+    max_price = max(prices)
+    change = current_price - prices[0]
     change_pct = (change / prices[0]) * 100 if prices[0] else 0
     
-    # عنوان
-    ax.set_title(
-        f"{asset['emoji']} {asset['name']} ({asset['symbol']}) {trend_emoji}\n"
-        f"قیمت: {prices[-1]:.4f} | تغییر: {change:+.4f} ({change_pct:+.2f}%)",
-        fontsize=13, color='white', pad=15
-    )
-    ax.set_xlabel("زمان", fontsize=10, color='white')
-    ax.set_ylabel("قیمت", fontsize=10, color='white')
+    # ─── تنظیمات استایل ───
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(11, 6.5))
     
-    # فرمت محور X
-    if len(times) > 1 and (times[-1] - times[0]).days < 2:
+    # رنگ بر اساس روند
+    color = '#00ff88' if change >= 0 else '#ff4444'
+    trend_emoji = "📈" if change >= 0 else "📉"
+    
+    # ═══ مقیاس دقیق Y (مهم برای اسکلپ!) ═══
+    price_range = max_price - min_price
+    if price_range < 0.0001:  # اگه نوسان خیلی کم بود
+        price_range = current_price * 0.001  # حداقل 0.1%
+    padding = price_range * 0.15  # فقط 15% padding
+    ax.set_ylim(min_price - padding, max_price + padding)
+    
+    # ═══ رسم نمودار ═══
+    ax.plot(times, prices, color=color, linewidth=1.8, alpha=0.95)
+    ax.fill_between(times, prices, min_price - padding, alpha=0.08, color=color)
+    
+    # خط قیمت فعلی (برجسته)
+    ax.axhline(y=current_price, color=color, linestyle='-', 
+               alpha=0.7, linewidth=1.5)
+    ax.text(times[-1], current_price, 
+            f' {current_price:.4f} ',
+            color='white', fontsize=10, fontweight='bold',
+            va='center', ha='right',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.8))
+    
+    # خط شروع (متفاوت)
+    ax.axhline(y=prices[0], color='#888888', linestyle=':', 
+               alpha=0.5, linewidth=1)
+    
+    # ═══ Min/Max با marker ═══
+    min_idx = prices.index(min_price)
+    max_idx = prices.index(max_price)
+    
+    ax.plot(times[min_idx], min_price, 'v', color='#00aaff', markersize=10)
+    ax.plot(times[max_idx], max_price, '^', color='#ffaa00', markersize=10)
+    
+    ax.annotate(f'Low: {min_price:.4f}', 
+                xy=(times[min_idx], min_price),
+                xytext=(0, -25), textcoords='offset points',
+                color='#00aaff', fontsize=9, fontweight='bold',
+                ha='center',
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='#1a1a1a', 
+                          edgecolor='#00aaff', alpha=0.8))
+    
+    ax.annotate(f'High: {max_price:.4f}',
+                xy=(times[max_idx], max_price),
+                xytext=(0, 25), textcoords='offset points',
+                color='#ffaa00', fontsize=9, fontweight='bold',
+                ha='center',
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='#1a1a1a', 
+                          edgecolor='#ffaa00', alpha=0.8))
+    
+    # ═══ عنوان با جزئیات ═══
+    range_text = {
+        "1h": "۱ ساعت گذشته",
+        "4h": "۴ ساعت گذشته",
+        "1d": "۲۴ ساعت گذشته",
+        "5d": "۵ روز گذشته",
+        "1mo": "۱ ماه گذشته"
+    }.get(range_period, range_period)
+    
+    interval_text = {
+        "1m": "هر دقیقه",
+        "5m": "هر ۵ دقیقه",
+        "15m": "هر ۱۵ دقیقه",
+        "1h": "هر ساعت",
+        "1d": "هر روز"
+    }.get(interval, interval)
+    
+    change_sign = "+" if change >= 0 else ""
+    ax.set_title(
+        f"{asset['emoji']} {asset['name']} • {range_text}\n"
+        f"💰 {current_price:.4f}  •  {trend_emoji} {change_sign}{change:.4f} ({change_sign}{change_pct:.2f}%)\n"
+        f"📊 {len(prices)} نقطه • {interval_text}",
+        fontsize=12, color='white', pad=12, linespacing=1.4
+    )
+    
+    ax.set_xlabel("زمان", fontsize=9, color='#aaaaaa')
+    ax.set_ylabel("قیمت", fontsize=9, color='#aaaaaa')
+    
+    # ═══ فرمت محور X ═══
+    if range_period in ["1h", "4h"]:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    elif range_period == "1d":
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     else:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
-    plt.xticks(rotation=45, fontsize=9)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
     
-    # grid
-    ax.grid(True, alpha=0.25, linestyle='--', color='gray')
+    plt.xticks(rotation=45, fontsize=8)
+    plt.yticks(fontsize=9)
     
-    # خط قیمت فعلی
-    current_price = prices[-1]
-    ax.axhline(y=current_price, color=color, linestyle='--', alpha=0.5, linewidth=1)
+    # grid دقیق
+    ax.grid(True, alpha=0.2, linestyle='-', color='#444444', linewidth=0.5)
+    ax.grid(True, which='major', alpha=0.3, linestyle='-', color='#555555')
     
-    # min/max با دایره
-    min_idx = prices.index(min(prices))
-    max_idx = prices.index(max(prices))
-    ax.plot(times[min_idx], prices[min_idx], 'o', color='#ffaa00', markersize=8)
-    ax.plot(times[max_idx], prices[max_idx], 'o', color='#ffaa00', markersize=8)
-    ax.annotate(f'Min: {min(prices):.4f}', 
-                xy=(times[min_idx], prices[min_idx]),
-                xytext=(10, -15), textcoords='offset points',
-                color='#ffaa00', fontsize=9,
-                arrowprops=dict(arrowstyle='->', color='#ffaa00', alpha=0.5))
-    ax.annotate(f'Max: {max(prices):.4f}',
-                xy=(times[max_idx], prices[max_idx]),
-                xytext=(10, 15), textcoords='offset points',
-                color='#ffaa00', fontsize=9,
-                arrowprops=dict(arrowstyle='->', color='#ffaa00', alpha=0.5))
+    # حذف border اضافی
+    for spine in ax.spines.values():
+        spine.set_color('#333333')
     
     plt.tight_layout()
     
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', 
+    plt.savefig(buf, format='png', dpi=130, bbox_inches='tight',
                 facecolor='#1a1a1a', edgecolor='none')
     buf.seek(0)
     plt.close()
@@ -579,6 +640,24 @@ def chart_menu_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def timeframe_keyboard(symbol):
+    """کیبورد انتخاب تایم‌فریم"""
+    keyboard = [
+        [
+            InlineKeyboardButton("⚡ ۱ ساعت", callback_data=f"tf:{symbol}:1h:1m"),
+            InlineKeyboardButton("⏱ ۴ ساعت", callback_data=f"tf:{symbol}:4h:5m")
+        ],
+        [
+            InlineKeyboardButton("📅 ۱ روز", callback_data=f"tf:{symbol}:1d:15m"),
+            InlineKeyboardButton("📆 ۵ روز", callback_data=f"tf:{symbol}:5d:1h")
+        ],
+        [
+            InlineKeyboardButton("🗓 ۱ ماه", callback_data=f"tf:{symbol}:1mo:1d")
+        ],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"asset:{symbol}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 # ══════════════════════════════════════════════════════════════════════
 # 🤖  هندلرها
 # ══════════════════════════════════════════════════════════════════════
@@ -625,7 +704,7 @@ async def show_all_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{asset['emoji']} <b>{asset['name']}</b>\n"
             text += f"   ⚠️ <i>خطا در دریافت</i>\n\n"
     
-    text += f"⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>"
+    text += f"⏱ <i>{tehran_str()}</i>"
     
     if update.callback_query:
         await update.callback_query.edit_message_text(
@@ -670,7 +749,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 <b>آمار ربات</b>\n\n"
             f"👥 <b>کاربران:</b> {total_users}\n"
             f"📈 <b>درخواست‌ها:</b> {total_requests}\n\n"
-            f"⏰ <i>{datetime.now().strftime('%H:%M:%S')}</i>"
+            f"⏰ <i>{tehran_str()}</i>"
         )
         await query.edit_message_text(
             text, 
@@ -721,7 +800,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
                 f"💰 <b>قیمت:</b> <code>{price}</code>\n"
-                f"⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>\n\n"
+                f"⏱ <i>{tehran_str()}</i>\n\n"
                 "یک گزینه را انتخاب کنید:"
             )
         else:
@@ -749,7 +828,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
                 f"💰 <b>قیمت:</b> <code>{price}</code>\n"
-                f"⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>"
+                f"⏱ <i>{tehran_str()}</i>"
             )
         else:
             text = f"{asset['emoji']} <b>{asset['name']}</b>\n\n⚠️ خطا در دریافت قیمت"
@@ -761,38 +840,60 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ── نمودار یک دارایی ──
+    # ── نمودار یک دارایی (انتخاب تایم‌فریم) ──
     if data.startswith("chart:"):
         symbol = data.split(":")[1]
         asset = ASSETS[symbol]
         
-        # نمایش پیام "در حال بارگذاری"
-        await query.edit_message_text(f"📈 در حال رسم نمودار {asset['name']}...")
+        await query.edit_message_text(
+            f"📈 <b>انتخاب تایم‌فریم برای {asset['name']}</b>\n\n"
+            f"💡 <b>پیشنهاد اسکلپ:</b> ⚡ ۱ ساعت (هر دقیقه)",
+            parse_mode=ParseMode.HTML,
+            reply_markup=timeframe_keyboard(symbol)
+        )
+        return
+    
+    # ── نمودار با تایم‌فریم مشخص ──
+    if data.startswith("tf:"):
+        parts = data.split(":")
+        symbol = parts[1]
+        range_period = parts[2]
+        interval = parts[3]
+        asset = ASSETS[symbol]
         
-        chart_buf = create_price_chart(symbol)
+        await query.edit_message_text(
+            f"📈 در حال رسم نمودار {asset['name']}..."
+        )
+        
+        chart_buf = create_price_chart(symbol, range_period, interval)
         
         if chart_buf:
             try:
-                # 🎯 مرحله ۱: ارسال نمودار (بدون دکمه)
                 await query.message.reply_photo(
                     photo=chart_buf,
-                    caption=f"{asset['emoji']} <b>نمودار {asset['name']}</b> (۲۴ ساعت گذشته)\n\n⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>",
+                    caption=(
+                        f"{asset['emoji']} <b>{asset['name']}</b>\n\n"
+                        f"⏱ <i>{tehran_str('%H:%M:%S')}</i>"
+                    ),
                     parse_mode=ParseMode.HTML
                 )
                 
-                # 🎯 مرحله ۲: ارسال پیام متنی جدا با دکمه‌ها
                 await query.message.reply_text(
-                    f"⬇️ <b>عملیات بیشتر روی {asset['name']}:</b>",
+                    f"⬇️ <b>عملیات بیشتر:</b>",
                     parse_mode=ParseMode.HTML,
-                    reply_markup=asset_keyboard(symbol)
+                    reply_markup=InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("🔄 تایم‌فریم دیگر", callback_data=f"chart:{symbol}"),
+                            InlineKeyboardButton("💰 قیمت لحظه‌ای", callback_data=f"price:{symbol}")
+                        ],
+                        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"asset:{symbol}")]
+                    ])
                 )
                 
-                # حذف پیام "در حال بارگذاری"
                 try:
                     await query.message.delete()
                 except:
                     pass
-                    
             except Exception as e:
                 log.error(f"خطا در ارسال نمودار: {e}")
                 await query.message.reply_text(
@@ -800,10 +901,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=main_menu_keyboard()
                 )
         else:
-            await query.edit_message_text(
-                f"⚠️ داده کافی برای رسم نمودار {asset['name']} نیست.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=asset_keyboard(symbol)
+            await query.message.reply_text(
+                f"⚠️ داده کافی برای نمودار نیست.",
+                reply_markup=timeframe_keyboard(symbol)
             )
         return
     
@@ -925,7 +1025,7 @@ async def chart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chart_buf:
         await update.message.reply_photo(
             photo=chart_buf,
-            caption=f"🥇 <b>نمودار انس جهانی طلا</b>\n\n⏱ <i>{datetime.now().strftime('%H:%M:%S')}</i>",
+            caption=f"🥇 <b>نمودار انس جهانی طلا</b>\n\n⏱ <i>{tehran_str()}</i>",
             parse_mode=ParseMode.HTML
         )
     else:
