@@ -7,7 +7,7 @@ ScalpBot Pro v6
 - کنترل دسترسی از داخل کد
 """
 
-import os, sys, asyncio, logging, signal, atexit, io, threading, time, statistics
+import os, sys, asyncio, logging, signal, atexit, io, threading, time
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
@@ -15,8 +15,8 @@ from typing import Optional
 import requests, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 from flask import Flask, jsonify
 
@@ -348,33 +348,33 @@ MACD_C  = "#26a69a"
 SIG_C   = "#ef5350"
 
 
-def _plot_valid(ax, times, data, **kw):
-    pts = [(t, v) for t, v in zip(times, data) if v is not None]
+def _plot_valid(ax, xs, data, **kw):
+    pts = [(x, v) for x, v in zip(xs, data) if v is not None]
     if len(pts) > 1:
-        tt, vv = zip(*pts)
-        ax.plot(tt, vv, **kw)
+        xx, vv = zip(*pts)
+        ax.plot(xx, vv, **kw)
 
 
-def _draw_candles(ax, times, opens, highs, lows, closes, bar_w):
+def _draw_candles(ax, x_idx, opens, highs, lows, closes, bar_w, price_range):
     """
-    رسم کندل دقیق:
-    - bar_w به واحد matplotlib date number
-    - body عرض = 70% فاصله بین کندل‌ها
-    - wick یک خط نازک 0.6px
-    - body rect بدون padding
+    رسم کندل دقیق و بدون دستکاری دیتا:
+    - x_idx ایندکس صحیح کندل‌ها (نه زمان واقعی) — برای حذف گپ بصری
+      ناشی از بسته‌بودن بازار (آخر هفته/سشن‌ها)، دقیقاً مثل TradingView
+    - هیچ clamp/cap‌ای روی high/low/body کندل آخر اعمال نمی‌شود؛
+      shadow و body همیشه دقیقاً برابر دیتای واقعی رسم می‌شوند
+    - برای دوجی واقعی (open == close) فقط یک خط نازک افقی برای
+      دیده‌شدن رسم می‌شود، بدون فیک‌کردن اندازه‌ی بدنه
     """
-    n = len(times)
+    n = len(x_idx)
     if n == 0:
         return
 
-    # median body و range برای cap کندل آخر
-    bodies = [abs(closes[i] - opens[i]) for i in range(n - 1)]
-    ranges = [highs[i] - lows[i] for i in range(n - 1)]
-    med_body  = statistics.median(bodies) if bodies else 1.0
-    med_range = statistics.median(ranges) if ranges else 1.0
+    # حداقل ارتفاع صرفاً برای جلوگیری از محو شدن کامل دوجی در رندر —
+    # این مقدار به نسبت رِیج واقعی قیمت چارت است، نه به دیتای کندل‌ها
+    min_visible = price_range * 0.0006 if price_range > 0 else 0.0
 
     for i in range(n):
-        t  = times[i]
+        x  = x_idx[i]
         o  = opens[i]
         h  = highs[i]
         l  = lows[i]
@@ -382,35 +382,30 @@ def _draw_candles(ax, times, opens, highs, lows, closes, bar_w):
         up = c >= o
         col = UP_C if up else DN_C
 
-        # کندل آخر (live/ناقص): cap
-        if i == n - 1:
-            h = min(h, c + med_range * 2)
-            l = max(l, c - med_range * 2)
-            body_size = min(abs(c - o), med_body * 2)
-        else:
-            body_size = abs(c - o)
-
-        # حداقل body (doji)
-        body_size = max(body_size, med_body * 0.03)
-
-        body_bottom = (c - body_size) if up else c
-
-        # wick — خط نازک
+        # wick — از کمترین تا بیشترین واقعی، بدون هیچ تغییری
         ax.plot(
-            [mdates.date2num(t), mdates.date2num(t)],
-            [l, h],
-            color=col, linewidth=0.8, zorder=2, solid_capstyle="butt"
+            [x, x], [l, h],
+            color=col, linewidth=1.0, zorder=2, solid_capstyle="butt"
         )
 
-        # body — مستطیل تمیز
-        ax.add_patch(mpatches.Rectangle(
-            (mdates.date2num(t) - bar_w / 2, body_bottom),
-            bar_w,
-            body_size,
-            linewidth=0,
-            facecolor=col,
-            zorder=3,
-        ))
+        body_size   = abs(c - o)
+        body_bottom = min(o, c)
+
+        if body_size < min_visible:
+            # دوجی واقعی: فقط یک خط نازک افقی، بدون فیک‌کردن بدنه
+            ax.plot(
+                [x - bar_w / 2, x + bar_w / 2], [c, c],
+                color=col, linewidth=1.3, zorder=3, solid_capstyle="butt"
+            )
+        else:
+            ax.add_patch(mpatches.Rectangle(
+                (x - bar_w / 2, body_bottom),
+                bar_w,
+                body_size,
+                linewidth=0,
+                facecolor=col,
+                zorder=3,
+            ))
 
 
 def create_chart(
@@ -440,14 +435,10 @@ def create_chart(
     n = len(times)
     dec = asset.decimals
 
-    # ── bar width: از median فاصله زمانی بین کندل‌ها ──
-    tnums = mdates.date2num(times)
-    if n > 1:
-        gaps  = np.diff(tnums)
-        gap   = float(np.median(gaps))
-        bar_w = gap * 0.6          # 60% پر، 40% فاصله — مثل TradingView
-    else:
-        bar_w = 1 / 1440
+    # ── محور x ایندکس‌محور (مثل TradingView): بدون گپ بصری برای
+    # بسته‌بودن بازار/آخر هفته/سشن‌ها — فاصله بین کندل‌ها همیشه یکسان است
+    x_idx = list(range(n))
+    bar_w = 0.6  # 60% پر، 40% فاصله بین کندل‌ها — مثل TradingView
 
     # ── اندیکاتورها ──
     ema21              = _ema(closes, 21)
@@ -500,22 +491,22 @@ def create_chart(
         ax.grid(True, color=GRID_C, linewidth=0.3, alpha=0.8, zorder=0)
 
     # ── CANDLES ──
-    _draw_candles(ax_c, times, opens, highs, lows, closes, bar_w)
+    _draw_candles(ax_c, x_idx, opens, highs, lows, closes, bar_w, hi - lo)
 
     # ── Bollinger Bands ──
-    _plot_valid(ax_c, times, bb_up, color=BB_C, lw=0.8, alpha=0.6, ls="--", label="BB(20)")
-    _plot_valid(ax_c, times, bb_lo, color=BB_C, lw=0.8, alpha=0.6, ls="--")
-    _plot_valid(ax_c, times, bb_mid, color=BB_C, lw=0.5, alpha=0.4, ls=":")
+    _plot_valid(ax_c, x_idx, bb_up, color=BB_C, lw=0.8, alpha=0.6, ls="--", label="BB(20)")
+    _plot_valid(ax_c, x_idx, bb_lo, color=BB_C, lw=0.8, alpha=0.6, ls="--")
+    _plot_valid(ax_c, x_idx, bb_mid, color=BB_C, lw=0.5, alpha=0.4, ls=":")
 
-    bb_pts = [(t, u, l) for t, u, l in zip(times, bb_up, bb_lo)
+    bb_pts = [(x, u, l) for x, u, l in zip(x_idx, bb_up, bb_lo)
               if u is not None and l is not None]
     if bb_pts:
-        bt, bu, bl = zip(*bb_pts)
-        ax_c.fill_between(bt, bu, bl, color=BB_C, alpha=0.03, zorder=1)
+        bx, bu, bl = zip(*bb_pts)
+        ax_c.fill_between(bx, bu, bl, color=BB_C, alpha=0.03, zorder=1)
 
     # ── EMA ──
-    _plot_valid(ax_c, times, ema21, color=EMA21_C, lw=1.0, label="EMA21", zorder=4)
-    _plot_valid(ax_c, times, ema50, color=EMA50_C, lw=1.0, label="EMA50", zorder=4)
+    _plot_valid(ax_c, x_idx, ema21, color=EMA21_C, lw=1.0, label="EMA21", zorder=4)
+    _plot_valid(ax_c, x_idx, ema50, color=EMA50_C, lw=1.0, label="EMA50", zorder=4)
 
     # ── قیمت جاری ──
     ax_c.axhline(cur, color=mc, ls="-", lw=0.6, alpha=0.4, zorder=1)
@@ -531,13 +522,13 @@ def create_chart(
     lo_i = int(np.argmin(lows))
     ax_c.annotate(
         f"H {hi:.{dec}f}",
-        xy=(times[hi_i], hi), xytext=(0, 8), textcoords="offset points",
+        xy=(hi_i, hi), xytext=(0, 8), textcoords="offset points",
         fontsize=7, color=EMA21_C, fontweight="bold", ha="center",
         arrowprops=dict(arrowstyle="-", color=EMA21_C, lw=0.5),
     )
     ax_c.annotate(
         f"L {lo:.{dec}f}",
-        xy=(times[lo_i], lo), xytext=(0, -10), textcoords="offset points",
+        xy=(lo_i, lo), xytext=(0, -10), textcoords="offset points",
         fontsize=7, color="#29b6f6", fontweight="bold", ha="center",
         arrowprops=dict(arrowstyle="-", color="#29b6f6", lw=0.5),
     )
@@ -552,9 +543,8 @@ def create_chart(
     )
 
     # ── VOLUME ──
-    bar_td = timedelta(days=bar_w * 0.85)
     vcols = [UP_C if c >= o else DN_C for c, o in zip(closes, opens)]
-    ax_v.bar(times, vols, color=vcols, alpha=0.45, width=bar_td, zorder=2)
+    ax_v.bar(x_idx, vols, color=vcols, alpha=0.45, width=bar_w * 0.85, zorder=2)
     ax_v.set_yticks([])
     ax_v.text(
         1.002, 0.5, "VOL", transform=ax_v.transAxes,
@@ -562,15 +552,15 @@ def create_chart(
     )
 
     # ── RSI ──
-    rsi_pts = [(t, v) for t, v in zip(times, rsi_v) if v is not None]
+    rsi_pts = [(x, v) for x, v in zip(x_idx, rsi_v) if v is not None]
     if rsi_pts:
-        rt, rv = zip(*rsi_pts)
-        ax_r.plot(rt, rv, color="#ce93d8", lw=1.0, zorder=3)
+        rx, rv = zip(*rsi_pts)
+        ax_r.plot(rx, rv, color="#ce93d8", lw=1.0, zorder=3)
         ax_r.axhline(70, color=DN_C, ls="--", lw=0.6, alpha=0.5)
         ax_r.axhline(50, color=DIM_C, ls=":", lw=0.5, alpha=0.4)
         ax_r.axhline(30, color=UP_C, ls="--", lw=0.6, alpha=0.5)
-        ax_r.fill_between(rt, rv, 70, where=[v >= 70 for v in rv], color=DN_C, alpha=0.08)
-        ax_r.fill_between(rt, rv, 30, where=[v <= 30 for v in rv], color=UP_C, alpha=0.08)
+        ax_r.fill_between(rx, rv, 70, where=[v >= 70 for v in rv], color=DN_C, alpha=0.08)
+        ax_r.fill_between(rx, rv, 30, where=[v <= 30 for v in rv], color=UP_C, alpha=0.08)
         ax_r.set_ylim(0, 100)
         ax_r.set_yticks([30, 50, 70])
     if last_rsi is not None:
@@ -583,19 +573,19 @@ def create_chart(
         )
 
     # ── MACD ──
-    mpts = [(t, v) for t, v in zip(times, macd_l) if v is not None]
-    spts = [(t, v) for t, v in zip(times, sig_l)  if v is not None]
-    hpts = [(t, v) for t, v in zip(times, hist_l) if v is not None]
+    mpts = [(x, v) for x, v in zip(x_idx, macd_l) if v is not None]
+    spts = [(x, v) for x, v in zip(x_idx, sig_l)  if v is not None]
+    hpts = [(x, v) for x, v in zip(x_idx, hist_l) if v is not None]
     if mpts:
-        mt, mv = zip(*mpts)
-        ax_m.plot(mt, mv, color=MACD_C, lw=1.0, label="MACD", zorder=3)
+        mx, mv = zip(*mpts)
+        ax_m.plot(mx, mv, color=MACD_C, lw=1.0, label="MACD", zorder=3)
     if spts:
-        st, sv = zip(*spts)
-        ax_m.plot(st, sv, color=SIG_C, lw=0.9, label="Sig", zorder=3)
+        sx, sv = zip(*spts)
+        ax_m.plot(sx, sv, color=SIG_C, lw=0.9, label="Sig", zorder=3)
     if hpts:
-        ht, hv = zip(*hpts)
+        hx, hv = zip(*hpts)
         hc = [UP_C if v >= 0 else DN_C for v in hv]
-        ax_m.bar(ht, hv, color=hc, alpha=0.5, width=bar_td, zorder=2)
+        ax_m.bar(hx, hv, color=hc, alpha=0.5, width=bar_w * 0.85, zorder=2)
     ax_m.axhline(0, color=DIM_C, lw=0.5, alpha=0.6)
     ax_m.legend(
         loc="upper left", fontsize=6.5,
@@ -614,16 +604,21 @@ def create_chart(
         fontsize=6.5, color=DIM_C, va="center", ha="left",
     )
 
-    # ── X axis ──
-    ax_m.xaxis.set_major_formatter(mdates.DateFormatter(x_fmt, tz=IRAN_TZ))
-    ax_m.xaxis.set_major_locator(mdates.AutoDateLocator(tz=IRAN_TZ))
+    # ── X axis: ایندکس‌محور با لیبل زمان واقعی (بدون گپ بصری) ──
+    def _x_time_fmt(val, pos=None):
+        i = int(round(val))
+        if 0 <= i < len(times):
+            return times[i].strftime(x_fmt)
+        return ""
+    ax_m.xaxis.set_major_locator(MaxNLocator(nbins=8, integer=True, min_n_ticks=4))
+    ax_m.xaxis.set_major_formatter(FuncFormatter(_x_time_fmt))
     plt.setp(ax_m.xaxis.get_majorticklabels(), rotation=25, ha="right", fontsize=6.5)
     for ax in (ax_c, ax_v, ax_r):
         plt.setp(ax.xaxis.get_majorticklabels(), visible=False)
 
-    # ── X limits — فقط محدوده داده ──
-    margin = bar_w * 3
-    ax_c.set_xlim(tnums[0] - margin, tnums[-1] + margin)
+    # ── X limits — فقط محدوده داده، بدون فاصله‌ی زمانی واقعی (مثل TradingView) ──
+    margin = 1.5
+    ax_c.set_xlim(-margin, (n - 1) + margin)
 
     # ── Title ──
     arrow = "▲" if up else "▼"
