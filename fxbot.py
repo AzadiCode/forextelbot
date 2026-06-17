@@ -349,30 +349,28 @@ SIG_C   = "#ef5350"
 
 
 def _draw_candles(ax, times, opens, highs, lows, closes, bar_w_num):
-    """
-    رسم کندل‌استیک.
-    bar_w_num: عرض کندل به واحد matplotlib date (float).
-    آخرین کندل: body محدود به ۳× median — جلوگیری از کشیدگی.
-    """
     bodies = [abs(c - o) for c, o in zip(closes[:-1], opens[:-1])]
-    median_body = statistics.median(bodies) if bodies else 1.0
+    ranges = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+    median_body  = statistics.median(bodies) if bodies else 1.0
+    median_range = statistics.median(ranges) if ranges else 1.0
 
     for i, (t, o, h, l, c) in enumerate(zip(times, opens, highs, lows, closes)):
         is_up  = c >= o
         color  = UP_C if is_up else DN_C
-        body_b = min(o, c)
-        body_h = abs(c - o)
 
-        # FIX: آخرین کندل ناقص — cap body
-        if i == len(closes) - 1 and body_h > median_body * 3:
-            body_h = median_body * 1.5
-            body_b = c - body_h if is_up else c
+        # آخرین کندل ناقص: cap wick و body
+        if i == len(closes) - 1:
+            cap_r = median_range * 2.5
+            h = min(h, c + cap_r)
+            l = max(l, c - cap_r)
+            body_h = min(abs(c - o), median_body * 2)
+        else:
+            body_h = abs(c - o)
 
-        body_h = max(body_h, median_body * 0.05)   # doji حداقل
+        body_b = min(o, c) if i < len(closes) - 1 else (c - body_h if is_up else c)
+        body_h = max(body_h, median_body * 0.05)
 
-        # wick
         ax.plot([t, t], [l, h], color=color, linewidth=0.7, zorder=2)
-        # body
         rect = mpatches.FancyBboxPatch(
             (mdates.date2num(t) - bar_w_num / 2, body_b),
             bar_w_num, body_h,
@@ -413,20 +411,27 @@ def create_chart(
         closes = closes[-MAX_BARS:]
         vols   = vols[-MAX_BARS:]
 
-    # ── override live (فقط close — wick با احتیاط) ──
-    if live_price is not None:
-        prev_close = closes[-1]
-        closes[-1] = live_price
-        # wick رو فقط اگه لازمه گسترش بده، کوچیک نکن
-        highs[-1] = max(highs[-1], live_price)
-        lows[-1]  = min(lows[-1], live_price)
+  # ── override live ──
+  if live_price is not None:
+      closes[-1] = live_price
+      # wick: فقط گسترش بده، و cap کن به median range
+      candle_ranges = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+      med_range = statistics.median(candle_ranges) if candle_ranges else (live_price * 0.001)
+      max_wick = med_range * 3
+      
+      raw_high = max(highs[-1], live_price)
+      raw_low  = min(lows[-1],  live_price)
+      # cap
+      highs[-1] = min(raw_high, live_price + max_wick)
+      lows[-1]  = max(raw_low,  live_price
 
-    # ── bar width ──
-    times_num = [mdates.date2num(t) for t in times]
-    if len(times_num) > 1:
-        bar_w = (times_num[-1] - times_num[0]) / (len(times_num) - 1) * 0.7
-    else:
-        bar_w = 0.0007
+  # ── bar width — robust برای 1m ──
+  if len(times_num) > 1:
+      gaps = [times_num[i+1] - times_num[i] for i in range(len(times_num)-1)]
+      typical_gap = statistics.median(gaps)  # median به جای کل range
+      bar_w = typical_gap * 0.7
+  else:
+      bar_w = 0.0007
 
     dec = asset.decimals
 
