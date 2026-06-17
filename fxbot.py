@@ -311,69 +311,105 @@ def _macd(closes, fast=12, slow=26, signal=9):
 # ══════════════════════════════════════════════════════════════════════
 # LAST CANDLE NORMALIZER  ← هسته اصلی فیکس
 # ══════════════════════════════════════════════════════════════════════
-def _normalize_last_candle(opens, highs, lows, closes, live_price=None):
+def _build_live_candle(opens, highs, lows, closes, times, vols, live_price, interval_str):
     """
-    آخرین کندل (ناقص/live) رو normalize می‌کنه:
-    1. اگه live_price داریم، close رو update می‌کنه
-    2. wick و body رو بر اساس median کندل‌های قبلی cap می‌کنه
-    3. یه کپی برمی‌گردونه — داده اصلی دست نمی‌خوره
+    استراتژی دقیق برای کندل آخر (live):
 
-    Returns: (opens, highs, lows, closes) — همه list جدید
+    Yahoo آخرین کندل رو ناقص و با تأخیر میده.
+    راه‌حل:
+      - اگه live_price داریم، کندل ناقص Yahoo رو DROP می‌کنیم
+      - یه کندل جدید می‌سازیم که:
+          open  = close کندل قبلی (realistic)
+          close = live_price
+          high  = max(open, live_price)  ← فقط body، بدون wick اضافه
+          low   = min(open, live_price)
+          time  = زمان کندل بعدی بر اساس interval
+          vol   = 0 (نمی‌دونیم)
+
+    این دقیقاً همون رفتار TradingView هست برای کندل جاری.
+
+    Returns: (opens, highs, lows, closes, times, vols) — همه list جدید
     """
     opens  = list(opens)
     highs  = list(highs)
     lows   = list(lows)
     closes = list(closes)
+    times  = list(times)
+    vols   = list(vols)
 
+    if len(closes) < 2:
+        return opens, highs, lows, closes, times, vols
+
+    # interval → timedelta
+    _iv_map = {
+        "1m": timedelta(minutes=1),
+        "2m": timedelta(minutes=2),
+        "5m": timedelta(minutes=5),
+        "15m": timedelta(minutes=15),
+        "30m": timedelta(minutes=30),
+        "1h": timedelta(hours=1),
+        "1d": timedelta(days=1),
+    }
+    iv_td = _iv_map.get(interval_str, timedelta(minutes=5))
+
+    # open کندل live = close کندل قبل از آخری (ایندکس -2 بعد از drop)
+    prev_close = closes[-2]   # کندل قبل از ناقص
+
+    # ساعت شروع کندل جدید
+    last_closed_time = times[-2]
+    new_time = last_closed_time + iv_td
+
+    # حذف کندل ناقص Yahoo
+    opens.pop()
+    highs.pop()
+    lows.pop()
+    closes.pop()
+    times.pop()
+    vols.pop()
+
+    # ساخت کندل live
+    lv_open  = prev_close
+    lv_close = live_price
+    lv_high  = max(lv_open, lv_close)
+    lv_low   = min(lv_open, lv_close)
+
+    opens.append(lv_open)
+    highs.append(lv_high)
+    lows.append(lv_low)
+    closes.append(lv_close)
+    times.append(new_time)
+    vols.append(0.0)
+
+    return opens, highs, lows, closes, times, vols
+
+
+def _cap_last_candle(opens, highs, lows, closes):
+    """
+    وقتی live_price نداریم، فقط wick کندل آخر رو cap می‌کنیم
+    تا چارت کشیده نشه.
+    """
     if len(closes) < 3:
         return opens, highs, lows, closes
 
-    # آمار از کندل‌های بسته (همه به جز آخری)
-    closed_bodies = [abs(c - o) for c, o in zip(closes[:-1], opens[:-1])]
-    closed_wicks  = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+    opens  = list(opens)
+    highs  = list(highs)
+    lows   = list(lows)
+    closes = list(closes)
 
-    median_body = statistics.median(closed_bodies) if closed_bodies else abs(closes[-1] - opens[-1])
-    median_wick = statistics.median(closed_wicks)  if closed_wicks  else median_body * 2
+    closed_wicks = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+    median_wick  = statistics.median(closed_wicks) if closed_wicks else 1.0
+    max_wick     = median_wick * 3.0
 
-    # cap ثابت: body حداکثر ۲× median، wick حداکثر ۳× median
-    MAX_BODY_MULT = 2.0
-    MAX_WICK_MULT = 3.0
-    max_body = median_body * MAX_BODY_MULT
-    max_wick = median_wick  * MAX_WICK_MULT
-
-    idx = len(closes) - 1
-    o = opens[idx]
-
-    # close — live override اگه داریم
-    if live_price is not None:
-        c = live_price
-    else:
-        c = closes[idx]
-
-    # body cap
-    raw_body = c - o
-    if abs(raw_body) > max_body:
-        c = o + (max_body if raw_body > 0 else -max_body)
-
-    closes[idx] = c
-
-    # wick بازسازی: high/low باید o و c رو پوشش بدن ولی بیشتر از max_wick نباشن
-    raw_high = highs[idx]
-    raw_low  = lows[idx]
-
-    # حداقل: high >= max(o,c)، low <= min(o,c)
+    idx      = len(closes) - 1
+    o, c     = opens[idx], closes[idx]
     min_high = max(o, c)
     max_low  = min(o, c)
 
-    # wick اضافه بالا و پایین رو محدود کن
-    upper_wick = raw_high - min_high
-    lower_wick = max_low  - raw_low
+    upper_wick = highs[idx] - min_high
+    lower_wick = max_low - lows[idx]
 
-    allowed_upper = max_wick * 0.5   # نصف wick کل برای هر طرف
-    allowed_lower = max_wick * 0.5
-
-    highs[idx] = min_high + min(upper_wick, allowed_upper)
-    lows[idx]  = max_low  - min(lower_wick, allowed_lower)
+    highs[idx] = min_high + min(upper_wick, max_wick * 0.5)
+    lows[idx]  = max_low  - min(lower_wick, max_wick * 0.5)
 
     return opens, highs, lows, closes
 
@@ -472,18 +508,35 @@ def create_chart(
     times, opens, highs, lows, closes, vols = ohlc
 
     # ── برش MAX_BARS ──
-    if len(times) > MAX_BARS:
-        times  = times[-MAX_BARS:]
-        opens  = opens[-MAX_BARS:]
-        highs  = highs[-MAX_BARS:]
-        lows   = lows[-MAX_BARS:]
-        closes = closes[-MAX_BARS:]
-        vols   = vols[-MAX_BARS:]
+    # وقتی live_price داریم، یه کندل اضافه نگه می‌داریم چون Yahoo آخری رو drop می‌کنیم
+    slice_n = MAX_BARS + 1 if live_price is not None else MAX_BARS
+    if len(times) > slice_n:
+        times  = times[-slice_n:]
+        opens  = opens[-slice_n:]
+        highs  = highs[-slice_n:]
+        lows   = lows[-slice_n:]
+        closes = closes[-slice_n:]
+        vols   = vols[-slice_n:]
 
-    # ── normalize آخرین کندل (live fix) ──
-    opens, highs, lows, closes = _normalize_last_candle(
-        opens, highs, lows, closes, live_price=live_price
-    )
+    # ── آخرین کندل live ──
+    if live_price is not None:
+        # کندل ناقص Yahoo رو drop کن، کندل live واقعی بساز (مثل TradingView)
+        opens, highs, lows, closes, times, vols = _build_live_candle(
+            opens, highs, lows, closes, times, vols,
+            live_price=live_price,
+            interval_str=interval,
+        )
+        # برش نهایی به MAX_BARS
+        if len(times) > MAX_BARS:
+            times  = times[-MAX_BARS:]
+            opens  = opens[-MAX_BARS:]
+            highs  = highs[-MAX_BARS:]
+            lows   = lows[-MAX_BARS:]
+            closes = closes[-MAX_BARS:]
+            vols   = vols[-MAX_BARS:]
+    else:
+        # بدون live: فقط wick کندل آخر رو cap کن
+        opens, highs, lows, closes = _cap_last_candle(opens, highs, lows, closes)
 
     # ── bar width ──
     times_num = [mdates.date2num(t) for t in times]
