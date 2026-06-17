@@ -398,11 +398,15 @@ def _draw_candles(ax, x_idx, opens, highs, lows, closes, bar_w, price_range):
                 color=col, linewidth=1.3, zorder=3, solid_capstyle="butt"
             )
         else:
+            # edgecolor با رنگ پس‌زمینه: یک خط نازک پس‌زمینه‌ای دور بدنه می‌کشد
+            # تا حتی بعد از فشرده‌سازی عکس توسط تلگرام، مرز بین کندل‌های
+            # کناری محو/قاطی نشود (علت اصلی شکل «هیکن‌اشی‌مانند» در رزولوشن پایین)
             ax.add_patch(mpatches.Rectangle(
                 (x - bar_w / 2, body_bottom),
                 bar_w,
                 body_size,
-                linewidth=0,
+                linewidth=0.6,
+                edgecolor=BG,
                 facecolor=col,
                 zorder=3,
             ))
@@ -438,7 +442,7 @@ def create_chart(
     # ── محور x ایندکس‌محور (مثل TradingView): بدون گپ بصری برای
     # بسته‌بودن بازار/آخر هفته/سشن‌ها — فاصله بین کندل‌ها همیشه یکسان است
     x_idx = list(range(n))
-    bar_w = 0.6  # 60% پر، 40% فاصله بین کندل‌ها — مثل TradingView
+    bar_w = 0.55  # ~55% پر، ~45% فاصله — گپ واضح‌تر بین بدنه‌ها
 
     # ── اندیکاتورها ──
     ema21              = _ema(closes, 21)
@@ -466,7 +470,7 @@ def create_chart(
         "axes.unicode_minus": False,
     })
 
-    fig = plt.figure(figsize=(16, 9), facecolor=BG)
+    fig = plt.figure(figsize=(20, 10), facecolor=BG)
     # نسبت‌ها: چارت اصلی بزرگ، volume کوچک، RSI و MACD متوسط
     gs = fig.add_gridspec(
         4, 1,
@@ -638,7 +642,7 @@ def create_chart(
     fig.text(0.88, 0.01, "@ScalpBotPro", ha="right", fontsize=6, color=GRID_C)
 
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=BG)
+    plt.savefig(buf, format="png", dpi=220, bbox_inches="tight", facecolor=BG)
     buf.seek(0)
     plt.close(fig)
     return buf
@@ -929,8 +933,8 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_fn):
         f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
         f"<i>EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
     )
-    await bot.send_photo(
-        chat_id=chat_id, photo=buf, caption=caption,
+    await bot.send_document(
+        chat_id=chat_id, document=buf, filename=f"{sym}_{tf_key}.png", caption=caption,
         parse_mode=ParseMode.HTML, reply_markup=kb_after_chart(sym),
     )
     try:
@@ -1109,8 +1113,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
             f"<i>EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
         )
-        await ctx.bot.send_photo(
-            chat_id=q.message.chat_id, photo=buf, caption=caption,
+        await ctx.bot.send_document(
+            chat_id=q.message.chat_id, document=buf, filename=f"{sym}_{tf_key}.png", caption=caption,
             parse_mode=ParseMode.HTML, reply_markup=kb_after_chart(sym),
         )
         try:
