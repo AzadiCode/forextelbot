@@ -313,22 +313,18 @@ def _macd(closes, fast=12, slow=26, signal=9):
 # ══════════════════════════════════════════════════════════════════════
 def _build_live_candle(opens, highs, lows, closes, times, vols, live_price, interval_str):
     """
-    استراتژی دقیق برای کندل آخر (live):
+    ساخت کندل live واقعی — رویکرد محافظه‌کارانه:
 
-    Yahoo آخرین کندل رو ناقص و با تأخیر میده.
+    Yahoo داده آخرین ۱-۲ کندل رو با تأخیر و غلط میده.
     راه‌حل:
-      - اگه live_price داریم، کندل ناقص Yahoo رو DROP می‌کنیم
-      - یه کندل جدید می‌سازیم که:
-          open  = close کندل قبلی (realistic)
-          close = live_price
-          high  = max(open, live_price)  ← فقط body، بدون wick اضافه
-          low   = min(open, live_price)
-          time  = زمان کندل بعدی بر اساس interval
-          vol   = 0 (نمی‌دونیم)
+      1. آخرین ۲ کندل Yahoo رو DROP می‌کنیم (هر دو ممکنه کثیف باشن)
+      2. یه کندل doji ساده می‌سازیم:
+             open = close = high = low = live_price
+         → هیچ wick کاذبی ندارد
+         → جایگاهش روی چارت دقیقاً قیمت فعلی رو نشون میده
+      3. زمان: آخرین زمان معتبر + interval
 
-    این دقیقاً همون رفتار TradingView هست برای کندل جاری.
-
-    Returns: (opens, highs, lows, closes, times, vols) — همه list جدید
+    این ساده‌ترین و دقیق‌ترین نمایش ممکن از قیمت لحظه‌ای هست.
     """
     opens  = list(opens)
     highs  = list(highs)
@@ -337,46 +333,34 @@ def _build_live_candle(opens, highs, lows, closes, times, vols, live_price, inte
     times  = list(times)
     vols   = list(vols)
 
-    if len(closes) < 2:
+    if len(closes) < 4:
         return opens, highs, lows, closes, times, vols
 
-    # interval → timedelta
     _iv_map = {
-        "1m": timedelta(minutes=1),
-        "2m": timedelta(minutes=2),
-        "5m": timedelta(minutes=5),
+        "1m":  timedelta(minutes=1),
+        "2m":  timedelta(minutes=2),
+        "5m":  timedelta(minutes=5),
         "15m": timedelta(minutes=15),
         "30m": timedelta(minutes=30),
-        "1h": timedelta(hours=1),
-        "1d": timedelta(days=1),
+        "1h":  timedelta(hours=1),
+        "1d":  timedelta(days=1),
     }
     iv_td = _iv_map.get(interval_str, timedelta(minutes=5))
 
-    # open کندل live = close کندل قبل از آخری (ایندکس -2 بعد از drop)
-    prev_close = closes[-2]   # کندل قبل از ناقص
+    # آخرین زمان معتبر = سومین کندل از آخر (قبل از ۲ کندل مشکوک)
+    last_valid_time = times[-3]
+    new_time = last_valid_time + iv_td * 2   # دو تا interval جلوتر
 
-    # ساعت شروع کندل جدید
-    last_closed_time = times[-2]
-    new_time = last_closed_time + iv_td
+    # DROP دو کندل آخر Yahoo
+    for _ in range(2):
+        opens.pop(); highs.pop(); lows.pop()
+        closes.pop(); times.pop(); vols.pop()
 
-    # حذف کندل ناقص Yahoo
-    opens.pop()
-    highs.pop()
-    lows.pop()
-    closes.pop()
-    times.pop()
-    vols.pop()
-
-    # ساخت کندل live
-    lv_open  = prev_close
-    lv_close = live_price
-    lv_high  = max(lv_open, lv_close)
-    lv_low   = min(lv_open, lv_close)
-
-    opens.append(lv_open)
-    highs.append(lv_high)
-    lows.append(lv_low)
-    closes.append(lv_close)
+    # کندل live: doji روی قیمت فعلی — بدون wick
+    opens.append(live_price)
+    highs.append(live_price)
+    lows.append(live_price)
+    closes.append(live_price)
     times.append(new_time)
     vols.append(0.0)
 
@@ -509,7 +493,7 @@ def create_chart(
 
     # ── برش MAX_BARS ──
     # وقتی live_price داریم، یه کندل اضافه نگه می‌داریم چون Yahoo آخری رو drop می‌کنیم
-    slice_n = MAX_BARS + 1 if live_price is not None else MAX_BARS
+    slice_n = MAX_BARS + 2 if live_price is not None else MAX_BARS
     if len(times) > slice_n:
         times  = times[-slice_n:]
         opens  = opens[-slice_n:]
