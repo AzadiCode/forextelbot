@@ -1,12 +1,11 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ScalpBot Pro v4
+ScalpBot Pro v4.1
 fixes:
-  - 1m chart: چند endpoint + smarter fallback
-  - دکمه‌های قفل: callback_data حاوی chat_id نیست، مشکل از edit روی photo بود → حل با answer+send جدید
-  - آخرین کندل کشیده: cap body به ۳× median
+  - آخرین کندل live: wick و body هر دو cap می‌شن
+  - Y-axis از داده‌های کندل‌های بسته + buffer منطقی محاسبه میشه
+  - live_price override: highs/lows آخرین کندل بازسازی میشه
 """
 
 import os, sys, asyncio, logging, signal, atexit, io, threading, time, statistics
@@ -57,8 +56,6 @@ _HEADERS = {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# ASSETS
-# ══════════════════════════════════════════════════════════════════════
 @dataclass
 class Source:
     name: str
@@ -76,14 +73,13 @@ class Asset:
     decimals: int
     pip_size: float
     sources: list
-    # ترتیب yahoo symbols برای OHLC — از بهترین به بدترین
     yahoo_syms: list
 
 ASSETS: dict[str, Asset] = {
     "XAUUSD": Asset(
         key="XAUUSD", name="Gold", emoji="🥇", symbol="XAU/USD",
         decimals=2, pip_size=0.1,
-        yahoo_syms=["XAUUSD=X", "GC=F"],   # =X اول: forex spot، بهتر از futures برای 1m
+        yahoo_syms=["XAUUSD=X", "GC=F"],
         sources=[
             Source("GoldPrice",
                    "https://data-asg.goldprice.org/dbXRates/USD",
@@ -141,24 +137,7 @@ ASSETS: dict[str, Asset] = {
     ),
 }
 
-# ══════════════════════════════════════════════════════════════════════
-# TIMEFRAMES
-# ──────────────────────────────────────────────────────────────────────
-# Yahoo interval/range محدودیت‌ها:
-#   1m  → max 7d   (عملاً ~390 bar برای روز جاری)
-#   2m  → max 60d
-#   5m  → max 60d
-#   15m → max 60d
-#   1h  → max 730d
-#   1d  → unlimited
-#
-# 4H: Yahoo interval=4h ندارد → 1h میگیریم، هر 4 کندل = یک 4H
-#     ولی برای سادگی همان 1h نمایش میدهیم با range بیشتر
-# ══════════════════════════════════════════════════════════════════════
-MAX_BARS = 200
-
 TIMEFRAMES = {
-    # key: (yahoo_interval, yahoo_range, label_en, label_fa, x_fmt)
     "1m":  ("1m",  "1d",  "1M  |  1m candles",  "۱ دقیقه",  "%H:%M"),
     "5m":  ("5m",  "5d",  "5M  |  5m candles",  "۵ دقیقه",  "%m/%d %H:%M"),
     "15m": ("15m", "10d", "15M |  15m candles", "۱۵ دقیقه", "%m/%d %H:%M"),
@@ -166,6 +145,8 @@ TIMEFRAMES = {
     "4h":  ("1h",  "60d", "4H  |  1h candles",  "۴ ساعت",   "%m/%d"),
     "1d":  ("1d",  "1y",  "1D  |  1d candles",  "روزانه",   "%Y/%m/%d"),
 }
+
+MAX_BARS = 200
 
 # ══════════════════════════════════════════════════════════════════════
 # PRICE FETCHER
@@ -196,7 +177,7 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
     return None
 
 # ══════════════════════════════════════════════════════════════════════
-# OHLC FETCHER — چند endpoint + retry
+# OHLC FETCHER
 # ══════════════════════════════════════════════════════════════════════
 _YAHOO_HOSTS = [
     "https://query1.finance.yahoo.com",
@@ -204,10 +185,6 @@ _YAHOO_HOSTS = [
 ]
 
 def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
-    """
-    سعی می‌کند از چند host یاهو داده بگیرد.
-    برمی‌گرداند (times, opens, highs, lows, closes, vols) یا None.
-    """
     for host in _YAHOO_HOSTS:
         url = f"{host}/v8/finance/chart/{yahoo_sym}"
         try:
@@ -267,7 +244,6 @@ def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
 
 
 def fetch_ohlc_asset(asset: Asset, interval: str, range_: str) -> Optional[tuple]:
-    """همه yahoo_syms دارایی رو امتحان می‌کند."""
     for sym in asset.yahoo_syms:
         result = _fetch_ohlc(sym, interval, range_)
         if result is not None:
@@ -333,7 +309,107 @@ def _macd(closes, fast=12, slow=26, signal=9):
     return ml, sl, hl
 
 # ══════════════════════════════════════════════════════════════════════
-# CHART ENGINE v4
+# LAST CANDLE NORMALIZER  ← هسته اصلی فیکس
+# ══════════════════════════════════════════════════════════════════════
+def _normalize_last_candle(opens, highs, lows, closes, live_price=None):
+    """
+    آخرین کندل (ناقص/live) رو normalize می‌کنه:
+    1. اگه live_price داریم، close رو update می‌کنه
+    2. wick و body رو بر اساس median کندل‌های قبلی cap می‌کنه
+    3. یه کپی برمی‌گردونه — داده اصلی دست نمی‌خوره
+
+    Returns: (opens, highs, lows, closes) — همه list جدید
+    """
+    opens  = list(opens)
+    highs  = list(highs)
+    lows   = list(lows)
+    closes = list(closes)
+
+    if len(closes) < 3:
+        return opens, highs, lows, closes
+
+    # آمار از کندل‌های بسته (همه به جز آخری)
+    closed_bodies = [abs(c - o) for c, o in zip(closes[:-1], opens[:-1])]
+    closed_wicks  = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+
+    median_body = statistics.median(closed_bodies) if closed_bodies else abs(closes[-1] - opens[-1])
+    median_wick = statistics.median(closed_wicks)  if closed_wicks  else median_body * 2
+
+    # cap ثابت: body حداکثر ۲× median، wick حداکثر ۳× median
+    MAX_BODY_MULT = 2.0
+    MAX_WICK_MULT = 3.0
+    max_body = median_body * MAX_BODY_MULT
+    max_wick = median_wick  * MAX_WICK_MULT
+
+    idx = len(closes) - 1
+    o = opens[idx]
+
+    # close — live override اگه داریم
+    if live_price is not None:
+        c = live_price
+    else:
+        c = closes[idx]
+
+    # body cap
+    raw_body = c - o
+    if abs(raw_body) > max_body:
+        c = o + (max_body if raw_body > 0 else -max_body)
+
+    closes[idx] = c
+
+    # wick بازسازی: high/low باید o و c رو پوشش بدن ولی بیشتر از max_wick نباشن
+    raw_high = highs[idx]
+    raw_low  = lows[idx]
+
+    # حداقل: high >= max(o,c)، low <= min(o,c)
+    min_high = max(o, c)
+    max_low  = min(o, c)
+
+    # wick اضافه بالا و پایین رو محدود کن
+    upper_wick = raw_high - min_high
+    lower_wick = max_low  - raw_low
+
+    allowed_upper = max_wick * 0.5   # نصف wick کل برای هر طرف
+    allowed_lower = max_wick * 0.5
+
+    highs[idx] = min_high + min(upper_wick, allowed_upper)
+    lows[idx]  = max_low  - min(lower_wick, allowed_lower)
+
+    return opens, highs, lows, closes
+
+
+# ══════════════════════════════════════════════════════════════════════
+# YLIM CALCULATOR  ← فیکس فشردگی چارت
+# ══════════════════════════════════════════════════════════════════════
+def _calc_ylim(highs, lows, closes, n_closed=None):
+    """
+    Y-axis رو بر اساس کندل‌های بسته حساب می‌کنه.
+    آخرین کندل (که normalize شده) هم درنظر می‌گیره ولی وزن کمتری داره.
+    """
+    if n_closed is None:
+        n_closed = max(len(closes) - 1, 1)
+
+    # داده کندل‌های بسته
+    closed_h = highs[:n_closed]
+    closed_l = lows[:n_closed]
+
+    if not closed_h:
+        closed_h = highs
+        closed_l = lows
+
+    hi = max(closed_h)
+    lo = min(closed_l)
+    pr = hi - lo
+
+    if pr == 0:
+        pr = closes[-1] * 0.001
+
+    pad = pr * 0.08
+    return lo - pad, hi + pad * 2.5   # بیشتر فضا بالا برای label
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CHART COLORS
 # ══════════════════════════════════════════════════════════════════════
 BG      = "#131722"
 UP_C    = "#26a69a"
@@ -349,26 +425,17 @@ SIG_C   = "#ef5350"
 
 
 def _draw_candles(ax, times, opens, highs, lows, closes, bar_w_num):
-    """
-    رسم کندل‌استیک.
-    bar_w_num: عرض کندل به واحد matplotlib date (float).
-    آخرین کندل: body محدود به ۳× median — جلوگیری از کشیدگی.
-    """
-    bodies = [abs(c - o) for c, o in zip(closes[:-1], opens[:-1])]
-    median_body = statistics.median(bodies) if bodies else 1.0
-
+    """رسم کندل‌استیک — داده‌ها قبلاً normalize شدن."""
     for i, (t, o, h, l, c) in enumerate(zip(times, opens, highs, lows, closes)):
         is_up  = c >= o
         color  = UP_C if is_up else DN_C
         body_b = min(o, c)
         body_h = abs(c - o)
 
-        # FIX: آخرین کندل ناقص — cap body
-        if i == len(closes) - 1 and body_h > median_body * 3:
-            body_h = median_body * 1.5
-            body_b = c - body_h if is_up else c
-
-        body_h = max(body_h, median_body * 0.05)   # doji حداقل
+        # doji حداقل
+        if body_h == 0:
+            median_b = statistics.median([abs(cc - oo) for cc, oo in zip(closes[:-1], opens[:-1])]) if len(closes) > 1 else 1.0
+            body_h = max(body_h, median_b * 0.05)
 
         # wick
         ax.plot([t, t], [l, h], color=color, linewidth=0.7, zorder=2)
@@ -413,13 +480,10 @@ def create_chart(
         closes = closes[-MAX_BARS:]
         vols   = vols[-MAX_BARS:]
 
-    # ── override live (فقط close — wick با احتیاط) ──
-    if live_price is not None:
-        prev_close = closes[-1]
-        closes[-1] = live_price
-        # wick رو فقط اگه لازمه گسترش بده، کوچیک نکن
-        highs[-1] = max(highs[-1], live_price)
-        lows[-1]  = min(lows[-1], live_price)
+    # ── normalize آخرین کندل (live fix) ──
+    opens, highs, lows, closes = _normalize_last_candle(
+        opens, highs, lows, closes, live_price=live_price
+    )
 
     # ── bar width ──
     times_num = [mdates.date2num(t) for t in times]
@@ -431,21 +495,30 @@ def create_chart(
     dec = asset.decimals
 
     # ── اندیکاتورها ──
-    ema21           = _ema(closes, 21)
-    ema50           = _ema(closes, 50)
+    ema21               = _ema(closes, 21)
+    ema50               = _ema(closes, 50)
     bb_up, bb_mid, bb_low = _bollinger(closes, 20)
-    rsi_vals        = _rsi(closes, 14)
+    rsi_vals            = _rsi(closes, 14)
     macd_l, sig_l, hist_l = _macd(closes)
 
     # ── آمار ──
     cur   = closes[-1]
     start = closes[0]
-    hi    = max(highs)
-    lo    = min(lows)
     chg   = cur - start
     chgp  = (chg / start * 100) if start else 0
     is_up = chg >= 0
     main_c = UP_C if is_up else DN_C
+
+    # H/L فقط از کندل‌های بسته (نه آخری) — نمایش واقعی‌تر
+    n_closed = max(len(closes) - 1, 1)
+    hi = max(highs[:n_closed])
+    lo = min(lows[:n_closed])
+    # آخرین کندل normalize شده هم اضافه کن اگه خارج از رنج نبود
+    hi = max(hi, highs[-1])
+    lo = min(lo, lows[-1])
+
+    hi_i = highs.index(hi)
+    lo_i = lows.index(lo)
 
     last_rsi  = next((v for v in reversed(rsi_vals) if v is not None), None)
     last_macd = next((v for v in reversed(macd_l)   if v is not None), None)
@@ -502,7 +575,7 @@ def create_chart(
     _pv(ax_c, times, ema21, color=EMA21_C, lw=1.1, alpha=0.9, label="EMA21", zorder=4)
     _pv(ax_c, times, ema50, color=EMA50_C, lw=1.1, alpha=0.9, label="EMA50", zorder=4)
 
-    # ── current price ──
+    # ── current price line ──
     ax_c.axhline(cur, color=main_c, ls="-", alpha=0.25, lw=0.8, zorder=1)
     ax_c.text(1.002, cur, f"{cur:.{dec}f}",
               transform=ax_c.get_yaxis_transform(),
@@ -510,9 +583,7 @@ def create_chart(
               va="center", ha="left",
               bbox=dict(boxstyle="round,pad=0.3", fc=main_c, ec="none"))
 
-    # ── H/L ──
-    hi_i = highs.index(hi)
-    lo_i = lows.index(lo)
+    # ── H/L labels ──
     ax_c.annotate(f"H {hi:.{dec}f}",
                   xy=(times[hi_i], hi), xytext=(0, 10),
                   textcoords="offset points",
@@ -524,9 +595,10 @@ def create_chart(
                   fontsize=7.5, color="#29b6f6", fontweight="bold", ha="center",
                   arrowprops=dict(arrowstyle="-", color="#29b6f6", lw=0.5))
 
-    pr  = hi - lo
-    pad = max(pr * 0.06, cur * 0.001)
-    ax_c.set_ylim(lo - pad, hi + pad * 2.5)
+    # ── Y-axis limits (فیکس فشردگی) ──
+    y_lo, y_hi = _calc_ylim(highs, lows, closes, n_closed=n_closed)
+    ax_c.set_ylim(y_lo, y_hi)
+
     ax_c.legend(loc="upper left", fontsize=7,
                 facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C, framealpha=0.8)
 
@@ -740,11 +812,11 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
-    return f"ScalpBot Pro v4 | users={u} | reqs={r} | {str_ir()}"
+    return f"ScalpBot Pro v4.1 | users={u} | reqs={r} | {str_ir()}"
 
 @flask_app.route("/health")
 def health():
-    return jsonify(status="ok", time=str_ir(), version="v4")
+    return jsonify(status="ok", time=str_ir(), version="v4.1")
 
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
@@ -799,14 +871,6 @@ def kb_chart_menu():
     return InlineKeyboardMarkup(rows)
 
 def kb_after_chart(sym):
-    """
-    FIX دکمه‌های قفل:
-    این keyboard روی پیام عکس قرار می‌گیرد.
-    callback_data ها مستقیماً به on_callback می‌روند — هیچ وابستگی به message_id ندارند.
-    مشکل قفل شدن دکمه‌ها از جای دیگری بود: وقتی edit_message_text روی caption photo صدا زده
-    می‌شد خطای BadRequest می‌داد و callback answer نمی‌شد.
-    حل: در on_callback همیشه q.answer() اول صدا زده می‌شود (قبلاً هم بود، مطمئن شدیم).
-    """
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 تایم دیگر",   callback_data=f"chart:{sym}"),
          InlineKeyboardButton("💰 قیمت",         callback_data=f"px:{sym}")],
@@ -882,15 +946,6 @@ async def _reg(update):
 
 
 async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
-    """
-    ساخت و ارسال چارت.
-    FIX دکمه‌های قفل:
-      - پیام loading با send_message ساخته میشه
-      - بعد از ارسال photo، پیام loading حذف میشه
-      - دکمه‌های kb_after_chart روی پیام photo کار می‌کنند چون
-        callback آنها مستقل از message_id است
-    """
-    # پیام loading
     loading = await bot.send_message(
         chat_id=chat_id,
         text=f"📈 رسم نمودار {ASSETS[sym].symbol} ({TIMEFRAMES[tf_key][3]})…",
@@ -915,7 +970,6 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
         f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
     )
 
-    # ارسال photo با دکمه‌ها
     await bot.send_photo(
         chat_id=chat_id,
         photo=buf,
@@ -924,7 +978,6 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
         reply_markup=kb_after_chart(sym),
     )
 
-    # حذف loading
     try:
         await loading.delete()
     except Exception:
@@ -936,7 +989,7 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reg(update)
     await update.effective_message.reply_text(
-        "👋 <b>ScalpBot Pro v4</b>\n\n"
+        "👋 <b>ScalpBot Pro v4.1</b>\n\n"
         "قیمت لحظه‌ای فارکس و طلا — ویژه اسکلپرها.\n\n"
         "📊 <b>چارت:</b> کندل‌استیک | EMA21/50 | BB | RSI | MACD | Volume\n"
         "⏱ <b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d  (۲۰۰ کندل آخر)\n\n"
@@ -982,25 +1035,22 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q   = update.callback_query
-    await q.answer()          # همیشه اول — جلوگیری از قفل دکمه
+    await q.answer()
     d   = q.data
     uid = update.effective_user.id
     cloud.inc(uid)
 
-    # ── edit helper — فقط برای پیام‌های TEXT (نه photo) ──
     async def edit(text, kb=None):
         try:
             kw = {"parse_mode": ParseMode.HTML}
             if kb is not None: kw["reply_markup"] = kb
             await q.edit_message_text(text, **kw)
         except Exception as e:
-            # اگر پیام photo بود یا خطای دیگر → send_message جدید
             log.warning(f"edit_message_text failed: {e} — sending new message")
             kw2 = {"chat_id": q.message.chat_id, "text": text, "parse_mode": ParseMode.HTML}
             if kb is not None: kw2["reply_markup"] = kb
             await ctx.bot.send_message(**kw2)
 
-    # ── main ──
     if d == "main":
         await edit("🏠 <b>منوی اصلی</b>\n\nیک گزینه انتخاب کنید:", kb_main()); return
 
@@ -1018,7 +1068,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if d == "help":
         await edit(
-            "❓ <b>راهنما — ScalpBot Pro v4</b>\n\n"
+            "❓ <b>راهنما — ScalpBot Pro v4.1</b>\n\n"
             "/start — منو\n/price — همه قیمت‌ها\n"
             "/chart [sym] [tf] — نمودار\n/alerts — هشدارها\n/cancel — لغو\n\n"
             "<b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d\n"
@@ -1063,7 +1113,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await edit("📈 <b>انتخاب نمودار</b>\n\nدارایی را انتخاب کنید:", kb_chart_menu())
         return
 
-    # chart:{sym} — نمایش picker تایم‌فریم
     if d.startswith("chart:") and d.count(":") == 1:
         sym = d[6:]
         if sym not in ASSETS: return
@@ -1075,14 +1124,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             kb_tf(sym)
         ); return
 
-    # tf:{sym}:{key} — ساخت چارت
     if d.startswith("tf:"):
         parts = d.split(":")
         if len(parts) != 3: return
         sym, tf_key = parts[1], parts[2]
         if sym not in ASSETS or tf_key not in TIMEFRAMES: return
 
-        # پیام فعلی رو edit کن (loading placeholder)
         try:
             await q.edit_message_text(
                 f"📈 رسم نمودار {ASSETS[sym].symbol}  "
@@ -1098,7 +1145,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         buf = create_chart(sym, tf_key, live_price=live)
 
         if not buf:
-            # fail — edit همون پیام
             try:
                 await q.edit_message_text(
                     f"⚠️ دریافت داده ناموفق برای {ASSETS[sym].symbol}.\n"
@@ -1122,7 +1168,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
         )
 
-        # ارسال photo به عنوان پیام جدید (نه reply روی loading)
         await ctx.bot.send_photo(
             chat_id=q.message.chat_id,
             photo=buf,
@@ -1131,14 +1176,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb_after_chart(sym),
         )
 
-        # حذف پیام loading (که edit شده بود)
         try:
             await q.message.delete()
         except Exception:
             pass
         return
 
-    # alert up/down
     if d.startswith("al_up:") or d.startswith("al_dn:"):
         direction = "up" if d.startswith("al_up") else "down"
         sym = d.split(":")[1]
@@ -1267,7 +1310,7 @@ async def on_startup(app: Application):
     for sym in ASSETS:
         p = get_price(sym)
         if p: cloud.push_price(sym, p)
-    log.info("ScalpBot Pro v4 ready")
+    log.info("ScalpBot Pro v4.1 ready")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1306,7 +1349,7 @@ def main():
     signal.signal(signal.SIGINT,  _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    log.info("ScalpBot Pro v4 starting...")
+    log.info("ScalpBot Pro v4.1 starting...")
     app.run_polling(
         allowed_updates=["message", "callback_query"],
         drop_pending_updates=True,
