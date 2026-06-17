@@ -1,12 +1,10 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ScalpBot Pro v4
-fixes:
-  - 1m chart: چند endpoint + smarter fallback
-  - دکمه‌های قفل: callback_data حاوی chat_id نیست، مشکل از edit روی photo بود → حل با answer+send جدید
-  - آخرین کندل کشیده: cap body به ۳× median
+ScalpBot Pro v5
+منبع داده: Twelve Data (realtime, بدون تاخیر)
+پلن رایگان: 8 کال/دقیقه | 800 کال/روز
+XAU/USD, EUR/USD, USD/JPY, GBP/USD — 1m تا 1d
 """
 
 import os, sys, asyncio, logging, signal, atexit, io, threading, time, statistics
@@ -37,10 +35,11 @@ logging.basicConfig(
 log = logging.getLogger("ScalpBot")
 
 # ══════════════════════════════════════════════════════════════════════
-BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
-PORT        = int(os.environ.get("PORT", 5000))
-JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
-JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
+BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
+PORT           = int(os.environ.get("PORT", 5000))
+JSONBIN_KEY    = os.environ.get("JSONBIN_API_KEY", "")
+JSONBIN_BIN    = os.environ.get("JSONBIN_BIN_ID", "")
+TWELVEDATA_KEY = os.environ.get("TWELVEDATA_API_KEY", "")   # ← کلید جدید
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 def now_ir(): return datetime.now(IRAN_TZ)
@@ -51,9 +50,7 @@ _HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://finance.yahoo.com/",
+    "Accept": "application/json",
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -72,18 +69,17 @@ class Asset:
     key: str
     name: str
     emoji: str
-    symbol: str
+    symbol: str          # نمایشی
+    td_symbol: str       # Twelve Data symbol
     decimals: int
     pip_size: float
-    sources: list
-    # ترتیب yahoo symbols برای OHLC — از بهترین به بدترین
-    yahoo_syms: list
+    sources: list        # fallback price sources
 
 ASSETS: dict[str, Asset] = {
     "XAUUSD": Asset(
         key="XAUUSD", name="Gold", emoji="🥇", symbol="XAU/USD",
+        td_symbol="XAU/USD",
         decimals=2, pip_size=0.1,
-        yahoo_syms=["XAUUSD=X", "GC=F"],   # =X اول: forex spot، بهتر از futures برای 1m
         sources=[
             Source("GoldPrice",
                    "https://data-asg.goldprice.org/dbXRates/USD",
@@ -92,86 +88,86 @@ ASSETS: dict[str, Asset] = {
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD",
                    lambda d: (float(d[0]["spreadProfilePrices"][0]["ask"]) +
                               float(d[0]["spreadProfilePrices"][0]["bid"])) / 2, 1000, 12000),
-            Source("Yahoo",
-                   "https://query1.finance.yahoo.com/v8/finance/chart/GC=F",
-                   lambda d: d["chart"]["result"][0]["meta"]["regularMarketPrice"], 1000, 12000),
         ],
     ),
     "EURUSD": Asset(
         key="EURUSD", name="EUR/USD", emoji="💶", symbol="EUR/USD",
+        td_symbol="EUR/USD",
         decimals=5, pip_size=0.0001,
-        yahoo_syms=["EURUSD=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/EUR/USD",
                    lambda d: (float(d[0]["spreadProfilePrices"][0]["ask"]) +
                               float(d[0]["spreadProfilePrices"][0]["bid"])) / 2, 0.8, 1.5),
-            Source("Yahoo",
-                   "https://query1.finance.yahoo.com/v8/finance/chart/EURUSD=X",
-                   lambda d: d["chart"]["result"][0]["meta"]["regularMarketPrice"], 0.8, 1.5),
         ],
     ),
     "USDJPY": Asset(
         key="USDJPY", name="USD/JPY", emoji="💴", symbol="USD/JPY",
+        td_symbol="USD/JPY",
         decimals=3, pip_size=0.01,
-        yahoo_syms=["USDJPY=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/USD/JPY",
                    lambda d: (float(d[0]["spreadProfilePrices"][0]["ask"]) +
                               float(d[0]["spreadProfilePrices"][0]["bid"])) / 2, 100, 200),
-            Source("Yahoo",
-                   "https://query1.finance.yahoo.com/v8/finance/chart/USDJPY=X",
-                   lambda d: d["chart"]["result"][0]["meta"]["regularMarketPrice"], 100, 200),
         ],
     ),
     "GBPUSD": Asset(
         key="GBPUSD", name="GBP/USD", emoji="💷", symbol="GBP/USD",
+        td_symbol="GBP/USD",
         decimals=5, pip_size=0.0001,
-        yahoo_syms=["GBPUSD=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/GBP/USD",
                    lambda d: (float(d[0]["spreadProfilePrices"][0]["ask"]) +
                               float(d[0]["spreadProfilePrices"][0]["bid"])) / 2, 1.1, 1.6),
-            Source("Yahoo",
-                   "https://query1.finance.yahoo.com/v8/finance/chart/GBPUSD=X",
-                   lambda d: d["chart"]["result"][0]["meta"]["regularMarketPrice"], 1.1, 1.6),
         ],
     ),
 }
 
 # ══════════════════════════════════════════════════════════════════════
 # TIMEFRAMES
-# ──────────────────────────────────────────────────────────────────────
-# Yahoo interval/range محدودیت‌ها:
-#   1m  → max 7d   (عملاً ~390 bar برای روز جاری)
-#   2m  → max 60d
-#   5m  → max 60d
-#   15m → max 60d
-#   1h  → max 730d
-#   1d  → unlimited
-#
-# 4H: Yahoo interval=4h ندارد → 1h میگیریم، هر 4 کندل = یک 4H
-#     ولی برای سادگی همان 1h نمایش میدهیم با range بیشتر
+# Twelve Data intervals: 1min 5min 15min 30min 45min 1h 2h 4h 8h 1day 1week 1month
+# outputsize max = 5000
 # ══════════════════════════════════════════════════════════════════════
 MAX_BARS = 200
 
 TIMEFRAMES = {
-    # key: (yahoo_interval, yahoo_range, label_en, label_fa, x_fmt)
-    "1m":  ("1m",  "1d",  "1M  |  1m candles",  "۱ دقیقه",  "%H:%M"),
-    "5m":  ("5m",  "5d",  "5M  |  5m candles",  "۵ دقیقه",  "%m/%d %H:%M"),
-    "15m": ("15m", "10d", "15M |  15m candles", "۱۵ دقیقه", "%m/%d %H:%M"),
-    "1h":  ("1h",  "30d", "1H  |  1h candles",  "۱ ساعت",   "%m/%d"),
-    "4h":  ("1h",  "60d", "4H  |  1h candles",  "۴ ساعت",   "%m/%d"),
-    "1d":  ("1d",  "1y",  "1D  |  1d candles",  "روزانه",   "%Y/%m/%d"),
+    # key: (td_interval, label_en, label_fa, x_fmt)
+    "1m":  ("1min",  "1M  |  1m candles",  "۱ دقیقه",  "%H:%M"),
+    "5m":  ("5min",  "5M  |  5m candles",  "۵ دقیقه",  "%m/%d %H:%M"),
+    "15m": ("15min", "15M |  15m candles", "۱۵ دقیقه", "%m/%d %H:%M"),
+    "1h":  ("1h",    "1H  |  1h candles",  "۱ ساعت",   "%m/%d"),
+    "4h":  ("4h",    "4H  |  4h candles",  "۴ ساعت",   "%m/%d"),
+    "1d":  ("1day",  "1D  |  1d candles",  "روزانه",   "%Y/%m/%d"),
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# PRICE FETCHER
+# PRICE FETCHER (قیمت لحظه‌ای)
+# اول Twelve Data price endpoint، بعد fallback به منابع دیگر
 # ══════════════════════════════════════════════════════════════════════
 _price_cache: dict[str, tuple[float, float]] = {}
 CACHE_TTL = 12
+
+def _get_price_twelvedata(asset: Asset) -> Optional[float]:
+    """قیمت لحظه‌ای از Twelve Data /price endpoint"""
+    if not TWELVEDATA_KEY:
+        return None
+    try:
+        r = requests.get(
+            "https://api.twelvedata.com/price",
+            params={"symbol": asset.td_symbol, "apikey": TWELVEDATA_KEY},
+            headers=_HEADERS, timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if "price" in data:
+            p = float(data["price"])
+            if asset.sources[0].min_val < p < asset.sources[0].max_val:
+                return round(p, asset.decimals)
+    except Exception as e:
+        log.warning(f"TD price {asset.key}: {str(e)[:60]}")
+    return None
 
 def get_price(symbol: str, force: bool = False) -> Optional[float]:
     if symbol not in ASSETS:
@@ -181,6 +177,15 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
         if time.time() - ts < CACHE_TTL:
             return p
     asset = ASSETS[symbol]
+
+    # اول Twelve Data
+    p = _get_price_twelvedata(asset)
+    if p:
+        _price_cache[symbol] = (p, time.time())
+        log.info(f"price {symbol}={p} [TwelveData]")
+        return p
+
+    # fallback منابع دیگر
     for src in asset.sources:
         try:
             r = requests.get(src.url, headers=_HEADERS, timeout=10)
@@ -196,83 +201,80 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
     return None
 
 # ══════════════════════════════════════════════════════════════════════
-# OHLC FETCHER — چند endpoint + retry
+# OHLC FETCHER — Twelve Data /time_series
 # ══════════════════════════════════════════════════════════════════════
-_YAHOO_HOSTS = [
-    "https://query1.finance.yahoo.com",
-    "https://query2.finance.yahoo.com",
-]
-
-def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
+def fetch_ohlc_twelvedata(asset: Asset, interval: str, outputsize: int = MAX_BARS) -> Optional[tuple]:
     """
-    سعی می‌کند از چند host یاهو داده بگیرد.
-    برمی‌گرداند (times, opens, highs, lows, closes, vols) یا None.
+    داده کندل از Twelve Data.
+    interval: 1min | 5min | 15min | 1h | 4h | 1day
     """
-    for host in _YAHOO_HOSTS:
-        url = f"{host}/v8/finance/chart/{yahoo_sym}"
-        try:
-            r = requests.get(
-                url, headers=_HEADERS,
-                params={
-                    "interval": interval,
-                    "range": range_,
-                    "includePrePost": "false",
-                    "events": "div,splits",
-                },
-                timeout=15,
-            )
-            if r.status_code != 200:
-                log.warning(f"Yahoo {host} {yahoo_sym} HTTP {r.status_code}")
-                continue
+    if not TWELVEDATA_KEY:
+        log.error("TWELVEDATA_API_KEY not set!")
+        return None
+    try:
+        r = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params={
+                "symbol":     asset.td_symbol,
+                "interval":   interval,
+                "outputsize": outputsize,
+                "apikey":     TWELVEDATA_KEY,
+                "timezone":   "Asia/Tehran",   # مستقیم به وقت ایران
+                "order":      "ASC",           # قدیمی‌ترین اول
+            },
+            headers=_HEADERS,
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
 
-            data = r.json()
-            result_list = data.get("chart", {}).get("result")
-            if not result_list:
-                log.warning(f"Yahoo {host} {yahoo_sym}: no result")
-                continue
-            result = result_list[0]
-            ts_list = result.get("timestamp", [])
-            if not ts_list:
-                log.warning(f"Yahoo {host} {yahoo_sym}: empty timestamp")
-                continue
+        if data.get("status") == "error":
+            log.error(f"TD OHLC error: {data.get('message')}")
+            return None
 
-            q = result["indicators"]["quote"][0]
-            times, opens, highs, lows, closes, vols = [], [], [], [], [], []
-            for i, ts in enumerate(ts_list):
-                c = q["close"][i]
-                o = q["open"][i]
-                h = q["high"][i]
-                l = q["low"][i]
-                if None in (c, o, h, l):
+        values = data.get("values")
+        if not values:
+            log.error(f"TD OHLC: no values for {asset.td_symbol}")
+            return None
+
+        times, opens, highs, lows, closes, vols = [], [], [], [], [], []
+        for bar in values:
+            try:
+                # Twelve Data datetime با timezone=Asia/Tehran می‌آید
+                # فرمت: "2024-06-17 08:15:00"
+                dt_naive = datetime.strptime(bar["datetime"], "%Y-%m-%d %H:%M:%S")
+                dt = dt_naive.replace(tzinfo=IRAN_TZ)
+            except ValueError:
+                # 1day فرمت: "2024-06-17"
+                try:
+                    dt_naive = datetime.strptime(bar["datetime"], "%Y-%m-%d")
+                    dt = dt_naive.replace(tzinfo=IRAN_TZ)
+                except Exception:
                     continue
-                times.append(datetime.fromtimestamp(ts, tz=IRAN_TZ))
-                opens.append(float(o))
-                highs.append(float(h))
-                lows.append(float(l))
-                closes.append(float(c))
-                v = (q.get("volume") or [None] * len(ts_list))[i]
-                vols.append(float(v) if v else 0.0)
 
-            if len(closes) < 5:
-                log.warning(f"Yahoo {yahoo_sym}: only {len(closes)} valid bars")
-                continue
+            o = float(bar["open"])
+            h = float(bar["high"])
+            l = float(bar["low"])
+            c = float(bar["close"])
+            v = float(bar.get("volume") or 0)
 
-            log.info(f"OK: {host}/{yahoo_sym} {interval}/{range_} → {len(closes)} bars")
-            return times, opens, highs, lows, closes, vols
+            times.append(dt)
+            opens.append(o)
+            highs.append(h)
+            lows.append(l)
+            closes.append(c)
+            vols.append(v)
 
-        except Exception as e:
-            log.error(f"fetch_ohlc {host}/{yahoo_sym}: {str(e)[:80]}")
+        if len(closes) < 5:
+            log.warning(f"TD OHLC: only {len(closes)} bars for {asset.td_symbol}")
+            return None
 
-    return None
+        log.info(f"TD OHLC OK: {asset.td_symbol} {interval} → {len(closes)} bars")
+        return times, opens, highs, lows, closes, vols
 
-
-def fetch_ohlc_asset(asset: Asset, interval: str, range_: str) -> Optional[tuple]:
-    """همه yahoo_syms دارایی رو امتحان می‌کند."""
-    for sym in asset.yahoo_syms:
-        result = _fetch_ohlc(sym, interval, range_)
-        if result is not None:
-            return result
-    return None
+    except Exception as e:
+        log.error(f"fetch_ohlc_twelvedata {asset.td_symbol}: {str(e)[:100]}")
+        return None
 
 # ══════════════════════════════════════════════════════════════════════
 # INDICATORS
@@ -333,7 +335,7 @@ def _macd(closes, fast=12, slow=26, signal=9):
     return ml, sl, hl
 
 # ══════════════════════════════════════════════════════════════════════
-# CHART ENGINE v4
+# CHART ENGINE v5
 # ══════════════════════════════════════════════════════════════════════
 BG      = "#131722"
 UP_C    = "#26a69a"
@@ -358,17 +360,18 @@ def _draw_candles(ax, times, opens, highs, lows, closes, bar_w_num):
         is_up  = c >= o
         color  = UP_C if is_up else DN_C
 
-        # آخرین کندل ناقص: cap wick و body
+        # آخرین کندل: cap wick و body
         if i == len(closes) - 1:
             cap_r = median_range * 2.5
             h = min(h, c + cap_r)
             l = max(l, c - cap_r)
             body_h = min(abs(c - o), median_body * 2)
+            body_b = (c - body_h) if is_up else c
         else:
             body_h = abs(c - o)
+            body_b = min(o, c)
 
-        body_b = min(o, c) if i < len(closes) - 1 else (c - body_h if is_up else c)
-        body_h = max(body_h, median_body * 0.05)
+        body_h = max(body_h, median_body * 0.05)   # doji حداقل
 
         ax.plot([t, t], [l, h], color=color, linewidth=0.7, zorder=2)
         rect = mpatches.FancyBboxPatch(
@@ -392,42 +395,31 @@ def create_chart(
         return None
 
     asset = ASSETS[symbol]
-    interval, range_, label_en, label_fa, x_fmt = TIMEFRAMES[tf_key]
+    td_interval, label_en, label_fa, x_fmt = TIMEFRAMES[tf_key]
 
-    # ── fetch ──
-    ohlc = fetch_ohlc_asset(asset, interval, range_)
+    # ── fetch از Twelve Data ──
+    ohlc = fetch_ohlc_twelvedata(asset, td_interval, outputsize=MAX_BARS)
     if ohlc is None:
         log.error(f"create_chart: no data for {symbol} {tf_key}")
         return None
 
     times, opens, highs, lows, closes, vols = ohlc
 
-    # ── برش MAX_BARS ──
-    if len(times) > MAX_BARS:
-        times  = times[-MAX_BARS:]
-        opens  = opens[-MAX_BARS:]
-        highs  = highs[-MAX_BARS:]
-        lows   = lows[-MAX_BARS:]
-        closes = closes[-MAX_BARS:]
-        vols   = vols[-MAX_BARS:]
-
-    # ── bar width — باید قبل از override محاسبه بشه ──
+    # ── bar width با median gap (مقاوم در برابر gap نامساوی) ──
     times_num = [mdates.date2num(t) for t in times]
     if len(times_num) > 1:
         gaps = [times_num[i+1] - times_num[i] for i in range(len(times_num) - 1)]
-        typical_gap = statistics.median(gaps)   # median برای 1m که gap نامساوی داره
+        typical_gap = statistics.median(gaps)
         bar_w = typical_gap * 0.7
     else:
         bar_w = 0.0007
 
-    # ── override live ──
+    # ── override live price روی کندل آخر ──
     if live_price is not None:
         closes[-1] = live_price
-        # median range کندل‌های قبلی (نه آخری)
         candle_ranges = [h - l for h, l in zip(highs[:-1], lows[:-1])]
         med_range = statistics.median(candle_ranges) if candle_ranges else (live_price * 0.001)
         max_wick = med_range * 3
-        # wick فقط گسترش پیدا می‌کنه، اما cap می‌شه
         raw_high = max(highs[-1], live_price)
         raw_low  = min(lows[-1],  live_price)
         highs[-1] = min(raw_high, live_price + max_wick)
@@ -442,7 +434,7 @@ def create_chart(
     rsi_vals              = _rsi(closes, 14)
     macd_l, sig_l, hist_l = _macd(closes)
 
-    # ── آمار ──
+    # ── آمار کلی ──
     cur    = closes[-1]
     start  = closes[0]
     hi     = max(highs)
@@ -486,17 +478,17 @@ def create_chart(
     # ── candles ──
     _draw_candles(ax_c, times, opens, highs, lows, closes, bar_w)
 
-    # ── Bollinger ──
+    # ── helper plot valid ──
     def _pv(ax, ts, data, **kw):
         pts = [(t, v) for t, v in zip(ts, data) if v is not None]
         if pts:
             tt, vv = zip(*pts)
             ax.plot(tt, vv, **kw)
 
+    # ── Bollinger ──
     _pv(ax_c, times, bb_up,  color=BB_C, lw=0.9, alpha=0.7, ls="--", label="BB(20)")
     _pv(ax_c, times, bb_mid, color=BB_C, lw=0.7, alpha=0.5, ls=":")
     _pv(ax_c, times, bb_low, color=BB_C, lw=0.9, alpha=0.7, ls="--")
-
     bb_pairs = [(t, u, l) for t, u, l in zip(times, bb_up, bb_low)
                 if u is not None and l is not None]
     if bb_pairs:
@@ -507,7 +499,7 @@ def create_chart(
     _pv(ax_c, times, ema21, color=EMA21_C, lw=1.1, alpha=0.9, label="EMA21", zorder=4)
     _pv(ax_c, times, ema50, color=EMA50_C, lw=1.1, alpha=0.9, label="EMA50", zorder=4)
 
-    # ── current price line ──
+    # ── قیمت جاری ──
     ax_c.axhline(cur, color=main_c, ls="-", alpha=0.25, lw=0.8, zorder=1)
     ax_c.text(1.002, cur, f"{cur:.{dec}f}",
               transform=ax_c.get_yaxis_transform(),
@@ -515,7 +507,7 @@ def create_chart(
               va="center", ha="left",
               bbox=dict(boxstyle="round,pad=0.3", fc=main_c, ec="none"))
 
-    # ── H/L annotation ──
+    # ── H/L ──
     hi_i = highs.index(hi)
     lo_i = lows.index(lo)
     ax_c.annotate(f"H {hi:.{dec}f}",
@@ -621,7 +613,6 @@ def create_chart(
     buf.seek(0)
     plt.close(fig)
     return buf
-
 
 # ══════════════════════════════════════════════════════════════════════
 # CLOUD STORAGE
@@ -748,11 +739,11 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
-    return f"ScalpBot Pro v4 | users={u} | reqs={r} | {str_ir()}"
+    return f"ScalpBot Pro v5 | users={u} | reqs={r} | {str_ir()}"
 
 @flask_app.route("/health")
 def health():
-    return jsonify(status="ok", time=str_ir(), version="v4")
+    return jsonify(status="ok", time=str_ir(), version="v5")
 
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
@@ -807,14 +798,6 @@ def kb_chart_menu():
     return InlineKeyboardMarkup(rows)
 
 def kb_after_chart(sym):
-    """
-    FIX دکمه‌های قفل:
-    این keyboard روی پیام عکس قرار می‌گیرد.
-    callback_data ها مستقیماً به on_callback می‌روند — هیچ وابستگی به message_id ندارند.
-    مشکل قفل شدن دکمه‌ها از جای دیگری بود: وقتی edit_message_text روی caption photo صدا زده
-    می‌شد خطای BadRequest می‌داد و callback answer نمی‌شد.
-    حل: در on_callback همیشه q.answer() اول صدا زده می‌شود (قبلاً هم بود، مطمئن شدیم).
-    """
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 تایم دیگر",   callback_data=f"chart:{sym}"),
          InlineKeyboardButton("💰 قیمت",         callback_data=f"px:{sym}")],
@@ -888,23 +871,12 @@ async def _reg(update):
     cloud.ensure_user(u.id, u.username or "")
     cloud.inc(u.id)
 
-
 async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
-    """
-    ساخت و ارسال چارت.
-    FIX دکمه‌های قفل:
-      - پیام loading با send_message ساخته میشه
-      - بعد از ارسال photo، پیام loading حذف میشه
-      - دکمه‌های kb_after_chart روی پیام photo کار می‌کنند چون
-        callback آنها مستقل از message_id است
-    """
-    # پیام loading
     loading = await bot.send_message(
         chat_id=chat_id,
-        text=f"📈 رسم نمودار {ASSETS[sym].symbol} ({TIMEFRAMES[tf_key][3]})…",
+        text=f"📈 رسم نمودار {ASSETS[sym].symbol} ({TIMEFRAMES[tf_key][2]})…",
         reply_to_message_id=reply_to_msg_id,
     )
-
     live = get_price(sym, force=True)
     if live:
         cloud.push_price(sym, live)
@@ -915,15 +887,13 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
         return
 
     a = ASSETS[sym]
-    _, _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
+    _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
     live_str = f"{live:.{a.decimals}f}" if live else "N/A"
     caption = (
         f"{a.emoji} <b>{a.symbol}</b>   {label_fa}\n"
         f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
         f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
     )
-
-    # ارسال photo با دکمه‌ها
     await bot.send_photo(
         chat_id=chat_id,
         photo=buf,
@@ -931,8 +901,6 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
         parse_mode=ParseMode.HTML,
         reply_markup=kb_after_chart(sym),
     )
-
-    # حذف loading
     try:
         await loading.delete()
     except Exception:
@@ -944,8 +912,9 @@ async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reg(update)
     await update.effective_message.reply_text(
-        "👋 <b>ScalpBot Pro v4</b>\n\n"
-        "قیمت لحظه‌ای فارکس و طلا — ویژه اسکلپرها.\n\n"
+        "👋 <b>ScalpBot Pro v5</b>\n\n"
+        "قیمت realtime فارکس و طلا — ویژه اسکلپرها.\n"
+        "منبع داده: <b>Twelve Data</b> (بدون تاخیر)\n\n"
         "📊 <b>چارت:</b> کندل‌استیک | EMA21/50 | BB | RSI | MACD | Volume\n"
         "⏱ <b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d  (۲۰۰ کندل آخر)\n\n"
         "منوی زیر 👇",
@@ -964,7 +933,6 @@ async def cmd_chart(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if sym not in ASSETS: sym = "XAUUSD"
     tf  = (args[1].lower() if len(args) > 1 else "1m")
     if tf not in TIMEFRAMES: tf = "1m"
-
     msg = update.effective_message
     await _send_chart(
         sym, tf,
@@ -990,25 +958,22 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q   = update.callback_query
-    await q.answer()          # همیشه اول — جلوگیری از قفل دکمه
+    await q.answer()
     d   = q.data
     uid = update.effective_user.id
     cloud.inc(uid)
 
-    # ── edit helper — فقط برای پیام‌های TEXT (نه photo) ──
     async def edit(text, kb=None):
         try:
             kw = {"parse_mode": ParseMode.HTML}
             if kb is not None: kw["reply_markup"] = kb
             await q.edit_message_text(text, **kw)
         except Exception as e:
-            # اگر پیام photo بود یا خطای دیگر → send_message جدید
-            log.warning(f"edit_message_text failed: {e} — sending new message")
+            log.warning(f"edit failed: {e}")
             kw2 = {"chat_id": q.message.chat_id, "text": text, "parse_mode": ParseMode.HTML}
             if kb is not None: kw2["reply_markup"] = kb
             await ctx.bot.send_message(**kw2)
 
-    # ── main ──
     if d == "main":
         await edit("🏠 <b>منوی اصلی</b>\n\nیک گزینه انتخاب کنید:", kb_main()); return
 
@@ -1026,18 +991,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if d == "help":
         await edit(
-            "❓ <b>راهنما — ScalpBot Pro v4</b>\n\n"
+            "❓ <b>راهنما — ScalpBot Pro v5</b>\n\n"
             "/start — منو\n/price — همه قیمت‌ها\n"
             "/chart [sym] [tf] — نمودار\n/alerts — هشدارها\n/cancel — لغو\n\n"
             "<b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d\n"
             "<b>sym:</b> XAUUSD | EURUSD | USDJPY | GBPUSD\n\n"
-            "📊 <b>اندیکاتور:</b>\n"
-            "• کندل‌استیک OHLC\n• EMA 21 / EMA 50\n"
-            "• Bollinger Bands (20, 2)\n• RSI (14)\n"
-            "• MACD (12, 26, 9)\n• Volume\n\n"
-            "• ۲۰۰ کندل آخر هر TF\n"
-            "• قیمت از ۳ منبع + fallback\n"
-            "• هشدار هر ۵ دقیقه",
+            "📡 منبع: Twelve Data (realtime)\n"
+            "🔔 هشدار هر ۵ دقیقه بررسی می‌شود",
             kb_main()
         ); return
 
@@ -1071,7 +1031,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await edit("📈 <b>انتخاب نمودار</b>\n\nدارایی را انتخاب کنید:", kb_chart_menu())
         return
 
-    # chart:{sym} — نمایش picker تایم‌فریم
     if d.startswith("chart:") and d.count(":") == 1:
         sym = d[6:]
         if sym not in ASSETS: return
@@ -1083,18 +1042,16 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             kb_tf(sym)
         ); return
 
-    # tf:{sym}:{key} — ساخت چارت
     if d.startswith("tf:"):
         parts = d.split(":")
         if len(parts) != 3: return
         sym, tf_key = parts[1], parts[2]
         if sym not in ASSETS or tf_key not in TIMEFRAMES: return
 
-        # پیام فعلی رو edit کن (loading placeholder)
         try:
             await q.edit_message_text(
                 f"📈 رسم نمودار {ASSETS[sym].symbol}  "
-                f"{TIMEFRAMES[tf_key][2]}…\n⏳"
+                f"{TIMEFRAMES[tf_key][1]}…\n⏳"
             )
         except Exception:
             pass
@@ -1106,7 +1063,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         buf = create_chart(sym, tf_key, live_price=live)
 
         if not buf:
-            # fail — edit همون پیام
             try:
                 await q.edit_message_text(
                     f"⚠️ دریافت داده ناموفق برای {ASSETS[sym].symbol}.\n"
@@ -1122,15 +1078,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
 
         a = ASSETS[sym]
-        _, _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
+        _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
         live_str = f"{live:.{a.decimals}f}" if live else "N/A"
         caption = (
             f"{a.emoji} <b>{a.symbol}</b>   {label_fa}\n"
             f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
             f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
         )
-
-        # ارسال photo به عنوان پیام جدید (نه reply روی loading)
         await ctx.bot.send_photo(
             chat_id=q.message.chat_id,
             photo=buf,
@@ -1138,15 +1092,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML,
             reply_markup=kb_after_chart(sym),
         )
-
-        # حذف پیام loading (که edit شده بود)
         try:
             await q.message.delete()
         except Exception:
             pass
         return
 
-    # alert up/down
     if d.startswith("al_up:") or d.startswith("al_dn:"):
         direction = "up" if d.startswith("al_up") else "down"
         sym = d.split(":")[1]
@@ -1226,8 +1177,8 @@ async def check_alerts(app: Application):
             for idx, al in enumerate(al_list):
                 if al.get("done"): continue
                 target = al["target"]
-                fired = ((al["dir"] == "up"   and price >= target) or
-                         (al["dir"] == "down"  and price <= target))
+                fired = ((al["dir"] == "up"  and price >= target) or
+                         (al["dir"] == "down" and price <= target))
                 if not fired: continue
                 arrow  = "📈" if al["dir"] == "up" else "📉"
                 dir_fa = "بالا رفت ⬆️" if al["dir"] == "up" else "پایین آمد ⬇️"
@@ -1271,11 +1222,13 @@ async def bg_loop(app: Application):
 async def on_startup(app: Application):
     threading.Thread(target=_run_flask, daemon=True).start()
     log.info(f"Flask on :{PORT}")
+    if not TWELVEDATA_KEY:
+        log.critical("⚠️  TWELVEDATA_API_KEY not set! Charts will fail.")
     asyncio.create_task(bg_loop(app))
     for sym in ASSETS:
         p = get_price(sym)
         if p: cloud.push_price(sym, p)
-    log.info("ScalpBot Pro v4 ready")
+    log.info("ScalpBot Pro v5 ready")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1314,7 +1267,7 @@ def main():
     signal.signal(signal.SIGINT,  _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    log.info("ScalpBot Pro v4 starting...")
+    log.info("ScalpBot Pro v5 starting...")
     app.run_polling(
         allowed_updates=["message", "callback_query"],
         drop_pending_updates=True,
