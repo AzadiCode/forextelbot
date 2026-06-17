@@ -411,45 +411,45 @@ def create_chart(
         closes = closes[-MAX_BARS:]
         vols   = vols[-MAX_BARS:]
 
-  # ── override live ──
-  if live_price is not None:
-      closes[-1] = live_price
-      # wick: فقط گسترش بده، و cap کن به median range
-      candle_ranges = [h - l for h, l in zip(highs[:-1], lows[:-1])]
-      med_range = statistics.median(candle_ranges) if candle_ranges else (live_price * 0.001)
-      max_wick = med_range * 3
-      
-      raw_high = max(highs[-1], live_price)
-      raw_low  = min(lows[-1],  live_price)
-      # cap
-      highs[-1] = min(raw_high, live_price + max_wick)
-      lows[-1]  = max(raw_low,  live_price
+    # ── bar width — باید قبل از override محاسبه بشه ──
+    times_num = [mdates.date2num(t) for t in times]
+    if len(times_num) > 1:
+        gaps = [times_num[i+1] - times_num[i] for i in range(len(times_num) - 1)]
+        typical_gap = statistics.median(gaps)   # median برای 1m که gap نامساوی داره
+        bar_w = typical_gap * 0.7
+    else:
+        bar_w = 0.0007
 
-  # ── bar width — robust برای 1m ──
-  if len(times_num) > 1:
-      gaps = [times_num[i+1] - times_num[i] for i in range(len(times_num)-1)]
-      typical_gap = statistics.median(gaps)  # median به جای کل range
-      bar_w = typical_gap * 0.7
-  else:
-      bar_w = 0.0007
+    # ── override live ──
+    if live_price is not None:
+        closes[-1] = live_price
+        # median range کندل‌های قبلی (نه آخری)
+        candle_ranges = [h - l for h, l in zip(highs[:-1], lows[:-1])]
+        med_range = statistics.median(candle_ranges) if candle_ranges else (live_price * 0.001)
+        max_wick = med_range * 3
+        # wick فقط گسترش پیدا می‌کنه، اما cap می‌شه
+        raw_high = max(highs[-1], live_price)
+        raw_low  = min(lows[-1],  live_price)
+        highs[-1] = min(raw_high, live_price + max_wick)
+        lows[-1]  = max(raw_low,  live_price - max_wick)
 
     dec = asset.decimals
 
     # ── اندیکاتورها ──
-    ema21           = _ema(closes, 21)
-    ema50           = _ema(closes, 50)
+    ema21                 = _ema(closes, 21)
+    ema50                 = _ema(closes, 50)
     bb_up, bb_mid, bb_low = _bollinger(closes, 20)
-    rsi_vals        = _rsi(closes, 14)
+    rsi_vals              = _rsi(closes, 14)
     macd_l, sig_l, hist_l = _macd(closes)
 
     # ── آمار ──
-    cur   = closes[-1]
-    start = closes[0]
-    hi    = max(highs)
-    lo    = min(lows)
-    chg   = cur - start
-    chgp  = (chg / start * 100) if start else 0
-    is_up = chg >= 0
+    cur    = closes[-1]
+    start  = closes[0]
+    hi     = max(highs)
+    lo     = min(lows)
+    chg    = cur - start
+    chgp   = (chg / start * 100) if start else 0
+    is_up  = chg >= 0
     main_c = UP_C if is_up else DN_C
 
     last_rsi  = next((v for v in reversed(rsi_vals) if v is not None), None)
@@ -507,7 +507,7 @@ def create_chart(
     _pv(ax_c, times, ema21, color=EMA21_C, lw=1.1, alpha=0.9, label="EMA21", zorder=4)
     _pv(ax_c, times, ema50, color=EMA50_C, lw=1.1, alpha=0.9, label="EMA50", zorder=4)
 
-    # ── current price ──
+    # ── current price line ──
     ax_c.axhline(cur, color=main_c, ls="-", alpha=0.25, lw=0.8, zorder=1)
     ax_c.text(1.002, cur, f"{cur:.{dec}f}",
               transform=ax_c.get_yaxis_transform(),
@@ -515,7 +515,7 @@ def create_chart(
               va="center", ha="left",
               bbox=dict(boxstyle="round,pad=0.3", fc=main_c, ec="none"))
 
-    # ── H/L ──
+    # ── H/L annotation ──
     hi_i = highs.index(hi)
     lo_i = lows.index(lo)
     ax_c.annotate(f"H {hi:.{dec}f}",
@@ -570,9 +570,11 @@ def create_chart(
     spts = [(t, v) for t, v in zip(times, sig_l)  if v is not None]
     hpts = [(t, v) for t, v in zip(times, hist_l) if v is not None]
     if mpts:
-        mt, mv = zip(*mpts); ax_m.plot(mt, mv, color=MACD_C, lw=1.0, label="MACD", zorder=3)
+        mt, mv = zip(*mpts)
+        ax_m.plot(mt, mv, color=MACD_C, lw=1.0, label="MACD", zorder=3)
     if spts:
-        st, sv = zip(*spts); ax_m.plot(st, sv, color=SIG_C,  lw=0.9, label="Sig",  zorder=3)
+        st, sv = zip(*spts)
+        ax_m.plot(st, sv, color=SIG_C, lw=0.9, label="Sig", zorder=3)
     if hpts:
         ht, hv = zip(*hpts)
         hc = [UP_C if v >= 0 else DN_C for v in hv]
@@ -582,7 +584,7 @@ def create_chart(
                 facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C, framealpha=0.8)
     if last_macd is not None:
         mc = UP_C if last_macd >= 0 else DN_C
-        ax_m.text(1.002, last_macd, f"{last_macd:.{max(1,dec-1)}f}",
+        ax_m.text(1.002, last_macd, f"{last_macd:.{max(1, dec-1)}f}",
                   transform=ax_m.get_yaxis_transform(),
                   fontsize=7, fontweight="bold", color="white",
                   va="center", ha="left",
@@ -598,10 +600,10 @@ def create_chart(
         plt.setp(a.xaxis.get_majorticklabels(), visible=False)
 
     # ── Title ──
-    sign  = "+" if is_up else ""
-    arrow = "▲" if is_up else "▼"
+    sign   = "+" if is_up else ""
+    arrow  = "▲" if is_up else "▼"
     rsi_s  = f"RSI: {last_rsi:.0f}" if last_rsi else ""
-    macd_s = f"MACD: {last_macd:.{max(1,dec-1)}f}" if last_macd else ""
+    macd_s = f"MACD: {last_macd:.{max(1, dec-1)}f}" if last_macd else ""
     fig.text(0.44, 0.935,
              f"{asset.symbol}   {label_en}   ({len(closes)} candles)   |   Iran Time (UTC+3:30)",
              ha="center", fontsize=10, fontweight="bold", color=TEXT_C)
@@ -619,6 +621,7 @@ def create_chart(
     buf.seek(0)
     plt.close(fig)
     return buf
+
 
 # ══════════════════════════════════════════════════════════════════════
 # CLOUD STORAGE
