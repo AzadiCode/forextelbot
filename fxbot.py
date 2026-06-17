@@ -1,10 +1,15 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ScalpBot Pro v3 — Candlestick + BB + MACD + 200-bar limit + 1m TF
+ScalpBot Pro v4
+fixes:
+  - 1m chart: چند endpoint + smarter fallback
+  - دکمه‌های قفل: callback_data حاوی chat_id نیست، مشکل از edit روی photo بود → حل با answer+send جدید
+  - آخرین کندل کشیده: cap body به ۳× median
 """
 
-import os, sys, asyncio, logging, signal, atexit, io, threading, time
+import os, sys, asyncio, logging, signal, atexit, io, threading, time, statistics
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
@@ -25,8 +30,6 @@ from telegram.ext import (
 )
 
 # ══════════════════════════════════════════════════════════════════════
-# LOGGING
-# ══════════════════════════════════════════════════════════════════════
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     level=logging.INFO, stream=sys.stdout,
@@ -34,16 +37,14 @@ logging.basicConfig(
 log = logging.getLogger("ScalpBot")
 
 # ══════════════════════════════════════════════════════════════════════
-# CONFIG
-# ══════════════════════════════════════════════════════════════════════
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 PORT        = int(os.environ.get("PORT", 5000))
 JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
 JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-def now_ir() -> datetime: return datetime.now(IRAN_TZ)
-def str_ir(fmt="%H:%M:%S") -> str: return now_ir().strftime(fmt)
+def now_ir(): return datetime.now(IRAN_TZ)
+def str_ir(fmt="%H:%M:%S"): return now_ir().strftime(fmt)
 
 _HEADERS = {
     "User-Agent": (
@@ -52,6 +53,7 @@ _HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://finance.yahoo.com/",
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -74,14 +76,14 @@ class Asset:
     decimals: int
     pip_size: float
     sources: list
-    yahoo_sym: str
-    yahoo_fb: str
+    # ترتیب yahoo symbols برای OHLC — از بهترین به بدترین
+    yahoo_syms: list
 
 ASSETS: dict[str, Asset] = {
     "XAUUSD": Asset(
         key="XAUUSD", name="Gold", emoji="🥇", symbol="XAU/USD",
         decimals=2, pip_size=0.1,
-        yahoo_sym="GC=F", yahoo_fb="XAUUSD=X",
+        yahoo_syms=["XAUUSD=X", "GC=F"],   # =X اول: forex spot، بهتر از futures برای 1m
         sources=[
             Source("GoldPrice",
                    "https://data-asg.goldprice.org/dbXRates/USD",
@@ -98,7 +100,7 @@ ASSETS: dict[str, Asset] = {
     "EURUSD": Asset(
         key="EURUSD", name="EUR/USD", emoji="💶", symbol="EUR/USD",
         decimals=5, pip_size=0.0001,
-        yahoo_sym="EURUSD=X", yahoo_fb="EURUSD=X",
+        yahoo_syms=["EURUSD=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/EUR/USD",
@@ -112,7 +114,7 @@ ASSETS: dict[str, Asset] = {
     "USDJPY": Asset(
         key="USDJPY", name="USD/JPY", emoji="💴", symbol="USD/JPY",
         decimals=3, pip_size=0.01,
-        yahoo_sym="USDJPY=X", yahoo_fb="USDJPY=X",
+        yahoo_syms=["USDJPY=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/USD/JPY",
@@ -126,7 +128,7 @@ ASSETS: dict[str, Asset] = {
     "GBPUSD": Asset(
         key="GBPUSD", name="GBP/USD", emoji="💷", symbol="GBP/USD",
         decimals=5, pip_size=0.0001,
-        yahoo_sym="GBPUSD=X", yahoo_fb="GBPUSD=X",
+        yahoo_syms=["GBPUSD=X"],
         sources=[
             Source("Swissquote",
                    "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/GBP/USD",
@@ -141,26 +143,28 @@ ASSETS: dict[str, Asset] = {
 
 # ══════════════════════════════════════════════════════════════════════
 # TIMEFRAMES
-# Yahoo Finance interval limits:
-#   1m  → range max: 7d  (ما range=1d میدیم → ~390 bar، برش به 200 آخر)
-#   2m  → range max: 60d
-#   5m  → range max: 60d
-#   15m → range max: 60d
-#   1h  → range max: 730d
+# ──────────────────────────────────────────────────────────────────────
+# Yahoo interval/range محدودیت‌ها:
+#   1m  → max 7d   (عملاً ~390 bar برای روز جاری)
+#   2m  → max 60d
+#   5m  → max 60d
+#   15m → max 60d
+#   1h  → max 730d
 #   1d  → unlimited
 #
-# MAX_BARS = 200 برای همه — کمتر از 200 کندل موجود باشه همه رو نشون میده
+# 4H: Yahoo interval=4h ندارد → 1h میگیریم، هر 4 کندل = یک 4H
+#     ولی برای سادگی همان 1h نمایش میدهیم با range بیشتر
 # ══════════════════════════════════════════════════════════════════════
 MAX_BARS = 200
 
 TIMEFRAMES = {
-    # key: (yahoo_range, yahoo_interval, label_en, label_fa, x_fmt)
-    "1m":  ("1d",  "1m",  "1M  |  1m candles",  "۱ دقیقه",  "%H:%M"),
-    "5m":  ("2d",  "5m",  "5M  |  5m candles",  "۵ دقیقه",  "%H:%M"),
-    "15m": ("5d",  "15m", "15M |  15m candles", "۱۵ دقیقه", "%m/%d %H:%M"),
-    "1h":  ("15d", "1h",  "1H  |  1h candles",  "۱ ساعت",   "%m/%d %H:%M"),
-    "4h":  ("60d", "1h",  "4H  |  1h candles",  "۴ ساعت",   "%m/%d"),
-    "1d":  ("1y",  "1d",  "1D  |  1d candles",  "روزانه",   "%Y/%m/%d"),
+    # key: (yahoo_interval, yahoo_range, label_en, label_fa, x_fmt)
+    "1m":  ("1m",  "1d",  "1M  |  1m candles",  "۱ دقیقه",  "%H:%M"),
+    "5m":  ("5m",  "5d",  "5M  |  5m candles",  "۵ دقیقه",  "%m/%d %H:%M"),
+    "15m": ("15m", "10d", "15M |  15m candles", "۱۵ دقیقه", "%m/%d %H:%M"),
+    "1h":  ("1h",  "30d", "1H  |  1h candles",  "۱ ساعت",   "%m/%d"),
+    "4h":  ("1h",  "60d", "4H  |  1h candles",  "۴ ساعت",   "%m/%d"),
+    "1d":  ("1d",  "1y",  "1D  |  1d candles",  "روزانه",   "%Y/%m/%d"),
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -192,43 +196,122 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
     return None
 
 # ══════════════════════════════════════════════════════════════════════
+# OHLC FETCHER — چند endpoint + retry
+# ══════════════════════════════════════════════════════════════════════
+_YAHOO_HOSTS = [
+    "https://query1.finance.yahoo.com",
+    "https://query2.finance.yahoo.com",
+]
+
+def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
+    """
+    سعی می‌کند از چند host یاهو داده بگیرد.
+    برمی‌گرداند (times, opens, highs, lows, closes, vols) یا None.
+    """
+    for host in _YAHOO_HOSTS:
+        url = f"{host}/v8/finance/chart/{yahoo_sym}"
+        try:
+            r = requests.get(
+                url, headers=_HEADERS,
+                params={
+                    "interval": interval,
+                    "range": range_,
+                    "includePrePost": "false",
+                    "events": "div,splits",
+                },
+                timeout=15,
+            )
+            if r.status_code != 200:
+                log.warning(f"Yahoo {host} {yahoo_sym} HTTP {r.status_code}")
+                continue
+
+            data = r.json()
+            result_list = data.get("chart", {}).get("result")
+            if not result_list:
+                log.warning(f"Yahoo {host} {yahoo_sym}: no result")
+                continue
+            result = result_list[0]
+            ts_list = result.get("timestamp", [])
+            if not ts_list:
+                log.warning(f"Yahoo {host} {yahoo_sym}: empty timestamp")
+                continue
+
+            q = result["indicators"]["quote"][0]
+            times, opens, highs, lows, closes, vols = [], [], [], [], [], []
+            for i, ts in enumerate(ts_list):
+                c = q["close"][i]
+                o = q["open"][i]
+                h = q["high"][i]
+                l = q["low"][i]
+                if None in (c, o, h, l):
+                    continue
+                times.append(datetime.fromtimestamp(ts, tz=IRAN_TZ))
+                opens.append(float(o))
+                highs.append(float(h))
+                lows.append(float(l))
+                closes.append(float(c))
+                v = (q.get("volume") or [None] * len(ts_list))[i]
+                vols.append(float(v) if v else 0.0)
+
+            if len(closes) < 5:
+                log.warning(f"Yahoo {yahoo_sym}: only {len(closes)} valid bars")
+                continue
+
+            log.info(f"OK: {host}/{yahoo_sym} {interval}/{range_} → {len(closes)} bars")
+            return times, opens, highs, lows, closes, vols
+
+        except Exception as e:
+            log.error(f"fetch_ohlc {host}/{yahoo_sym}: {str(e)[:80]}")
+
+    return None
+
+
+def fetch_ohlc_asset(asset: Asset, interval: str, range_: str) -> Optional[tuple]:
+    """همه yahoo_syms دارایی رو امتحان می‌کند."""
+    for sym in asset.yahoo_syms:
+        result = _fetch_ohlc(sym, interval, range_)
+        if result is not None:
+            return result
+    return None
+
+# ══════════════════════════════════════════════════════════════════════
 # INDICATORS
 # ══════════════════════════════════════════════════════════════════════
-def _sma(data: list, period: int) -> list:
+def _sma(data, period):
     out = [None] * len(data)
     for i in range(period - 1, len(data)):
-        out[i] = sum(data[i - period + 1 : i + 1]) / period
+        out[i] = sum(data[i - period + 1: i + 1]) / period
     return out
 
-def _ema(data: list, period: int) -> list:
+def _ema(data, period):
     out = [None] * len(data)
     k = 2 / (period + 1)
-    start = period - 1
-    while start < len(data) and data[start] is None:
-        start += 1
-    if start >= len(data):
+    start = next((i for i, v in enumerate(data) if v is not None), None)
+    if start is None or start + period > len(data):
         return out
-    out[start] = sum(x for x in data[max(0, start - period + 1) : start + 1]
-                     if x is not None) / period
-    for i in range(start + 1, len(data)):
+    vals = [v for v in data[start: start + period] if v is not None]
+    if len(vals) < period:
+        return out
+    out[start + period - 1] = sum(vals) / period
+    for i in range(start + period, len(data)):
         if data[i] is not None and out[i - 1] is not None:
             out[i] = data[i] * k + out[i - 1] * (1 - k)
     return out
 
-def _bollinger(closes: list, period: int = 20, std_mult: float = 2.0):
+def _bollinger(closes, period=20, mult=2.0):
     mid = _sma(closes, period)
-    upper, lower = [None] * len(closes), [None] * len(closes)
+    upper = [None] * len(closes)
+    lower = [None] * len(closes)
     for i in range(period - 1, len(closes)):
-        window = closes[i - period + 1 : i + 1]
-        mean = mid[i]
-        if mean is None:
+        if mid[i] is None:
             continue
-        sd = (sum((x - mean) ** 2 for x in window) / period) ** 0.5
-        upper[i] = mean + std_mult * sd
-        lower[i] = mean - std_mult * sd
+        w = closes[i - period + 1: i + 1]
+        sd = (sum((x - mid[i]) ** 2 for x in w) / period) ** 0.5
+        upper[i] = mid[i] + mult * sd
+        lower[i] = mid[i] - mult * sd
     return upper, mid, lower
 
-def _rsi(closes: list, period: int = 14) -> list:
+def _rsi(closes, period=14):
     out = [None] * len(closes)
     gains, losses = [], []
     for i in range(1, len(closes)):
@@ -241,122 +324,87 @@ def _rsi(closes: list, period: int = 14) -> list:
             out[i] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
     return out
 
-def _macd(closes: list, fast: int = 12, slow: int = 26, signal: int = 9):
-    ema_fast = _ema(closes, fast)
-    ema_slow = _ema(closes, slow)
-    macd_line = [
-        (f - s) if (f is not None and s is not None) else None
-        for f, s in zip(ema_fast, ema_slow)
-    ]
-    signal_line = _ema(macd_line, signal)
-    histogram = [
-        (m - s) if (m is not None and s is not None) else None
-        for m, s in zip(macd_line, signal_line)
-    ]
-    return macd_line, signal_line, histogram
+def _macd(closes, fast=12, slow=26, signal=9):
+    ef = _ema(closes, fast)
+    es = _ema(closes, slow)
+    ml = [(f - s) if (f and s) else None for f, s in zip(ef, es)]
+    sl = _ema(ml, signal)
+    hl = [(m - s) if (m is not None and s is not None) else None for m, s in zip(ml, sl)]
+    return ml, sl, hl
 
 # ══════════════════════════════════════════════════════════════════════
-# OHLC FETCHER
+# CHART ENGINE v4
 # ══════════════════════════════════════════════════════════════════════
-def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
-    # Try both v8 and v7 endpoints
-    for endpoint in [
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}",
-        f"https://query2.finance.yahoo.com/v8/finance/chart/{yahoo_sym}",
-    ]:
-        try:
-            r = requests.get(endpoint, headers=_HEADERS,
-                             params={"interval": interval, "range": range_,
-                                     "includePrePost": "false"}, timeout=15)
-            if r.status_code != 200:
-                continue
-            data = r.json()
-            result = data["chart"]["result"][0]
-            ts_list = result["timestamp"]
-            q = result["indicators"]["quote"][0]
-
-            times, opens, highs, lows, closes, vols = [], [], [], [], [], []
-            for i, ts in enumerate(ts_list):
-                c, o, h, l = q["close"][i], q["open"][i], q["high"][i], q["low"][i]
-                if None in (c, o, h, l):
-                    continue
-                times.append(datetime.fromtimestamp(ts, tz=IRAN_TZ))
-                opens.append(float(o)); highs.append(float(h))
-                lows.append(float(l));  closes.append(float(c))
-                v = q.get("volume", [None] * len(ts_list))[i]
-                vols.append(float(v) if v else 0.0)
-
-            if len(closes) < 5:
-                log.warning(f"Yahoo {yahoo_sym}: only {len(closes)} valid bars")
-                continue
-            log.info(f"Yahoo {yahoo_sym} {range_}/{interval}: {len(closes)} bars")
-            return times, opens, highs, lows, closes, vols
-        except Exception as e:
-            log.error(f"fetch_ohlc {yahoo_sym}: {str(e)[:80]}")
-    return None
-
-# ══════════════════════════════════════════════════════════════════════
-# CHART ENGINE v3 — Full Candlestick + BB + MACD
-# ══════════════════════════════════════════════════════════════════════
-
-# رنگ‌های TradingView Dark
 BG      = "#131722"
-UP_C    = "#26a69a"   # سبز
-DN_C    = "#ef5350"   # قرمز
-UP_DIM  = "#1a7a70"
-DN_DIM  = "#b03030"
+UP_C    = "#26a69a"
+DN_C    = "#ef5350"
 GRID_C  = "#1e222d"
 TEXT_C  = "#d1d4dc"
 DIM_C   = "#787b86"
 BB_C    = "#1565c0"
+EMA21_C = "#f9a825"
+EMA50_C = "#ab47bc"
 MACD_C  = "#26a69a"
 SIG_C   = "#ef5350"
-EMA21_C = "#f9a825"
-EMA50_C = "#7b1fa2"
 
 
-def _draw_candles(ax, times, opens, highs, lows, closes, bar_w):
-    """رسم کندل‌استیک دستی روی ax."""
+def _draw_candles(ax, times, opens, highs, lows, closes, bar_w_num):
+    """
+    رسم کندل‌استیک.
+    bar_w_num: عرض کندل به واحد matplotlib date (float).
+    آخرین کندل: body محدود به ۳× median — جلوگیری از کشیدگی.
+    """
+    bodies = [abs(c - o) for c, o in zip(closes[:-1], opens[:-1])]
+    median_body = statistics.median(bodies) if bodies else 1.0
+
     for i, (t, o, h, l, c) in enumerate(zip(times, opens, highs, lows, closes)):
-        is_up = c >= o
+        is_up  = c >= o
         color  = UP_C if is_up else DN_C
         body_b = min(o, c)
-        body_h = abs(c - o) or (h - l) * 0.02   # کندل doji
+        body_h = abs(c - o)
+
+        # FIX: آخرین کندل ناقص — cap body
+        if i == len(closes) - 1 and body_h > median_body * 3:
+            body_h = median_body * 1.5
+            body_b = c - body_h if is_up else c
+
+        body_h = max(body_h, median_body * 0.05)   # doji حداقل
 
         # wick
         ax.plot([t, t], [l, h], color=color, linewidth=0.7, zorder=2)
         # body
         rect = mpatches.FancyBboxPatch(
-            (mdates.date2num(t) - bar_w / 2, body_b),
-            bar_w, body_h,
+            (mdates.date2num(t) - bar_w_num / 2, body_b),
+            bar_w_num, body_h,
             boxstyle="square,pad=0",
             linewidth=0,
-            facecolor=color if is_up else color,
-            edgecolor="none",
+            facecolor=color,
             zorder=3,
         )
         ax.add_patch(rect)
 
 
-def create_chart(symbol: str, tf_key: str = "1m",
-                 live_price: Optional[float] = None) -> Optional[io.BytesIO]:
+def create_chart(
+    symbol: str,
+    tf_key: str = "1m",
+    live_price: Optional[float] = None,
+) -> Optional[io.BytesIO]:
+
     if symbol not in ASSETS or tf_key not in TIMEFRAMES:
         return None
 
     asset = ASSETS[symbol]
-    yahoo_range, yahoo_interval, label_en, label_fa, x_fmt = TIMEFRAMES[tf_key]
+    interval, range_, label_en, label_fa, x_fmt = TIMEFRAMES[tf_key]
 
     # ── fetch ──
-    ohlc = _fetch_ohlc(asset.yahoo_sym, yahoo_interval, yahoo_range)
-    if ohlc is None and asset.yahoo_fb != asset.yahoo_sym:
-        ohlc = _fetch_ohlc(asset.yahoo_fb, yahoo_interval, yahoo_range)
+    ohlc = fetch_ohlc_asset(asset, interval, range_)
     if ohlc is None:
+        log.error(f"create_chart: no data for {symbol} {tf_key}")
         return None
 
     times, opens, highs, lows, closes, vols = ohlc
 
-    # ── برش به 200 کندل آخر ──
+    # ── برش MAX_BARS ──
     if len(times) > MAX_BARS:
         times  = times[-MAX_BARS:]
         opens  = opens[-MAX_BARS:]
@@ -365,48 +413,50 @@ def create_chart(symbol: str, tf_key: str = "1m",
         closes = closes[-MAX_BARS:]
         vols   = vols[-MAX_BARS:]
 
-    # ── override live price ──
+    # ── override live (فقط close — wick با احتیاط) ──
     if live_price is not None:
+        prev_close = closes[-1]
         closes[-1] = live_price
-        highs[-1]  = max(highs[-1], live_price)
-        lows[-1]   = min(lows[-1], live_price)
+        # wick رو فقط اگه لازمه گسترش بده، کوچیک نکن
+        highs[-1] = max(highs[-1], live_price)
+        lows[-1]  = min(lows[-1], live_price)
 
-    # ── تبدیل datetime به float برای مستطیل‌ها ──
+    # ── bar width ──
     times_num = [mdates.date2num(t) for t in times]
-    bar_w = (times_num[-1] - times_num[0]) / len(times_num) * 0.7
+    if len(times_num) > 1:
+        bar_w = (times_num[-1] - times_num[0]) / (len(times_num) - 1) * 0.7
+    else:
+        bar_w = 0.0007
 
     dec = asset.decimals
 
     # ── اندیکاتورها ──
-    ema21      = _ema(closes, 21)
-    ema50      = _ema(closes, 50)
+    ema21           = _ema(closes, 21)
+    ema50           = _ema(closes, 50)
     bb_up, bb_mid, bb_low = _bollinger(closes, 20)
-    rsi_vals   = _rsi(closes, 14)
-    macd_line, signal_line, histogram = _macd(closes)
+    rsi_vals        = _rsi(closes, 14)
+    macd_l, sig_l, hist_l = _macd(closes)
 
     # ── آمار ──
-    cur  = closes[-1]
+    cur   = closes[-1]
     start = closes[0]
-    hi   = max(highs)
-    lo   = min(lows)
-    chg  = cur - start
-    chgp = (chg / start * 100) if start else 0
+    hi    = max(highs)
+    lo    = min(lows)
+    chg   = cur - start
+    chgp  = (chg / start * 100) if start else 0
     is_up = chg >= 0
     main_c = UP_C if is_up else DN_C
 
-    last_rsi = next((v for v in reversed(rsi_vals) if v is not None), None)
-    last_macd = next((v for v in reversed(macd_line) if v is not None), None)
-    last_sig  = next((v for v in reversed(signal_line) if v is not None), None)
+    last_rsi  = next((v for v in reversed(rsi_vals) if v is not None), None)
+    last_macd = next((v for v in reversed(macd_l)   if v is not None), None)
 
-    # ══ Figure Layout ══
+    # ══ Figure ══
     plt.rcParams.update({
         "font.family": "DejaVu Sans",
         "font.size": 8,
         "axes.unicode_minus": False,
     })
-
     fig = plt.figure(figsize=(14, 10), facecolor=BG)
-    # 4 panels: candle(5) | volume(1) | RSI(1.5) | MACD(1.5)
     gs = fig.add_gridspec(
         4, 1,
         height_ratios=[5, 1, 1.5, 1.5],
@@ -414,10 +464,10 @@ def create_chart(symbol: str, tf_key: str = "1m",
         left=0.01, right=0.87,
         top=0.88, bottom=0.07,
     )
-    ax_c  = fig.add_subplot(gs[0])              # candles
-    ax_v  = fig.add_subplot(gs[1], sharex=ax_c) # volume
-    ax_r  = fig.add_subplot(gs[2], sharex=ax_c) # RSI
-    ax_m  = fig.add_subplot(gs[3], sharex=ax_c) # MACD
+    ax_c = fig.add_subplot(gs[0])
+    ax_v = fig.add_subplot(gs[1], sharex=ax_c)
+    ax_r = fig.add_subplot(gs[2], sharex=ax_c)
+    ax_m = fig.add_subplot(gs[3], sharex=ax_c)
 
     for ax in (ax_c, ax_v, ax_r, ax_m):
         ax.set_facecolor(BG)
@@ -426,161 +476,138 @@ def create_chart(symbol: str, tf_key: str = "1m",
         ax.yaxis.tick_right()
         for sp in ax.spines.values():
             sp.set_color(GRID_C)
-        ax.grid(True, color=GRID_C, linewidth=0.4, linestyle="-", zorder=0)
+        ax.grid(True, color=GRID_C, linewidth=0.4, zorder=0)
 
-    # ══ PANEL 1: Candles + BB + EMA ══
+    # ── candles ──
     _draw_candles(ax_c, times, opens, highs, lows, closes, bar_w)
 
-    # Bollinger Bands
-    def _plot_valid(ax, times, data, **kw):
-        pts = [(t, v) for t, v in zip(times, data) if v is not None]
+    # ── Bollinger ──
+    def _pv(ax, ts, data, **kw):
+        pts = [(t, v) for t, v in zip(ts, data) if v is not None]
         if pts:
             tt, vv = zip(*pts)
             ax.plot(tt, vv, **kw)
 
-    _plot_valid(ax_c, times, bb_up,  color=BB_C, linewidth=0.9, alpha=0.7,
-                linestyle="--", label="BB")
-    _plot_valid(ax_c, times, bb_mid, color=BB_C, linewidth=0.8, alpha=0.5,
-                linestyle=":")
-    _plot_valid(ax_c, times, bb_low, color=BB_C, linewidth=0.9, alpha=0.7,
-                linestyle="--")
+    _pv(ax_c, times, bb_up,  color=BB_C, lw=0.9, alpha=0.7, ls="--", label="BB(20)")
+    _pv(ax_c, times, bb_mid, color=BB_C, lw=0.7, alpha=0.5, ls=":")
+    _pv(ax_c, times, bb_low, color=BB_C, lw=0.9, alpha=0.7, ls="--")
 
-    # BB fill
-    bb_t = [t for t, u, l in zip(times, bb_up, bb_low) if u and l]
-    bb_u = [u for u in bb_up if u is not None]
-    bb_l = [l for l in bb_low if l is not None]
-    if bb_t:
-        ax_c.fill_between(bb_t, bb_u, bb_l, color=BB_C, alpha=0.04, zorder=1)
+    bb_pairs = [(t, u, l) for t, u, l in zip(times, bb_up, bb_low)
+                if u is not None and l is not None]
+    if bb_pairs:
+        bbt, bbu, bbl = zip(*bb_pairs)
+        ax_c.fill_between(bbt, bbu, bbl, color=BB_C, alpha=0.04, zorder=1)
 
-    # EMA
-    _plot_valid(ax_c, times, ema21, color=EMA21_C, linewidth=1.1,
-                alpha=0.85, label="EMA21", zorder=4)
-    _plot_valid(ax_c, times, ema50, color=EMA50_C, linewidth=1.1,
-                alpha=0.85, label="EMA50", zorder=4)
+    # ── EMA ──
+    _pv(ax_c, times, ema21, color=EMA21_C, lw=1.1, alpha=0.9, label="EMA21", zorder=4)
+    _pv(ax_c, times, ema50, color=EMA50_C, lw=1.1, alpha=0.9, label="EMA50", zorder=4)
 
-    # current price line
-    ax_c.axhline(cur, color=main_c, linestyle="-", alpha=0.3, linewidth=0.8, zorder=1)
+    # ── current price ──
+    ax_c.axhline(cur, color=main_c, ls="-", alpha=0.25, lw=0.8, zorder=1)
     ax_c.text(1.002, cur, f"{cur:.{dec}f}",
               transform=ax_c.get_yaxis_transform(),
               fontsize=8.5, fontweight="bold", color="white",
               va="center", ha="left",
               bbox=dict(boxstyle="round,pad=0.3", fc=main_c, ec="none"))
 
-    # HIGH / LOW labels
-    hi_idx = highs.index(hi)
-    lo_idx = lows.index(lo)
+    # ── H/L ──
+    hi_i = highs.index(hi)
+    lo_i = lows.index(lo)
     ax_c.annotate(f"H {hi:.{dec}f}",
-                  xy=(times[hi_idx], hi), xytext=(0, 10),
+                  xy=(times[hi_i], hi), xytext=(0, 10),
                   textcoords="offset points",
                   fontsize=7.5, color=EMA21_C, fontweight="bold", ha="center",
-                  arrowprops=dict(arrowstyle="-", color=EMA21_C, lw=0.6))
+                  arrowprops=dict(arrowstyle="-", color=EMA21_C, lw=0.5))
     ax_c.annotate(f"L {lo:.{dec}f}",
-                  xy=(times[lo_idx], lo), xytext=(0, -12),
+                  xy=(times[lo_i], lo), xytext=(0, -12),
                   textcoords="offset points",
                   fontsize=7.5, color="#29b6f6", fontweight="bold", ha="center",
-                  arrowprops=dict(arrowstyle="-", color="#29b6f6", lw=0.6))
+                  arrowprops=dict(arrowstyle="-", color="#29b6f6", lw=0.5))
 
-    # Y padding
     pr  = hi - lo
     pad = max(pr * 0.06, cur * 0.001)
     ax_c.set_ylim(lo - pad, hi + pad * 2.5)
     ax_c.legend(loc="upper left", fontsize=7,
-                facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C,
-                framealpha=0.8)
+                facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C, framealpha=0.8)
 
-    # ══ PANEL 2: Volume ══
-    vol_colors = [UP_C if c >= o else DN_C for c, o in zip(closes, opens)]
-    ax_v.bar(times, vols, color=vol_colors, alpha=0.5,
-             width=timedelta(seconds=bar_w * 86400 * 0.8))
+    # ── Volume ──
+    bar_td = timedelta(days=bar_w * 0.8)
+    vcols = [UP_C if c >= o else DN_C for c, o in zip(closes, opens)]
+    ax_v.bar(times, vols, color=vcols, alpha=0.5, width=bar_td)
     ax_v.set_yticks([])
     ax_v.text(1.002, 0.5, "VOL", transform=ax_v.transAxes,
               fontsize=7, color=DIM_C, va="center", ha="left")
 
-    # ══ PANEL 3: RSI ══
-    rsi_t = [t for t, v in zip(times, rsi_vals) if v is not None]
-    rsi_v = [v for v in rsi_vals if v is not None]
-    if rsi_v:
-        ax_r.plot(rsi_t, rsi_v, color="#ce93d8", linewidth=1.1, zorder=3)
-        ax_r.axhline(70, color=DN_C, linestyle="--", alpha=0.5, linewidth=0.7)
-        ax_r.axhline(50, color=DIM_C, linestyle=":",  alpha=0.3, linewidth=0.6)
-        ax_r.axhline(30, color=UP_C,  linestyle="--", alpha=0.5, linewidth=0.7)
-        ax_r.fill_between(rsi_t, rsi_v, 70,
-                          where=[v >= 70 for v in rsi_v],
+    # ── RSI ──
+    rsi_pts = [(t, v) for t, v in zip(times, rsi_vals) if v is not None]
+    if rsi_pts:
+        rt, rv = zip(*rsi_pts)
+        ax_r.plot(rt, rv, color="#ce93d8", lw=1.1, zorder=3)
+        ax_r.axhline(70, color=DN_C, ls="--", alpha=0.5, lw=0.7)
+        ax_r.axhline(50, color=DIM_C, ls=":",  alpha=0.3, lw=0.6)
+        ax_r.axhline(30, color=UP_C,  ls="--", alpha=0.5, lw=0.7)
+        ax_r.fill_between(rt, rv, 70, where=[v >= 70 for v in rv],
                           color=DN_C, alpha=0.1, zorder=1)
-        ax_r.fill_between(rsi_t, rsi_v, 30,
-                          where=[v <= 30 for v in rsi_v],
+        ax_r.fill_between(rt, rv, 30, where=[v <= 30 for v in rv],
                           color=UP_C, alpha=0.1, zorder=1)
         ax_r.set_ylim(10, 90)
         ax_r.set_yticks([30, 50, 70])
-        rsi_c = UP_C if last_rsi and last_rsi >= 50 else DN_C
-        if last_rsi:
+        if last_rsi is not None:
+            rc = UP_C if last_rsi >= 50 else DN_C
             ax_r.text(1.002, last_rsi, f"RSI {last_rsi:.0f}",
                       transform=ax_r.get_yaxis_transform(),
                       fontsize=7.5, fontweight="bold", color="white",
                       va="center", ha="left",
-                      bbox=dict(boxstyle="round,pad=0.25", fc=rsi_c, ec="none"))
+                      bbox=dict(boxstyle="round,pad=0.25", fc=rc, ec="none"))
 
-    # ══ PANEL 4: MACD ══
-    macd_t = [t for t, v in zip(times, macd_line) if v is not None]
-    macd_v = [v for v in macd_line if v is not None]
-    sig_t  = [t for t, v in zip(times, signal_line) if v is not None]
-    sig_v  = [v for v in signal_line if v is not None]
-    hist_t = [t for t, v in zip(times, histogram) if v is not None]
-    hist_v = [v for v in histogram if v is not None]
-
-    if macd_v:
-        ax_m.plot(macd_t, macd_v, color=MACD_C, linewidth=1.0, label="MACD", zorder=3)
-    if sig_v:
-        ax_m.plot(sig_t, sig_v, color=SIG_C, linewidth=0.9, label="Signal", zorder=3)
-    if hist_v:
-        hist_colors = [UP_C if v >= 0 else DN_C for v in hist_v]
-        ax_m.bar(hist_t, hist_v, color=hist_colors, alpha=0.5,
-                 width=timedelta(seconds=bar_w * 86400 * 0.8), zorder=2)
-
-    ax_m.axhline(0, color=DIM_C, linewidth=0.6, alpha=0.5)
+    # ── MACD ──
+    mpts = [(t, v) for t, v in zip(times, macd_l) if v is not None]
+    spts = [(t, v) for t, v in zip(times, sig_l)  if v is not None]
+    hpts = [(t, v) for t, v in zip(times, hist_l) if v is not None]
+    if mpts:
+        mt, mv = zip(*mpts); ax_m.plot(mt, mv, color=MACD_C, lw=1.0, label="MACD", zorder=3)
+    if spts:
+        st, sv = zip(*spts); ax_m.plot(st, sv, color=SIG_C,  lw=0.9, label="Sig",  zorder=3)
+    if hpts:
+        ht, hv = zip(*hpts)
+        hc = [UP_C if v >= 0 else DN_C for v in hv]
+        ax_m.bar(ht, hv, color=hc, alpha=0.5, width=bar_td, zorder=2)
+    ax_m.axhline(0, color=DIM_C, lw=0.6, alpha=0.5)
     ax_m.legend(loc="upper left", fontsize=6.5,
-                facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C,
-                framealpha=0.8)
-
+                facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT_C, framealpha=0.8)
     if last_macd is not None:
-        macd_c = UP_C if last_macd >= 0 else DN_C
+        mc = UP_C if last_macd >= 0 else DN_C
         ax_m.text(1.002, last_macd, f"{last_macd:.{max(1,dec-1)}f}",
                   transform=ax_m.get_yaxis_transform(),
                   fontsize=7, fontweight="bold", color="white",
                   va="center", ha="left",
-                  bbox=dict(boxstyle="round,pad=0.2", fc=macd_c, ec="none"))
+                  bbox=dict(boxstyle="round,pad=0.2", fc=mc, ec="none"))
     ax_m.text(1.002, 0.5, "MACD", transform=ax_m.transAxes,
               fontsize=7, color=DIM_C, va="center", ha="left")
 
-    # ══ X axis (Iran time) ══
+    # ── X axis ──
     ax_m.xaxis.set_major_formatter(mdates.DateFormatter(x_fmt, tz=IRAN_TZ))
     ax_m.xaxis.set_major_locator(mdates.AutoDateLocator(tz=IRAN_TZ))
     plt.setp(ax_m.xaxis.get_majorticklabels(), rotation=30, ha="right", fontsize=7)
     for a in (ax_c, ax_v, ax_r):
         plt.setp(a.xaxis.get_majorticklabels(), visible=False)
 
-    # ══ Title ══
+    # ── Title ──
     sign  = "+" if is_up else ""
     arrow = "▲" if is_up else "▼"
-    n_bars = len(closes)
-    t1 = (f"{asset.symbol}   {label_en}   "
-          f"({n_bars} candles)   |   Iran Time (UTC+3:30)")
-    t2 = (f"{arrow} {cur:.{dec}f}   {sign}{chg:.{dec}f}  ({sign}{chgp:.2f}%)   "
-          f"H: {hi:.{dec}f}   L: {lo:.{dec}f}")
-
-    rsi_str  = f"RSI: {last_rsi:.0f}" if last_rsi else ""
-    macd_str = f"MACD: {last_macd:.{max(1,dec-1)}f}" if last_macd else ""
-    t3 = f"EMA21 / EMA50 / BB(20,2)   {rsi_str}   {macd_str}"
-
-    fig.text(0.44, 0.935, t1, ha="center", va="bottom",
-             fontsize=10, fontweight="bold", color=TEXT_C)
-    fig.text(0.44, 0.908, t2, ha="center", va="bottom",
-             fontsize=10, color=main_c)
-    fig.text(0.44, 0.885, t3, ha="center", va="bottom",
-             fontsize=8, color=DIM_C)
-
-    fig.text(0.87, 0.01, "@ScalpBotPro",
-             ha="right", va="bottom", fontsize=6.5, color=GRID_C)
+    rsi_s  = f"RSI: {last_rsi:.0f}" if last_rsi else ""
+    macd_s = f"MACD: {last_macd:.{max(1,dec-1)}f}" if last_macd else ""
+    fig.text(0.44, 0.935,
+             f"{asset.symbol}   {label_en}   ({len(closes)} candles)   |   Iran Time (UTC+3:30)",
+             ha="center", fontsize=10, fontweight="bold", color=TEXT_C)
+    fig.text(0.44, 0.908,
+             f"{arrow} {cur:.{dec}f}   {sign}{chg:.{dec}f}  ({sign}{chgp:.2f}%)   "
+             f"H: {hi:.{dec}f}   L: {lo:.{dec}f}",
+             ha="center", fontsize=10, color=main_c)
+    fig.text(0.44, 0.885,
+             f"EMA21 / EMA50 / BB(20,2)   {rsi_s}   {macd_s}",
+             ha="center", fontsize=8, color=DIM_C)
+    fig.text(0.87, 0.01, "@ScalpBotPro", ha="right", fontsize=6.5, color=GRID_C)
 
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=BG)
@@ -593,13 +620,13 @@ def create_chart(symbol: str, tf_key: str = "1m",
 # ══════════════════════════════════════════════════════════════════════
 class CloudStorage:
     def __init__(self):
-        self._key   = JSONBIN_KEY
-        self._bin   = JSONBIN_BIN
-        self._url   = "https://api.jsonbin.io/v3/b"
-        self._hdrs  = {"X-Master-Key": self._key, "Content-Type": "application/json"}
-        self._lock  = threading.Lock()
+        self._key  = JSONBIN_KEY
+        self._bin  = JSONBIN_BIN
+        self._url  = "https://api.jsonbin.io/v3/b"
+        self._hdrs = {"X-Master-Key": self._key, "Content-Type": "application/json"}
+        self._lock = threading.Lock()
         self._dirty = False
-        self._data  = {
+        self._data = {
             "users": {}, "total_requests": 0,
             "price_history": {s: [] for s in ASSETS},
             "alerts": {}, "last_updated": None,
@@ -644,7 +671,7 @@ class CloudStorage:
         except Exception as e:
             log.error(f"CloudStorage save: {e}")
 
-    def ensure_user(self, uid: int, username: str = ""):
+    def ensure_user(self, uid, username=""):
         key = str(uid)
         with self._lock:
             if key not in self._data["users"]:
@@ -653,7 +680,7 @@ class CloudStorage:
                 }
                 self._dirty = True
 
-    def inc(self, uid: int):
+    def inc(self, uid):
         key = str(uid)
         with self._lock:
             if key in self._data["users"]:
@@ -661,9 +688,10 @@ class CloudStorage:
             self._data["total_requests"] = self._data.get("total_requests", 0) + 1
             self._dirty = True
 
-    def stats(self): return len(self._data.get("users", {})), self._data.get("total_requests", 0)
+    def stats(self):
+        return len(self._data.get("users", {})), self._data.get("total_requests", 0)
 
-    def push_price(self, sym: str, price: float):
+    def push_price(self, sym, price):
         with self._lock:
             h = self._data.setdefault("price_history", {}).setdefault(sym, [])
             h.append({"p": price, "t": now_ir().isoformat()})
@@ -671,30 +699,29 @@ class CloudStorage:
                 self._data["price_history"][sym] = h[-200:]
             self._dirty = True
 
-    def get_history(self, sym: str) -> list:
+    def get_history(self, sym):
         return list(self._data.get("price_history", {}).get(sym, []))
 
-    def add_alert(self, uid: int, sym: str, direction: str, target: float):
+    def add_alert(self, uid, sym, direction, target):
         key = str(uid)
         with self._lock:
-            alerts = self._data.setdefault("alerts", {})
-            alerts.setdefault(key, {}).setdefault(sym, []).append({
+            self._data.setdefault("alerts", {}).setdefault(key, {}).setdefault(sym, []).append({
                 "dir": direction, "target": target,
                 "at": now_ir().isoformat(), "done": False,
             })
             self._dirty = True
 
-    def get_alerts(self, uid: int) -> dict:
+    def get_alerts(self, uid):
         return dict(self._data.get("alerts", {}).get(str(uid), {}))
 
-    def mark_done(self, uid: int, sym: str, idx: int):
+    def mark_done(self, uid, sym, idx):
         try:
             with self._lock:
                 self._data["alerts"][str(uid)][sym][idx]["done"] = True
                 self._dirty = True
         except Exception: pass
 
-    def clear_done(self, uid: int):
+    def clear_done(self, uid):
         key = str(uid)
         with self._lock:
             for sym in list(self._data.get("alerts", {}).get(key, {}).keys()):
@@ -713,11 +740,11 @@ flask_app = Flask(__name__)
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
-    return f"ScalpBot Pro v3 | users={u} | reqs={r} | {str_ir()}"
+    return f"ScalpBot Pro v4 | users={u} | reqs={r} | {str_ir()}"
 
 @flask_app.route("/health")
 def health():
-    return jsonify(status="ok", time=str_ir(), version="v3")
+    return jsonify(status="ok", time=str_ir(), version="v4")
 
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
@@ -725,7 +752,7 @@ def _run_flask():
 # ══════════════════════════════════════════════════════════════════════
 # KEYBOARDS
 # ══════════════════════════════════════════════════════════════════════
-def kb_main() -> InlineKeyboardMarkup:
+def kb_main():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🥇 XAU/USD", callback_data="a:XAUUSD"),
          InlineKeyboardButton("💶 EUR/USD", callback_data="a:EURUSD")],
@@ -738,7 +765,7 @@ def kb_main() -> InlineKeyboardMarkup:
          InlineKeyboardButton("❓ راهنما",       callback_data="help")],
     ])
 
-def kb_asset(sym: str) -> InlineKeyboardMarkup:
+def kb_asset(sym):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 قیمت لحظه‌ای 🔄", callback_data=f"px:{sym}")],
         [InlineKeyboardButton("📈 نمودار",            callback_data=f"chart:{sym}")],
@@ -747,8 +774,8 @@ def kb_asset(sym: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🔙 منوی اصلی",        callback_data="main")],
     ])
 
-def kb_tf(sym: str) -> InlineKeyboardMarkup:
-    tf_labels = {
+def kb_tf(sym):
+    labels = {
         "1m":  "⚡ 1M  (scalp)",
         "5m":  "🔥 5M",
         "15m": "⏱ 15M",
@@ -756,34 +783,39 @@ def kb_tf(sym: str) -> InlineKeyboardMarkup:
         "4h":  "📆 4H",
         "1d":  "🗓 Daily",
     }
-    rows = []
-    row = []
-    for key, label in tf_labels.items():
+    rows, row = [], []
+    for key, label in labels.items():
         row.append(InlineKeyboardButton(label, callback_data=f"tf:{sym}:{key}"))
         if len(row) == 2:
             rows.append(row); row = []
-    if row:
-        rows.append(row)
+    if row: rows.append(row)
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"a:{sym}")])
     return InlineKeyboardMarkup(rows)
 
-def kb_chart_menu() -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(
-                f"{ASSETS[s].emoji} {ASSETS[s].symbol}",
-                callback_data=f"chart:{s}")] for s in ASSETS]
+def kb_chart_menu():
+    rows = [[InlineKeyboardButton(f"{ASSETS[s].emoji} {ASSETS[s].symbol}",
+                                  callback_data=f"chart:{s}")] for s in ASSETS]
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="main")])
     return InlineKeyboardMarkup(rows)
 
-def kb_after_chart(sym: str) -> InlineKeyboardMarkup:
+def kb_after_chart(sym):
+    """
+    FIX دکمه‌های قفل:
+    این keyboard روی پیام عکس قرار می‌گیرد.
+    callback_data ها مستقیماً به on_callback می‌روند — هیچ وابستگی به message_id ندارند.
+    مشکل قفل شدن دکمه‌ها از جای دیگری بود: وقتی edit_message_text روی caption photo صدا زده
+    می‌شد خطای BadRequest می‌داد و callback answer نمی‌شد.
+    حل: در on_callback همیشه q.answer() اول صدا زده می‌شود (قبلاً هم بود، مطمئن شدیم).
+    """
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 تایم دیگر",     callback_data=f"chart:{sym}"),
-         InlineKeyboardButton("💰 قیمت",           callback_data=f"px:{sym}")],
-        [InlineKeyboardButton("⬆️ هشدار صعودی",   callback_data=f"al_up:{sym}"),
-         InlineKeyboardButton("⬇️ هشدار نزولی",   callback_data=f"al_dn:{sym}")],
-        [InlineKeyboardButton("🔙 منوی اصلی",     callback_data="main")],
+        [InlineKeyboardButton("🔄 تایم دیگر",   callback_data=f"chart:{sym}"),
+         InlineKeyboardButton("💰 قیمت",         callback_data=f"px:{sym}")],
+        [InlineKeyboardButton("⬆️ هشدار صعودی", callback_data=f"al_up:{sym}"),
+         InlineKeyboardButton("⬇️ هشدار نزولی", callback_data=f"al_dn:{sym}")],
+        [InlineKeyboardButton("🏠 منوی اصلی",   callback_data="main")],
     ])
 
-def kb_alerts() -> InlineKeyboardMarkup:
+def kb_alerts():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🗑 پاک کردن تریگرشده‌ها", callback_data="alerts_clean")],
         [InlineKeyboardButton("🔙 منوی اصلی", callback_data="main")],
@@ -792,7 +824,7 @@ def kb_alerts() -> InlineKeyboardMarkup:
 # ══════════════════════════════════════════════════════════════════════
 # MESSAGE BUILDERS
 # ══════════════════════════════════════════════════════════════════════
-def _price_line(sym: str, price: float) -> str:
+def _price_line(sym, price):
     a = ASSETS[sym]
     hist = cloud.get_history(sym)
     if len(hist) >= 2:
@@ -809,7 +841,7 @@ def _price_line(sym: str, price: float) -> str:
         )
     return f"{a.emoji} <b>{a.symbol}</b>\n   <code>{price:.{a.decimals}f}</code>\n"
 
-def build_all_prices() -> str:
+def build_all_prices():
     lines = [f"💱 <b>Live Prices</b>  —  <i>{str_ir()}</i>\n"]
     for sym in ASSETS:
         p = get_price(sym)
@@ -821,7 +853,7 @@ def build_all_prices() -> str:
             lines.append(f"{a.emoji} <b>{a.symbol}</b>\n   ⚠️ <i>error</i>\n")
     return "\n".join(lines)
 
-def build_alerts_text(uid: int) -> str:
+def build_alerts_text(uid):
     alerts = cloud.get_alerts(uid)
     if not alerts:
         return (
@@ -836,37 +868,67 @@ def build_alerts_text(uid: int) -> str:
         for al in al_list:
             st = "✅" if al.get("done") else "⏳"
             dr = "⬆️" if al["dir"] == "up" else "⬇️"
-            lines.append(
-                f"{st} {a.emoji} {a.symbol}  {dr}  "
-                f"<code>{al['target']:.{a.decimals}f}</code>"
-            )
+            lines.append(f"{st} {a.emoji} {a.symbol}  {dr}  <code>{al['target']:.{a.decimals}f}</code>")
     lines.append("\n<i>بررسی هر ۵ دقیقه</i>")
     return "\n".join(lines)
 
 # ══════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════
-async def _reg(update: Update):
+async def _reg(update):
     u = update.effective_user
     cloud.ensure_user(u.id, u.username or "")
     cloud.inc(u.id)
 
-async def _send_chart(sym, tf_key, send_photo_fn, fail_reply_fn):
+
+async def _send_chart(sym, tf_key, chat_id, reply_to_msg_id, bot, fail_text_fn):
+    """
+    ساخت و ارسال چارت.
+    FIX دکمه‌های قفل:
+      - پیام loading با send_message ساخته میشه
+      - بعد از ارسال photo، پیام loading حذف میشه
+      - دکمه‌های kb_after_chart روی پیام photo کار می‌کنند چون
+        callback آنها مستقل از message_id است
+    """
+    # پیام loading
+    loading = await bot.send_message(
+        chat_id=chat_id,
+        text=f"📈 رسم نمودار {ASSETS[sym].symbol} ({TIMEFRAMES[tf_key][3]})…",
+        reply_to_message_id=reply_to_msg_id,
+    )
+
     live = get_price(sym, force=True)
     if live:
         cloud.push_price(sym, live)
+
     buf = create_chart(sym, tf_key, live_price=live)
     if not buf:
-        await fail_reply_fn(); return
+        await loading.edit_text(fail_text_fn(), reply_markup=kb_tf(sym))
+        return
+
     a = ASSETS[sym]
     _, _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
     live_str = f"{live:.{a.decimals}f}" if live else "N/A"
     caption = (
         f"{a.emoji} <b>{a.symbol}</b>   {label_fa}\n"
         f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
-        f"<i>Candles: EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
+        f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
     )
-    await send_photo_fn(buf, caption)
+
+    # ارسال photo با دکمه‌ها
+    await bot.send_photo(
+        chat_id=chat_id,
+        photo=buf,
+        caption=caption,
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb_after_chart(sym),
+    )
+
+    # حذف loading
+    try:
+        await loading.delete()
+    except Exception:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════
 # COMMAND HANDLERS
@@ -874,13 +936,12 @@ async def _send_chart(sym, tf_key, send_photo_fn, fail_reply_fn):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reg(update)
     await update.effective_message.reply_text(
-        "👋 <b>ScalpBot Pro v3</b>\n\n"
-        "قیمت لحظه‌ای فارکس و طلا — برای اسکلپرها.\n\n"
-        "📊 <b>چارت‌ها:</b> کندل‌استیک + EMA21/50 + BB + RSI + MACD\n"
-        "⏱ <b>تایم‌فریم‌ها:</b> 1m | 5m | 15m | 1h | 4h | 1d\n"
-        "📉 <b>۲۰۰ کندل آخر</b> در هر تایم‌فریم\n\n"
+        "👋 <b>ScalpBot Pro v4</b>\n\n"
+        "قیمت لحظه‌ای فارکس و طلا — ویژه اسکلپرها.\n\n"
+        "📊 <b>چارت:</b> کندل‌استیک | EMA21/50 | BB | RSI | MACD | Volume\n"
+        "⏱ <b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d  (۲۰۰ کندل آخر)\n\n"
         "منوی زیر 👇",
-        parse_mode=ParseMode.HTML, reply_markup=kb_main()
+        parse_mode=ParseMode.HTML, reply_markup=kb_main(),
     )
 
 async def cmd_price(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -896,28 +957,20 @@ async def cmd_chart(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tf  = (args[1].lower() if len(args) > 1 else "1m")
     if tf not in TIMEFRAMES: tf = "1m"
 
-    msg = await update.effective_message.reply_text("📈 در حال رسم نمودار...")
-
-    async def send(buf, caption):
-        await update.effective_message.reply_photo(
-            photo=buf, caption=caption,
-            parse_mode=ParseMode.HTML,
-            reply_markup=kb_after_chart(sym),
-        )
-        try: await msg.delete()
-        except Exception: pass
-
-    async def fail():
-        await msg.edit_text("⚠️ دریافت داده ناموفق.\n/chart XAUUSD 1m",
-                            reply_markup=kb_main())
-
-    await _send_chart(sym, tf, send, fail)
+    msg = update.effective_message
+    await _send_chart(
+        sym, tf,
+        chat_id=msg.chat_id,
+        reply_to_msg_id=msg.message_id,
+        bot=ctx.bot,
+        fail_text_fn=lambda: f"⚠️ دریافت داده ناموفق.\n/chart {sym} {tf}",
+    )
 
 async def cmd_alerts(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reg(update)
     await update.effective_message.reply_text(
         build_alerts_text(update.effective_user.id),
-        parse_mode=ParseMode.HTML, reply_markup=kb_alerts()
+        parse_mode=ParseMode.HTML, reply_markup=kb_alerts(),
     )
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -929,16 +982,25 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════
 async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q   = update.callback_query
-    await q.answer()
+    await q.answer()          # همیشه اول — جلوگیری از قفل دکمه
     d   = q.data
     uid = update.effective_user.id
     cloud.inc(uid)
 
+    # ── edit helper — فقط برای پیام‌های TEXT (نه photo) ──
     async def edit(text, kb=None):
-        kw = {"parse_mode": ParseMode.HTML}
-        if kb is not None: kw["reply_markup"] = kb
-        await q.edit_message_text(text, **kw)
+        try:
+            kw = {"parse_mode": ParseMode.HTML}
+            if kb is not None: kw["reply_markup"] = kb
+            await q.edit_message_text(text, **kw)
+        except Exception as e:
+            # اگر پیام photo بود یا خطای دیگر → send_message جدید
+            log.warning(f"edit_message_text failed: {e} — sending new message")
+            kw2 = {"chat_id": q.message.chat_id, "text": text, "parse_mode": ParseMode.HTML}
+            if kb is not None: kw2["reply_markup"] = kb
+            await ctx.bot.send_message(**kw2)
 
+    # ── main ──
     if d == "main":
         await edit("🏠 <b>منوی اصلی</b>\n\nیک گزینه انتخاب کنید:", kb_main()); return
 
@@ -950,29 +1012,24 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         u, r = cloud.stats()
         await edit(
             f"📊 <b>آمار</b>\n\n"
-            f"👥 کاربران: <b>{u}</b>\n"
-            f"📈 درخواست‌ها: <b>{r}</b>\n\n"
-            f"⏱ {str_ir()}",
+            f"👥 کاربران: <b>{u}</b>\n📈 درخواست‌ها: <b>{r}</b>\n\n⏱ {str_ir()}",
             kb_main()
         ); return
 
     if d == "help":
         await edit(
-            "❓ <b>راهنما — ScalpBot Pro v3</b>\n\n"
+            "❓ <b>راهنما — ScalpBot Pro v4</b>\n\n"
             "/start — منو\n/price — همه قیمت‌ها\n"
             "/chart [sym] [tf] — نمودار\n/alerts — هشدارها\n/cancel — لغو\n\n"
-            "<b>تایم‌فریم:</b> 1m | 5m | 15m | 1h | 4h | 1d\n"
-            "<b>نماد:</b> XAUUSD | EURUSD | USDJPY | GBPUSD\n\n"
-            "📊 <b>اندیکاتورها:</b>\n"
-            "• کندل‌استیک (OHLC)\n"
-            "• EMA 21 / EMA 50\n"
-            "• Bollinger Bands (20, 2)\n"
-            "• RSI (14)\n"
-            "• MACD (12, 26, 9)\n"
-            "• Volume\n\n"
-            "• ۲۰۰ کندل آخر هر تایم‌فریم\n"
-            "• قیمت از ۳ منبع با fallback\n"
-            "• هشدار قیمت (هر ۵ دقیقه)",
+            "<b>TF:</b> 1m | 5m | 15m | 1h | 4h | 1d\n"
+            "<b>sym:</b> XAUUSD | EURUSD | USDJPY | GBPUSD\n\n"
+            "📊 <b>اندیکاتور:</b>\n"
+            "• کندل‌استیک OHLC\n• EMA 21 / EMA 50\n"
+            "• Bollinger Bands (20, 2)\n• RSI (14)\n"
+            "• MACD (12, 26, 9)\n• Volume\n\n"
+            "• ۲۰۰ کندل آخر هر TF\n"
+            "• قیمت از ۳ منبع + fallback\n"
+            "• هشدار هر ۵ دقیقه",
             kb_main()
         ); return
 
@@ -1006,46 +1063,82 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await edit("📈 <b>انتخاب نمودار</b>\n\nدارایی را انتخاب کنید:", kb_chart_menu())
         return
 
+    # chart:{sym} — نمایش picker تایم‌فریم
     if d.startswith("chart:") and d.count(":") == 1:
         sym = d[6:]
         if sym not in ASSETS: return
         a = ASSETS[sym]
         await edit(
             f"📈 <b>تایم‌فریم — {a.symbol}</b>\n\n"
-            f"⚡ 1M = اسکلپ (کندل ۱ دقیقه‌ای)\n"
-            f"🔥 5M = کوتاه‌مدت\n"
-            f"⏱ 15M / 1H / 4H / Daily",
+            f"⚡ 1M = کندل ۱ دقیقه‌ای (اسکلپ)\n"
+            f"🔥 5M / ⏱ 15M / 📅 1H / 📆 4H / 🗓 Daily",
             kb_tf(sym)
         ); return
 
+    # tf:{sym}:{key} — ساخت چارت
     if d.startswith("tf:"):
         parts = d.split(":")
+        if len(parts) != 3: return
         sym, tf_key = parts[1], parts[2]
         if sym not in ASSETS or tf_key not in TIMEFRAMES: return
+
+        # پیام فعلی رو edit کن (loading placeholder)
+        try:
+            await q.edit_message_text(
+                f"📈 رسم نمودار {ASSETS[sym].symbol}  "
+                f"{TIMEFRAMES[tf_key][2]}…\n⏳"
+            )
+        except Exception:
+            pass
+
+        live = get_price(sym, force=True)
+        if live:
+            cloud.push_price(sym, live)
+
+        buf = create_chart(sym, tf_key, live_price=live)
+
+        if not buf:
+            # fail — edit همون پیام
+            try:
+                await q.edit_message_text(
+                    f"⚠️ دریافت داده ناموفق برای {ASSETS[sym].symbol}.\n"
+                    f"تایم‌فریم دیگری امتحان کنید.",
+                    reply_markup=kb_tf(sym)
+                )
+            except Exception:
+                await ctx.bot.send_message(
+                    chat_id=q.message.chat_id,
+                    text=f"⚠️ خطا در دریافت داده {ASSETS[sym].symbol}.",
+                    reply_markup=kb_tf(sym)
+                )
+            return
+
         a = ASSETS[sym]
-        await edit(f"📈 رسم نمودار {a.symbol}  {TIMEFRAMES[tf_key][2]}…")
+        _, _, label_en, label_fa, _ = TIMEFRAMES[tf_key]
+        live_str = f"{live:.{a.decimals}f}" if live else "N/A"
+        caption = (
+            f"{a.emoji} <b>{a.symbol}</b>   {label_fa}\n"
+            f"💰 Live: <code>{live_str}</code>   ⏱ {str_ir()}\n"
+            f"<i>Candles | EMA21/50 | BB(20,2) | RSI(14) | MACD(12,26,9)</i>"
+        )
 
-        async def send(buf, caption):
-            await q.message.reply_photo(
-                photo=buf, caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_after_chart(sym),
-            )
-            try: await q.message.delete()
-            except Exception: pass
+        # ارسال photo به عنوان پیام جدید (نه reply روی loading)
+        await ctx.bot.send_photo(
+            chat_id=q.message.chat_id,
+            photo=buf,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_after_chart(sym),
+        )
 
-        async def fail():
-            await q.message.reply_text(
-                f"⚠️ دریافت داده ناموفق برای {a.symbol}.\n"
-                f"تایم‌فریم دیگری امتحان کنید.",
-                reply_markup=kb_tf(sym)
-            )
-            try: await q.message.delete()
-            except Exception: pass
-
-        await _send_chart(sym, tf_key, send, fail)
+        # حذف پیام loading (که edit شده بود)
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
         return
 
+    # alert up/down
     if d.startswith("al_up:") or d.startswith("al_dn:"):
         direction = "up" if d.startswith("al_up") else "down"
         sym = d.split(":")[1]
@@ -1069,7 +1162,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if d == "alerts_clean":
         cloud.clear_done(uid)
-        await edit(build_alerts_text(uid) + "\n\n✅ تریگرشده‌ها پاک شدند.", kb_alerts())
+        await edit(build_alerts_text(uid) + "\n\n✅ پاک شد.", kb_alerts())
         return
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1099,7 +1192,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"{a.emoji} <b>{a.symbol}</b>\n"
         f"🎯 هدف: <code>{target:.{a.decimals}f}</code>  |  {dir_fa}\n\n"
         f"<i>هر ۵ دقیقه بررسی می‌شود.</i>",
-        parse_mode=ParseMode.HTML, reply_markup=kb_main()
+        parse_mode=ParseMode.HTML, reply_markup=kb_main(),
     )
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1108,16 +1201,16 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def check_alerts(app: Application):
     try:
         with cloud._lock:
-            alerts_snapshot = {
-                uid: {sym: list(al) for sym, al in sym_map.items()}
-                for uid, sym_map in cloud._data.get("alerts", {}).items()
+            snap = {
+                uid: {sym: list(al) for sym, al in smap.items()}
+                for uid, smap in cloud._data.get("alerts", {}).items()
             }
     except Exception as e:
-        log.error(f"alert snapshot: {e}"); return
+        log.error(f"alert snap: {e}"); return
 
-    for uid_str, sym_map in alerts_snapshot.items():
+    for uid_str, smap in snap.items():
         uid = int(uid_str)
-        for sym, al_list in sym_map.items():
+        for sym, al_list in smap.items():
             if not al_list or sym not in ASSETS: continue
             price = get_price(sym)
             if price is None: continue
@@ -1125,10 +1218,10 @@ async def check_alerts(app: Application):
             for idx, al in enumerate(al_list):
                 if al.get("done"): continue
                 target = al["target"]
-                fired = ((al["dir"] == "up" and price >= target) or
-                         (al["dir"] == "down" and price <= target))
+                fired = ((al["dir"] == "up"   and price >= target) or
+                         (al["dir"] == "down"  and price <= target))
                 if not fired: continue
-                arrow = "📈" if al["dir"] == "up" else "📉"
+                arrow  = "📈" if al["dir"] == "up" else "📉"
                 dir_fa = "بالا رفت ⬆️" if al["dir"] == "up" else "پایین آمد ⬇️"
                 try:
                     await app.bot.send_message(
@@ -1174,7 +1267,7 @@ async def on_startup(app: Application):
     for sym in ASSETS:
         p = get_price(sym)
         if p: cloud.push_price(sym, p)
-    log.info("ScalpBot Pro v3 warmup done")
+    log.info("ScalpBot Pro v4 ready")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1188,8 +1281,7 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════
 def main():
     if not BOT_TOKEN:
-        log.critical("BOT_TOKEN not set!")
-        sys.exit(1)
+        log.critical("BOT_TOKEN not set!"); sys.exit(1)
     cloud.load()
 
     app = (
@@ -1214,7 +1306,7 @@ def main():
     signal.signal(signal.SIGINT,  _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    log.info("ScalpBot Pro v3 starting...")
+    log.info("ScalpBot Pro v4 starting...")
     app.run_polling(
         allowed_updates=["message", "callback_query"],
         drop_pending_updates=True,
