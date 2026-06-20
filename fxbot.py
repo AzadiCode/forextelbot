@@ -22,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
+from telegram import WebAppInfo  # این خط رو اضافه کن
+
 import requests, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -164,6 +166,9 @@ TIMEFRAMES = {
 }
 
 MAX_BARS = 200
+
+# لینک Vercel یا GitHub Pages خودت رو اینجا بذار
+MINI_APP_URL = "https://2ccf8bab.proptrader-dashboard.pages.dev/"  # این رو عوض کن!
 
 # ══════════════════════════════════════════════════════════════════════
 # PRICE FETCHER
@@ -1089,16 +1094,11 @@ def _run_flask():
 # ══════════════════════════════════════════════════════════════════════
 def kb_main():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🥇 XAU/USD", callback_data="a:XAUUSD"),
-         InlineKeyboardButton("💶 EUR/USD", callback_data="a:EURUSD")],
-        [InlineKeyboardButton("💴 USD/JPY", callback_data="a:USDJPY"),
-         InlineKeyboardButton("💷 GBP/USD", callback_data="a:GBPUSD")],
-        [InlineKeyboardButton("📊 همه قیمت‌ها", callback_data="all"),
-         InlineKeyboardButton("🔔 هشدارها",     callback_data="my_alerts")],
-        [InlineKeyboardButton("📈 نمودار",       callback_data="chart_menu"),
-         InlineKeyboardButton("📉 آمار",         callback_data="stats")],
+        [InlineKeyboardButton("🚀 ورود به داشبورد حرفه‌ای", web_app=WebAppInfo(url=MINI_APP_URL))],
+        [InlineKeyboardButton("💰 همه قیمت‌ها", callback_data="all")],
+        [InlineKeyboardButton("📈 نمودار", callback_data="chart_menu")],
         [InlineKeyboardButton("💼 ترید پراپ 10K", callback_data="pt:main")],
-        [InlineKeyboardButton("❓ راهنما",       callback_data="help")],
+        [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ])
 
 def kb_asset(sym):
@@ -1973,6 +1973,77 @@ async def on_shutdown(app: Application):
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.error(f"error: {ctx.error}", exc_info=ctx.error)
 
+
+async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """دریافت دستورات از Mini App"""
+    import json
+    
+    data_str = update.effective_message.web_app_data.data
+    try:
+        data = json.loads(data_str)
+        action = data.get("action")
+        uid = update.effective_user.id
+        
+        if action == "request_new_trade":
+            # کاربر از Mini App دکمه + رو زده
+            acc = cloud.ensure_prop(uid)
+            if acc["status"] != "active":
+                await update.effective_message.reply_text(
+                    "⚠️ چالش شما فعال نیست. ابتدا چالش جدید شروع کنید.",
+                    reply_markup=kb_prop_main(acc)
+                )
+                return
+            
+            await update.effective_message.reply_text(
+                "🎯 <b>انتخاب دارایی برای ترید جدید</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_prop_assets()
+            )
+            
+        elif action == "close_position":
+            pid = str(data.get("pid"))
+            acc = cloud.ensure_prop(uid)
+            pos = acc["positions"].get(pid)
+            
+            if not pos:
+                await update.effective_message.reply_text(
+                    "⚠️ پوزیشن یافت نشد.",
+                    reply_markup=kb_prop_main(acc)
+                )
+                return
+            
+            prices = _all_prices(force=True)
+            price = prices.get(pos["sym"]) or get_price(pos["sym"], force=True)
+            
+            if not price:
+                await update.effective_message.reply_text(
+                    "⚠️ خطا در دریافت قیمت.",
+                    reply_markup=kb_prop_main(acc)
+                )
+                return
+            
+            a = ASSETS[pos["sym"]]
+            pnl_preview = _position_pnl(a, pos, price)
+            close_position_manual(acc, pid, price)
+            events = recompute(acc, prices)
+            cloud.save_prop(uid, acc)
+            
+            if events:
+                await _notify_events(ctx.bot, uid, events)
+            
+            sign = "+" if pnl_preview >= 0 else ""
+            await update.effective_message.reply_text(
+                f"✅ پوزیشن #{pid} بسته شد.\n"
+                f"P/L: <b>{sign}${pnl_preview:,.2f}</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_prop_main(acc)
+            )
+            
+    except json.JSONDecodeError:
+        log.error("Invalid JSON from WebApp")
+    except Exception as e:
+        log.error(f"WebApp handler error: {e}")
+
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
@@ -1997,6 +2068,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_error_handler(on_error)
 
     def _sig(s, f): cloud.save(force=True); sys.exit(0)
