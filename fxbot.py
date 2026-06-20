@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from telegram import WebAppInfo  # این خط رو اضافه کن
+from flask_cors import CORS
 
 import requests, matplotlib
 matplotlib.use("Agg")
@@ -1076,7 +1077,7 @@ def edit_position(acc: dict, pid: str, sl=None, tp=None, clear_sl=False, clear_t
 # FLASK
 # ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
-
+CORS(flask_app)  # اجازه دسترسی مینی‌اپ به API
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
@@ -1085,6 +1086,61 @@ def root():
 @flask_app.route("/health")
 def health():
     return jsonify(status="ok", time=str_ir(), version="v1.0-prop")
+
+@flask_app.route("/api/prop/<int:uid>")
+def api_prop_account(uid):
+    """API برای دریافت اطلاعات اکانت پراپ کاربر از طریق مینی‌اپ"""
+    try:
+        acc = cloud.get_prop(uid)
+        if not acc:
+            return jsonify({"error": "Account not found"}), 404
+        
+        prices = _all_prices()
+        floating = _floating_pnl(acc, prices)
+        equity = acc["balance"] + floating
+        
+        rule = _phase_rule(acc)
+        daily_floor = acc["daily_start_equity"] * (1 - rule["max_daily_loss_pct"])
+        total_floor = acc["initial_balance"] * (1 - rule["max_total_loss_pct"])
+        
+        positions_data = []
+        for pid, pos in acc["positions"].items():
+            a = ASSETS[pos["sym"]]
+            p = prices.get(pos["sym"]) or pos["open"]
+            pnl = _position_pnl(a, pos, p)
+            positions_data.append({
+                "pid": pid,
+                "sym": pos["sym"],
+                "dir": pos["dir"],
+                "lot": pos["lot"],
+                "open": pos["open"],
+                "now": p,
+                "sl": pos.get("sl"),
+                "tp": pos.get("tp"),
+                "pnl": pnl
+            })
+        
+        # محاسبه پیشرفت تارگت
+        target_total = acc["initial_balance"] * (rule["target_pct"] or 0)
+        target_progress = max(0, acc["balance"] - acc["initial_balance"])
+        
+        return jsonify({
+            "phase": acc["phase"],
+            "status": acc["status"],
+            "balance": acc["balance"],
+            "equity": equity,
+            "floating": floating,
+            "daily_room": equity - daily_floor,
+            "total_room": equity - total_floor,
+            "positions": positions_data,
+            "trading_days": len(acc.get("trading_days", [])),
+            "min_days": rule.get("min_days", 0),
+            "target_progress": target_progress,
+            "target_total": target_total
+        })
+    except Exception as e:
+        log.error(f"API error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
@@ -1979,21 +2035,20 @@ async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     import json
     
     data_str = update.effective_message.web_app_data.data
+    uid = update.effective_user.id
+    
     try:
         data = json.loads(data_str)
         action = data.get("action")
-        uid = update.effective_user.id
         
         if action == "request_new_trade":
-            # کاربر از Mini App دکمه + رو زده
             acc = cloud.ensure_prop(uid)
             if acc["status"] != "active":
                 await update.effective_message.reply_text(
-                    "⚠️ چالش شما فعال نیست. ابتدا چالش جدید شروع کنید.",
+                    "⚠️ چالش شما فعال نیست.",
                     reply_markup=kb_prop_main(acc)
                 )
                 return
-            
             await update.effective_message.reply_text(
                 "🎯 <b>انتخاب دارایی برای ترید جدید</b>",
                 parse_mode=ParseMode.HTML,
@@ -2006,20 +2061,13 @@ async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             pos = acc["positions"].get(pid)
             
             if not pos:
-                await update.effective_message.reply_text(
-                    "⚠️ پوزیشن یافت نشد.",
-                    reply_markup=kb_prop_main(acc)
-                )
+                await update.effective_message.reply_text("⚠️ پوزیشن یافت نشد.")
                 return
             
             prices = _all_prices(force=True)
             price = prices.get(pos["sym"]) or get_price(pos["sym"], force=True)
-            
             if not price:
-                await update.effective_message.reply_text(
-                    "⚠️ خطا در دریافت قیمت.",
-                    reply_markup=kb_prop_main(acc)
-                )
+                await update.effective_message.reply_text("⚠️ خطا در دریافت قیمت.")
                 return
             
             a = ASSETS[pos["sym"]]
@@ -2033,8 +2081,15 @@ async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             
             sign = "+" if pnl_preview >= 0 else ""
             await update.effective_message.reply_text(
-                f"✅ پوزیشن #{pid} بسته شد.\n"
-                f"P/L: <b>{sign}${pnl_preview:,.2f}</b>",
+                f"✅ پوزیشن #{pid} بسته شد.\nP/L: <b>{sign}${pnl_preview:,.2f}</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_prop_main(acc)
+            )
+            
+        elif action == "show_history":
+            acc = cloud.ensure_prop(uid)
+            await update.effective_message.reply_text(
+                build_history_text(acc),
                 parse_mode=ParseMode.HTML,
                 reply_markup=kb_prop_main(acc)
             )
