@@ -22,8 +22,6 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
-from telegram import WebAppInfo  # این خط رو اضافه کن
-
 import requests, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -1089,18 +1087,16 @@ def _run_flask():
 # ══════════════════════════════════════════════════════════════════════
 # KEYBOARDS — عمومی
 # ══════════════════════════════════════════════════════════════════════
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+# لینک.vercel.app خودت رو اینجا قرار بده
+MINI_APP_URL = "https://372c8023.proptrader-tel.pages.dev/"
+
 def kb_main():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 داشبورد گرافیکی", web_app=WebAppInfo(url="https://آدرس-کلودفلر-شما.pages.dev"))],
-        [InlineKeyboardButton("🥇 XAU/USD", callback_data="a:XAUUSD"),
-         InlineKeyboardButton("💶 EUR/USD", callback_data="a:EURUSD")],
-        [InlineKeyboardButton("💴 USD/JPY", callback_data="a:USDJPY"),
-         InlineKeyboardButton("💷 GBP/USD", callback_data="a:GBPUSD")],
-        [InlineKeyboardButton("📊 همه قیمت‌ها", callback_data="all"),
-         InlineKeyboardButton("🔔 هشدارها", callback_data="my_alerts")],
-        [InlineKeyboardButton("📈 نمودار", callback_data="chart_menu"),
-         InlineKeyboardButton("📉 آمار", callback_data="stats")],
-        [InlineKeyboardButton("💼 ترید پراپ 10K", callback_data="pt:main")],
+        [InlineKeyboardButton("🚀 ورود به داشبورد حرفه‌ای و زنده (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))],
+        # بقیه دکمه‌های قدیمی رو می‌تونی نگه داری یا حذف کنی
+        [InlineKeyboardButton("💰 قیمت‌های لحظه‌ای", callback_data="all")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ])
 
@@ -1976,51 +1972,38 @@ async def on_shutdown(app: Application):
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.error(f"error: {ctx.error}", exc_info=ctx.error)
 
-import json
 
-async def handle_web_app(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+import json
+from telegram.ext import MessageHandler, filters
+
+async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    data_str = update.effective_message.web_app_data.data
     try:
-        data = json.loads(update.effective_message.web_app_data.data)
-        uid = update.effective_user.id
+        data = json.loads(data_str)
         action = data.get("action")
+        uid = update.effective_user.id
         
-        if action == "open_trade":
-            sym = data.get("symbol")
-            direction = data.get("direction")
+        if action == "request_new_trade":
+            # کاربر در مینی اپ دکمه + رو زده، حالا منوی انتخاب جفت ارز رو براش بفرست
             await update.effective_message.reply_text(
-                f"🎯 <b>ترید جدید {sym}</b>\nجهت: {direction.upper()}\n\nحجم (لات) رو وارد کن:",
-                parse_mode=ParseMode.HTML
-            )
-            ctx.user_data["pending_trade"] = {"stage":"lot","sym":sym,"dir":direction}
-        elif action == "positions":
-            acc = cloud.ensure_prop(uid)
-            prices = _all_prices()
-            await update.effective_message.reply_text(
-                build_positions_text(acc, prices),
+                "🎯 <b>انتخاب دارایی برای ترید جدید</b>",
                 parse_mode=ParseMode.HTML,
-                reply_markup=kb_positions(acc)
-            )
-        elif action == "history":
-            acc = cloud.ensure_prop(uid)
-            await update.effective_message.reply_text(
-                build_history_text(acc),
-                parse_mode=ParseMode.HTML
-            )
-        elif action == "dashboard":
-            acc = cloud.ensure_prop(uid)
-            prices = _all_prices()
-            await update.effective_message.reply_text(
-                build_dashboard_text(acc, prices),
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_prop_main(acc)
-            )
-        elif action == "new_trade":
-            await update.effective_message.reply_text(
-                "🎯 دارایی رو انتخاب کن:",
                 reply_markup=kb_prop_assets()
             )
+            
+        elif action == "close_position":
+            pid = data.get("pid")
+            acc = cloud.ensure_prop(uid)
+            prices = _all_prices(force=True)
+            pos = acc["positions"].get(pid)
+            if pos:
+                price = prices.get(pos["sym"])
+                close_position_manual(acc, pid, price)
+                cloud.save_prop(uid, acc)
+                await update.effective_message.reply_text(f"✅ پوزیشن #{pid} با موفقیت از طریق داشبورد بسته شد.")
+                
     except Exception as e:
-        log.error(f"WebApp: {e}")
+        log.error(f"WebApp Data Error: {e}")
 
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
@@ -2046,7 +2029,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_error_handler(on_error)
 
     def _sig(s, f): cloud.save(force=True); sys.exit(0)
