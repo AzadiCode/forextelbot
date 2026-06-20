@@ -169,7 +169,7 @@ TIMEFRAMES = {
 MAX_BARS = 200
 
 # لینک Vercel یا GitHub Pages خودت رو اینجا بذار
-MINI_APP_URL = "https://04ff11fa.proptrader-tel.pages.dev/"  # این رو عوض کن!
+MINI_APP_URL = "https://89bcba93.proptrader-tel.pages.dev/"  # این رو عوض کن!
 
 # ══════════════════════════════════════════════════════════════════════
 # PRICE FETCHER
