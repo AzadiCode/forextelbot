@@ -23,7 +23,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from telegram import WebAppInfo  # این خط رو اضافه کن
-from flask_cors import CORS
 
 import requests, matplotlib
 matplotlib.use("Agg")
@@ -167,9 +166,6 @@ TIMEFRAMES = {
 }
 
 MAX_BARS = 200
-
-# لینک Vercel یا GitHub Pages خودت رو اینجا بذار
-MINI_APP_URL = "https://e5d4a3aa.fxtel.pages.dev/"  # این رو عوض کن!
 
 # ══════════════════════════════════════════════════════════════════════
 # PRICE FETCHER
@@ -1077,7 +1073,7 @@ def edit_position(acc: dict, pid: str, sl=None, tp=None, clear_sl=False, clear_t
 # FLASK
 # ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
-CORS(flask_app)  # اجازه دسترسی مینی‌اپ به API
+
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
@@ -1087,61 +1083,6 @@ def root():
 def health():
     return jsonify(status="ok", time=str_ir(), version="v1.0-prop")
 
-@flask_app.route("/api/prop/<int:uid>")
-def api_prop_account(uid):
-    """API برای دریافت اطلاعات اکانت پراپ کاربر از طریق مینی‌اپ"""
-    try:
-        acc = cloud.get_prop(uid)
-        if not acc:
-            return jsonify({"error": "Account not found"}), 404
-        
-        prices = _all_prices()
-        floating = _floating_pnl(acc, prices)
-        equity = acc["balance"] + floating
-        
-        rule = _phase_rule(acc)
-        daily_floor = acc["daily_start_equity"] * (1 - rule["max_daily_loss_pct"])
-        total_floor = acc["initial_balance"] * (1 - rule["max_total_loss_pct"])
-        
-        positions_data = []
-        for pid, pos in acc["positions"].items():
-            a = ASSETS[pos["sym"]]
-            p = prices.get(pos["sym"]) or pos["open"]
-            pnl = _position_pnl(a, pos, p)
-            positions_data.append({
-                "pid": pid,
-                "sym": pos["sym"],
-                "dir": pos["dir"],
-                "lot": pos["lot"],
-                "open": pos["open"],
-                "now": p,
-                "sl": pos.get("sl"),
-                "tp": pos.get("tp"),
-                "pnl": pnl
-            })
-        
-        # محاسبه پیشرفت تارگت
-        target_total = acc["initial_balance"] * (rule["target_pct"] or 0)
-        target_progress = max(0, acc["balance"] - acc["initial_balance"])
-        
-        return jsonify({
-            "phase": acc["phase"],
-            "status": acc["status"],
-            "balance": acc["balance"],
-            "equity": equity,
-            "floating": floating,
-            "daily_room": equity - daily_floor,
-            "total_room": equity - total_floor,
-            "positions": positions_data,
-            "trading_days": len(acc.get("trading_days", [])),
-            "min_days": rule.get("min_days", 0),
-            "target_progress": target_progress,
-            "target_total": target_total
-        })
-    except Exception as e:
-        log.error(f"API error: {e}")
-        return jsonify({"error": str(e)}), 500
-
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
@@ -1150,9 +1091,15 @@ def _run_flask():
 # ══════════════════════════════════════════════════════════════════════
 def kb_main():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 ورود به داشبورد حرفه‌ای", web_app=WebAppInfo(url=MINI_APP_URL))],
-        [InlineKeyboardButton("💰 همه قیمت‌ها", callback_data="all")],
-        [InlineKeyboardButton("📈 نمودار", callback_data="chart_menu")],
+        [InlineKeyboardButton("🚀 داشبورد گرافیکی", web_app=WebAppInfo(url="https://آدرس-کلودفلر-شما.pages.dev"))],
+        [InlineKeyboardButton("🥇 XAU/USD", callback_data="a:XAUUSD"),
+         InlineKeyboardButton("💶 EUR/USD", callback_data="a:EURUSD")],
+        [InlineKeyboardButton("💴 USD/JPY", callback_data="a:USDJPY"),
+         InlineKeyboardButton("💷 GBP/USD", callback_data="a:GBPUSD")],
+        [InlineKeyboardButton("📊 همه قیمت‌ها", callback_data="all"),
+         InlineKeyboardButton("🔔 هشدارها", callback_data="my_alerts")],
+        [InlineKeyboardButton("📈 نمودار", callback_data="chart_menu"),
+         InlineKeyboardButton("📉 آمار", callback_data="stats")],
         [InlineKeyboardButton("💼 ترید پراپ 10K", callback_data="pt:main")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ])
@@ -2029,75 +1976,51 @@ async def on_shutdown(app: Application):
 async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
     log.error(f"error: {ctx.error}", exc_info=ctx.error)
 
+import json
 
-async def handle_web_app_data(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """دریافت دستورات از Mini App"""
-    import json
-    
-    data_str = update.effective_message.web_app_data.data
-    uid = update.effective_user.id
-    
+async def handle_web_app(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
-        data = json.loads(data_str)
+        data = json.loads(update.effective_message.web_app_data.data)
+        uid = update.effective_user.id
         action = data.get("action")
         
-        if action == "request_new_trade":
-            acc = cloud.ensure_prop(uid)
-            if acc["status"] != "active":
-                await update.effective_message.reply_text(
-                    "⚠️ چالش شما فعال نیست.",
-                    reply_markup=kb_prop_main(acc)
-                )
-                return
+        if action == "open_trade":
+            sym = data.get("symbol")
+            direction = data.get("direction")
             await update.effective_message.reply_text(
-                "🎯 <b>انتخاب دارایی برای ترید جدید</b>",
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_prop_assets()
+                f"🎯 <b>ترید جدید {sym}</b>\nجهت: {direction.upper()}\n\nحجم (لات) رو وارد کن:",
+                parse_mode=ParseMode.HTML
             )
-            
-        elif action == "close_position":
-            pid = str(data.get("pid"))
+            ctx.user_data["pending_trade"] = {"stage":"lot","sym":sym,"dir":direction}
+        elif action == "positions":
             acc = cloud.ensure_prop(uid)
-            pos = acc["positions"].get(pid)
-            
-            if not pos:
-                await update.effective_message.reply_text("⚠️ پوزیشن یافت نشد.")
-                return
-            
-            prices = _all_prices(force=True)
-            price = prices.get(pos["sym"]) or get_price(pos["sym"], force=True)
-            if not price:
-                await update.effective_message.reply_text("⚠️ خطا در دریافت قیمت.")
-                return
-            
-            a = ASSETS[pos["sym"]]
-            pnl_preview = _position_pnl(a, pos, price)
-            close_position_manual(acc, pid, price)
-            events = recompute(acc, prices)
-            cloud.save_prop(uid, acc)
-            
-            if events:
-                await _notify_events(ctx.bot, uid, events)
-            
-            sign = "+" if pnl_preview >= 0 else ""
+            prices = _all_prices()
             await update.effective_message.reply_text(
-                f"✅ پوزیشن #{pid} بسته شد.\nP/L: <b>{sign}${pnl_preview:,.2f}</b>",
+                build_positions_text(acc, prices),
                 parse_mode=ParseMode.HTML,
-                reply_markup=kb_prop_main(acc)
+                reply_markup=kb_positions(acc)
             )
-            
-        elif action == "show_history":
+        elif action == "history":
             acc = cloud.ensure_prop(uid)
             await update.effective_message.reply_text(
                 build_history_text(acc),
+                parse_mode=ParseMode.HTML
+            )
+        elif action == "dashboard":
+            acc = cloud.ensure_prop(uid)
+            prices = _all_prices()
+            await update.effective_message.reply_text(
+                build_dashboard_text(acc, prices),
                 parse_mode=ParseMode.HTML,
                 reply_markup=kb_prop_main(acc)
             )
-            
-    except json.JSONDecodeError:
-        log.error("Invalid JSON from WebApp")
+        elif action == "new_trade":
+            await update.effective_message.reply_text(
+                "🎯 دارایی رو انتخاب کن:",
+                reply_markup=kb_prop_assets()
+            )
     except Exception as e:
-        log.error(f"WebApp handler error: {e}")
+        log.error(f"WebApp: {e}")
 
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
@@ -2123,7 +2046,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app))
     app.add_error_handler(on_error)
 
     def _sig(s, f): cloud.save(force=True); sys.exit(0)
