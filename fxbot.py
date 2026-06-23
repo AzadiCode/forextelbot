@@ -22,6 +22,11 @@ from telegram.ext import (
     CallbackQueryHandler, ContextTypes, filters,
 )
 
+import hmac
+import hashlib
+from urllib.parse import parse_qs, unquote
+from flask import request
+
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     level=logging.INFO, stream=sys.stdout,
@@ -804,7 +809,103 @@ def edit_position(acc: dict, pid: str, sl=None, tp=None, clear_sl=False, clear_t
     elif tp is not None: pos["tp"] = tp
     return True
 
+# ══════════════════════════════════════════════════════════════════════
+# TELEGRAM WEBAPP AUTHENTICATION
+# ══════════════════════════════════════════════════════════════════════
+def _validate_webapp_init_data(init_data: str, bot_token: str) -> Optional[dict]:
+    """
+    تایید هویت کاربر از طریق initData تلگرام (مستندات رسمی Telegram)
+    اگر امضا معتبر باشه، dict کاربر رو برمیگردونه
+    """
+    if not init_data or not bot_token:
+        return None
+    try:
+        parsed = parse_qs(init_data, keep_blank_values=True)
+        received_hash = parsed.get('hash', [''])[0]
+        if not received_hash:
+            log.warning("WebApp auth failed: no hash in initData")
+            return None
+
+        # ساخت data-check-string (ترتیب الفبایی)
+        items = []
+        for k, v in parsed.items():
+            if k != 'hash':
+                items.append(f"{k}={unquote(v[0])}")
+        items.sort()
+        data_check_string = "\n".join(items)
+
+        # secret key = HMAC-SHA256("WebAppData", bot_token)
+        secret_key = hmac.new(
+            b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256
+        ).digest()
+        calculated_hash = hmac.new(
+            secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+        if calculated_hash != received_hash:
+            log.warning("WebApp auth failed: hash mismatch")
+            return None
+
+        # بررسی auth_date (نباید قدیمی‌تر از ۲۴ ساعت باشه)
+        try:
+            auth_date = int(parsed.get('auth_date', ['0'])[0])
+            if time.time() - auth_date > 86400:
+                log.warning("WebApp auth failed: auth_date too old")
+                return None
+        except (ValueError, IndexError):
+            return None
+
+        # استخراج اطلاعات کاربر
+        user_str = parsed.get('user', [''])[0]
+        if not user_str:
+            return None
+        return json.loads(user_str)
+
+    except Exception as e:
+        log.error(f"WebApp validation error: {e}")
+        return None
+
+
+def _get_api_user() -> Optional[dict]:
+    """دریافت کاربر احراز هویت شده از هدر X-Telegram-Init-Data"""
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    return _validate_webapp_init_data(init_data, BOT_TOKEN)
+
+
+def _notify_sync_thread(uid: int, events: list):
+    """ارسال همگام اعلان‌ها از Flask (چون Flask async نیست)"""
+    for ev in events:
+        try:
+            text = ""
+            if ev["type"] in ("sl", "tp"):
+                a = ASSETS[ev["sym"]]
+                tag = "🛑 استاپ‌لاس" if ev["type"] == "sl" else "🎯 تارگت"
+                sign = "+" if ev["pnl"] >= 0 else ""
+                text = f"{tag} فعال شد!\n{a.emoji} {a.symbol}\nP/L: <b>{sign}${ev['pnl']:,.2f}</b>"
+            elif ev["type"] == "fail":
+                text = "💀 <b>چالش ناموفق بود!</b>"
+            elif ev["type"] == "pass":
+                text = "🎉 <b>تبریک! فاز پاس شد!</b>"
+            if text:
+                requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    json={"chat_id": uid, "text": text, "parse_mode": "HTML"},
+                    timeout=10,
+                )
+        except Exception as e:
+            log.error(f"_notify_sync_thread: {e}")
+
 flask_app = Flask(__name__)
+
+# ══════════════════════════════════════════════════════════════════════
+# CORS (برای ارتباط مینی‌اپ با بک‌اند)
+# ══════════════════════════════════════════════════════════════════════
+@flask_app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
+    return response
 
 @flask_app.route("/")
 def root():
@@ -815,10 +916,160 @@ def root():
 def health():
     return jsonify(status="ok", time=str_ir(), version="v2.0-prop")
 
+# ══════════════════════════════════════════════════════════════════════
+# MINI APP API ENDPOINTS (LIVE DATA)
+# ══════════════════════════════════════════════════════════════════════
+
+@flask_app.route("/api/dashboard", methods=["POST"])
+def api_dashboard():
+    """دریافت داشبورد کامل کاربر (بالانس، پوزیشن‌ها، قوانین فاز)"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    uid = user.get("id")
+    cloud.ensure_user(uid, user.get("username", ""))
+    acc = cloud.ensure_prop(uid)
+    prices = _all_prices(force=True)
+    events = recompute(acc, prices)
+    cloud.save_prop(uid, acc)
+
+    # ارسال اعلان‌ها در ترد جداگانه
+    if events:
+        threading.Thread(target=_notify_sync_thread, args=(uid, events), daemon=True).start()
+
+    rule = _phase_rule(acc)
+    floating = _floating_pnl(acc, prices)
+    equity = acc["balance"] + floating
+
+    positions = []
+    for pid, pos in acc["positions"].items():
+        a = ASSETS[pos["sym"]]
+        p = prices.get(pos["sym"])
+        pnl = _position_pnl(a, pos, p) if p else 0.0
+        positions.append({
+            "id": pid,
+            "symbol": a.symbol,
+            "emoji": a.emoji,
+            "dir": pos["dir"],
+            "lot": pos["lot"],
+            "open": pos["open"],
+            "current": p,
+            "sl": pos.get("sl"),
+            "tp": pos.get("tp"),
+            "pnl": pnl,
+            "decimals": a.decimals,
+        })
+
+    # تاریخچه (۱۰ معامله آخر)
+    history = []
+    for h in list(reversed(acc.get("history", [])))[:10]:
+        a = ASSETS[h["sym"]]
+        history.append({
+            "symbol": a.symbol,
+            "emoji": a.emoji,
+            "dir": h["dir"],
+            "lot": h["lot"],
+            "open": h["open"],
+            "close": h["close"],
+            "pnl": h["pnl"],
+            "reason": h["reason"],
+            "close_time": h["close_time"],
+            "decimals": a.decimals,
+        })
+
+    return jsonify({
+        "user": {
+            "id": uid,
+            "username": user.get("username", ""),
+            "first_name": user.get("first_name", ""),
+        },
+        "phase": acc["phase"],
+        "phase_tag": rule["tag"],
+        "status": acc["status"],
+        "balance": acc["balance"],
+        "equity": equity,
+        "floating": floating,
+        "initial_balance": acc["initial_balance"],
+        "daily_start_equity": acc["daily_start_equity"],
+        "trading_days": len(acc.get("trading_days", [])),
+        "rules": {
+            "max_daily_loss_pct": rule["max_daily_loss_pct"],
+            "max_total_loss_pct": rule["max_total_loss_pct"],
+            "target_pct": rule["target_pct"],
+            "min_days": rule["min_days"],
+        },
+        "positions": positions,
+        "history": history,
+        "ref_code": cloud.get_ref_code(uid),
+        "points": cloud.get_user_points(uid),
+        "time": str_ir(),
+    })
+
+
+@flask_app.route("/api/close_position", methods=["POST"])
+def api_close_position():
+    """بستن پوزیشن از طریق مینی‌اپ"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    pid = str(data.get("pid", ""))
+    uid = user.get("id")
+
+    acc = cloud.ensure_prop(uid)
+    pos = acc["positions"].get(pid)
+    if not pos:
+        return jsonify({"error": "position not found", "ok": False}), 404
+
+    prices = _all_prices(force=True)
+    price = prices.get(pos["sym"]) or get_price(pos["sym"], force=True)
+    if price is None:
+        return jsonify({"error": "price unavailable", "ok": False}), 503
+
+    a = ASSETS[pos["sym"]]
+    pnl = _position_pnl(a, pos, price)
+    close_position_manual(acc, pid, price)
+    events = recompute(acc, prices)
+    cloud.save_prop(uid, acc)
+
+    if events:
+        threading.Thread(target=_notify_sync_thread, args=(uid, events), daemon=True).start()
+
+    return jsonify({
+        "ok": True,
+        "pid": pid,
+        "pnl": pnl,
+        "symbol": a.symbol,
+    })
+
+
+@flask_app.route("/api/leaderboard", methods=["POST"])
+def api_leaderboard():
+    """دریافت لیدربورد هفتگی"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    lb = cloud.get_leaderboard()
+    return jsonify({"leaderboard": lb})
+
+
+@flask_app.route("/api/signals", methods=["POST"])
+def api_signals():
+    """دریافت سیگنال‌های VIP"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    sigs = cloud.get_signals()
+    return jsonify({"signals": sigs})
+
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://e940dc00.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://e95cc006.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
