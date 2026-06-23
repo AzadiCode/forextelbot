@@ -433,6 +433,13 @@ PROP_INITIAL_BALANCE = 10_000.0
 PROP_LEVERAGE = 100
 PROP_MIN_LOT = 0.01
 PROP_MAX_LOT = 20.0
+
+PROP_INITIAL_BALANCE = 10_000.0
+PROP_LEVERAGE         = 100          # 1:100
+PROP_MIN_LOT          = 0.01
+PROP_MAX_LOT          = 20.0
+PROP_COMMISSION_PER_LOT = 6.0        # 💰 $6 کمیسیون به ازای هر لات استاندارد (بروکر واقعی)
+
 PROP_PHASES = {
     1: {"name": "فاز اول", "tag": "PHASE 1", "target_pct": 0.08,
         "max_daily_loss_pct": 0.05, "max_total_loss_pct": 0.10, "min_days": 4},
@@ -784,13 +791,23 @@ def open_position(acc: dict, sym: str, direction: str, lot: float, price: float,
     a = ASSETS[sym]; prices = prices or {}
     margin_need = _margin_required(a, lot, price)
     used = _used_margin(acc, prices)
+    
+    # 💰 محاسبه کمیسیون (کسر هنگام باز شدن - مثل بروکر واقعی)
+    commission = lot * PROP_COMMISSION_PER_LOT
+    
     equity = acc["balance"] + _floating_pnl(acc, prices)
-    if margin_need > (equity - used): return None, "insufficient_margin"
+    if (margin_need + commission) > (equity - used):
+        return None, "insufficient_margin"
+    
+    # کسر کمیسیون از بالانس
+    acc["balance"] -= commission
+    
     pid = str(acc.get("next_id", 1)); acc["next_id"] = int(pid) + 1
     acc["positions"][pid] = {
         "sym": sym, "dir": direction, "lot": lot,
         "open": price, "sl": sl, "tp": tp,
         "open_time": now_ir().isoformat(),
+        "commission": commission,  # 💾 ذخیره کمیسیون
     }
     return pid, None
 
@@ -1160,10 +1177,60 @@ def api_edit_position():
     
     return jsonify({"ok": ok, "pid": pid, "sl": sl, "tp": tp})
 
+@flask_app.route("/api/chart_positions", methods=["POST"])
+def api_chart_positions():
+    """
+    دریافت پوزیشن‌های باز کاربر برای رسم خطوط روی چارت TradingView
+    شامل: Entry, SL, TP, P/L, Commission
+    """
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    uid = user.get("id")
+    acc = cloud.ensure_prop(uid)
+    prices = _all_prices(force=True)
+    events = recompute(acc, prices)
+    cloud.save_prop(uid, acc)
+    
+    if events:
+        threading.Thread(target=_notify_sync_thread, args=(uid, events), daemon=True).start()
+
+    positions_for_chart = []
+    for pid, pos in acc["positions"].items():
+        a = ASSETS[pos["sym"]]
+        p = prices.get(pos["sym"])
+        pnl_raw = _position_pnl(a, pos, p) if p else 0.0
+        commission = pos.get("commission", 0.0)
+        pnl_net = pnl_raw  # commission قبلاً هنگام باز شدن کسر شده
+        
+        positions_for_chart.append({
+            "id": pid,
+            "symbol": a.symbol,
+            "symbol_key": pos["sym"],
+            "emoji": a.emoji,
+            "dir": pos["dir"],
+            "lot": pos["lot"],
+            "open": pos["open"],
+            "current": p,
+            "sl": pos.get("sl"),
+            "tp": pos.get("tp"),
+            "pnl_raw": pnl_raw,
+            "pnl_net": pnl_net,
+            "commission": commission,
+            "decimals": a.decimals,
+        })
+
+    return jsonify({
+        "positions": positions_for_chart,
+        "commission_per_lot": PROP_COMMISSION_PER_LOT,
+        "time": str_ir(),
+    })
+
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://80d0cf0e.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://786635e9.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
