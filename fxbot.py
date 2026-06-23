@@ -1066,10 +1066,104 @@ def api_signals():
     sigs = cloud.get_signals()
     return jsonify({"signals": sigs})
 
+@flask_app.route("/api/open_position", methods=["POST"])
+def api_open_position():
+    """باز کردن پوزیشن جدید از طریق مینی‌اپ"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    uid = user.get("id")
+    
+    sym = (data.get("symbol") or "").upper().replace("/", "")
+    direction = (data.get("direction") or "").lower()
+    
+    try:
+        lot = float(data.get("lot", 0))
+        sl_raw = data.get("sl")
+        tp_raw = data.get("tp")
+        sl = float(sl_raw) if sl_raw not in (None, "", "null") else None
+        tp = float(tp_raw) if tp_raw not in (None, "", "null") else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid numbers", "ok": False}), 400
+
+    if sym not in ASSETS:
+        return jsonify({"error": "invalid symbol", "ok": False}), 400
+    if direction not in ("buy", "sell"):
+        return jsonify({"error": "invalid direction", "ok": False}), 400
+    if not (PROP_MIN_LOT <= lot <= PROP_MAX_LOT):
+        return jsonify({"error": f"lot must be {PROP_MIN_LOT}-{PROP_MAX_LOT}", "ok": False}), 400
+
+    acc = cloud.ensure_prop(uid)
+    if acc["status"] != "active":
+        return jsonify({"error": "challenge not active", "ok": False}), 400
+
+    price = get_price(sym, force=True)
+    if price is None:
+        return jsonify({"error": "price unavailable", "ok": False}), 503
+
+    prices = _all_prices()
+    pid, err = open_position(acc, sym, direction, lot, price, sl=sl, tp=tp, prices=prices)
+    
+    if err == "insufficient_margin":
+        return jsonify({"error": "insufficient margin", "ok": False}), 400
+    if err:
+        return jsonify({"error": err, "ok": False}), 500
+
+    events = recompute(acc, prices)
+    cloud.save_prop(uid, acc)
+    if events:
+        threading.Thread(target=_notify_sync_thread, args=(uid, events), daemon=True).start()
+
+    a = ASSETS[sym]
+    return jsonify({
+        "ok": True,
+        "pid": pid,
+        "symbol": a.symbol,
+        "direction": direction,
+        "lot": lot,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+    })
+
+
+@flask_app.route("/api/edit_position", methods=["POST"])
+def api_edit_position():
+    """ویرایش SL/TP پوزیشن از طریق مینی‌اپ"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    uid = user.get("id")
+    pid = str(data.get("pid", ""))
+
+    acc = cloud.ensure_prop(uid)
+    if pid not in acc["positions"]:
+        return jsonify({"error": "position not found", "ok": False}), 404
+
+    try:
+        sl_raw = data.get("sl")
+        tp_raw = data.get("tp")
+        clear_sl = data.get("clear_sl", False)
+        clear_tp = data.get("clear_tp", False)
+        
+        sl = float(sl_raw) if sl_raw not in (None, "", "null") and not clear_sl else None
+        tp = float(tp_raw) if tp_raw not in (None, "", "null") and not clear_tp else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "invalid numbers", "ok": False}), 400
+
+    ok = edit_position(acc, pid, sl=sl, tp=tp, clear_sl=clear_sl, clear_tp=clear_tp)
+    cloud.save_prop(uid, acc)
+    
+    return jsonify({"ok": ok, "pid": pid, "sl": sl, "tp": tp})
+
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://e95cc006.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://80d0cf0e.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
