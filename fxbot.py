@@ -1236,6 +1236,86 @@ def api_chart_positions():
         "time": str_ir(),
     })
 
+@flask_app.route("/api/live_candle", methods=["POST"])
+def api_live_candle():
+    """
+    دریافت آخرین کندل در حال تشکیل (Live Candle) برای آپدیت زنده چارت.
+    این endpoint فقط یک کندل برمی‌گرداند تا بسیار سریع باشد.
+    """
+    try:
+        user = _get_api_user()
+        if not user:
+            return jsonify({"error": "unauthorized"}), 401
+            
+        data = request.get_json() or {}
+        sym = (data.get("symbol") or "XAUUSD").upper().replace("/", "")
+        tf = str(data.get("timeframe", "5"))
+        
+        if sym not in ASSETS:
+            return jsonify({"error": "invalid symbol", "candle": None}), 400
+            
+        # نگاشت تایم‌فریم‌های فرانت‌اند به فرمت TIMEFRAMES بک‌اند
+        tf_key_map = {"1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", "D": "1d"}
+        tf_key = tf_key_map.get(tf, "5m")
+        
+        if tf_key not in TIMEFRAMES:
+            tf_key = "5m"
+            
+        interval, range_, _, _, _ = TIMEFRAMES[tf_key]
+        asset = ASSETS[sym]
+        
+        # دریافت آخرین قیمت زنده
+        live_price = get_price(sym, force=True)
+        if live_price is None:
+            return jsonify({"error": "price unavailable", "candle": None}), 503
+        
+        # دریافت OHLC (فقط برای گرفتن آخرین کندل بسته شده)
+        ohlc = fetch_ohlc_asset(asset, interval, range_)
+        if not ohlc:
+            return jsonify({"error": "data unavailable", "candle": None}), 200
+            
+        times, opens, highs, lows, closes, vols = ohlc
+        if len(times) < 2:
+            return jsonify({"error": "insufficient data", "candle": None}), 200
+        
+        # محاسبه زمان آخرین کندل در حال تشکیل
+        # آخرین کندل بسته شده در times[-1] است
+        last_closed_time = times[-1]
+        
+        # محاسبه بازه زمانی
+        interval_map = {
+            "1m": timedelta(minutes=1), "5m": timedelta(minutes=5),
+            "15m": timedelta(minutes=15), "1h": timedelta(hours=1),
+            "4h": timedelta(hours=4), "1d": timedelta(days=1),
+        }
+        td = interval_map.get(interval, timedelta(minutes=5))
+        
+        # زمان کندل در حال تشکیل = آخرین کندل بسته شده + بازه زمانی
+        live_candle_time = last_closed_time + td
+        
+        # آخرین قیمت بسته شده به عنوان Open کندل جدید
+        last_close = closes[-1]
+        
+        # کندل در حال تشکیل با قیمت زنده
+        candle = {
+            "time": int(live_candle_time.timestamp()),
+            "open": round(last_close, asset.decimals),
+            "high": round(max(last_close, live_price), asset.decimals),
+            "low": round(min(last_close, live_price), asset.decimals),
+            "close": round(live_price, asset.decimals),
+        }
+        
+        return jsonify({
+            "candle": candle,
+            "symbol": sym,
+            "live_price": round(live_price, asset.decimals),
+            "time": str_ir()
+        })
+        
+    except Exception as e:
+        log.error(f"api_live_candle error: {e}")
+        return jsonify({"error": str(e), "candle": None}), 500
+
 @flask_app.route("/api/ohlc", methods=["POST"])
 def api_ohlc():
     """دریافت داده‌های کندل (OHLC) برای رسم چارت در مینی‌اپ"""
@@ -1279,7 +1359,7 @@ def api_ohlc():
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://359c4e7a.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://ad8a3d5f.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
