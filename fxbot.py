@@ -933,6 +933,15 @@ def root():
 def health():
     return jsonify(status="ok", time=str_ir(), version="v2.0-prop")
 
+@flask_app.route('/api/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    """هندل کردن درخواست‌های CORS Preflight مرورگر"""
+    response = flask_app.make_response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
+    return response
+
 # ══════════════════════════════════════════════════════════════════════
 # MINI APP API ENDPOINTS (LIVE DATA)
 # ══════════════════════════════════════════════════════════════════════
@@ -1270,7 +1279,7 @@ def api_ohlc():
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://aeec619f.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://359c4e7a.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
