@@ -1227,10 +1227,50 @@ def api_chart_positions():
         "time": str_ir(),
     })
 
+@flask_app.route("/api/ohlc", methods=["POST"])
+def api_ohlc():
+    """دریافت داده‌های کندل (OHLC) برای رسم چارت در مینی‌اپ"""
+    user = _get_api_user()
+    if not user:
+        return jsonify({"error": "unauthorized"}), 401
+        
+    data = request.get_json() or {}
+    sym = (data.get("symbol") or "XAUUSD").upper().replace("/", "")
+    tf = str(data.get("timeframe", "5"))
+    
+    if sym not in ASSETS:
+        return jsonify({"error": "invalid symbol", "candles": []}), 400
+        
+    # نگاشت تایم‌فریم‌های فرانت‌اند به فرمت TIMEFRAMES بک‌اند
+    tf_key_map = {"1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", "D": "1d"}
+    tf_key = tf_key_map.get(tf, "5m")
+    
+    interval, range_, _, _, _ = TIMEFRAMES[tf_key]
+    asset = ASSETS[sym]
+    
+    ohlc = fetch_ohlc_asset(asset, interval, range_)
+    if not ohlc:
+        return jsonify({"error": "data unavailable", "candles": []}), 200
+        
+    times, opens, highs, lows, closes, vols = ohlc
+    
+    candles = []
+    for i in range(len(times)):
+        # Lightweight Charts زمان را به صورت UNIX seconds (UTC) نیاز دارد
+        candles.append({
+            "time": int(times[i].timestamp()),
+            "open": round(opens[i], asset.decimals),
+            "high": round(highs[i], asset.decimals),
+            "low": round(lows[i], asset.decimals),
+            "close": round(closes[i], asset.decimals)
+        })
+        
+    return jsonify({"candles": candles, "symbol": sym})
+
 def _run_flask():
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-MINI_APP_URL = "https://telproop10.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://telproop11.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
