@@ -944,6 +944,11 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
     return response
 
+@flask_app.route("/", defaults={"path": ""}, methods=["OPTIONS"])
+@flask_app.route("/<path:path>", methods=["OPTIONS"])
+def handle_options(path):
+    return "", 204
+
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
