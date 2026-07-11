@@ -944,11 +944,6 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
     return response
 
-@flask_app.route("/", defaults={"path": ""}, methods=["OPTIONS"])
-@flask_app.route("/<path:path>", methods=["OPTIONS"])
-def handle_options(path):
-    return "", 204
-
 @flask_app.route("/")
 def root():
     u, r = cloud.stats()
@@ -1295,60 +1290,65 @@ def api_live_price():
         "timestamp": time.time()
     })
 
-@flask_app.route("/api/ohlc", methods=["POST", "OPTIONS"])
+
+def _run_flask():
+    flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+
+@flask_app.route("/api/ohlc", methods=["POST"])
 def api_ohlc():
-    """دریافت داده‌های OHLC برای چارت Lightweight Charts"""
-    if request.method == "OPTIONS":
-        return "", 204
-    
+    """
+    دریافت داده OHLC برای رسم کندل در مینی‌اپ (Lightweight Charts)
+    فرمت خروجی: [{time: unix_timestamp, open, high, low, close}, ...]
+    """
     user = _get_api_user()
     if not user:
-        return jsonify({"error": "unauthorized", "candles": []}), 401
-    
+        return jsonify({"error": "unauthorized"}), 401
+
     data = request.get_json() or {}
     sym = (data.get("symbol") or "XAUUSD").upper().replace("/", "")
-    tf_raw = str(data.get("timeframe") or "5")
-    
-    # تبدیل timeframe از JavaScript به فرمت Yahoo
-    tf_map = {
-        "1": ("1m", "1d"),
-        "5": ("5m", "5d"),
-        "15": ("15m", "10d"),
-        "60": ("1h", "30d"),
-        "240": ("1h", "60d"),  # 4H از 1h candles
-        "D": ("1d", "1y"),
+    tf_raw = str(data.get("timeframe", "5"))  # مینی‌اپ: "1","5","15","60","240","D"
+
+    # تبدیل timeframe مینی‌اپ به فرمت Yahoo
+    TF_MAP = {
+        "1":   ("1m",  "1d"),
+        "5":   ("5m",  "5d"),
+        "15":  ("15m", "10d"),
+        "60":  ("1h",  "30d"),
+        "240": ("1h",  "60d"),
+        "D":   ("1d",  "1y"),
     }
-    
-    if tf_raw not in tf_map:
-        tf_raw = "5"
-    
-    interval, range_ = tf_map[tf_raw]
-    
+
     if sym not in ASSETS:
         return jsonify({"error": "invalid symbol", "candles": []}), 400
-    
+
+    interval, range_ = TF_MAP.get(tf_raw, ("5m", "5d"))
     asset = ASSETS[sym]
+
     ohlc = fetch_ohlc_asset(asset, interval, range_)
-    
     if ohlc is None:
         return jsonify({"error": "data unavailable", "candles": []}), 503
-    
+
     times, opens, highs, lows, closes, vols = ohlc
-    
-    # تبدیل به فرمت Lightweight Charts
+
+    # تبدیل به فرمت Lightweight Charts (time باید unix timestamp باشه)
     candles = []
+    seen_times = set()
     for t, o, h, l, c in zip(times, opens, highs, lows, closes):
+        ts = int(t.timestamp())
+        if ts in seen_times:
+            continue
+        seen_times.add(ts)
         candles.append({
-            "time": int(t.timestamp()),
+            "time": ts,
             "open": round(o, asset.decimals),
             "high": round(h, asset.decimals),
-            "low": round(l, asset.decimals),
+            "low":  round(l, asset.decimals),
             "close": round(c, asset.decimals),
         })
-    
-    # محدود کردن به 200 کندل آخر
-    candles = candles[-200:] if len(candles) > 200 else candles
-    
+
+    # مرتب‌سازی بر اساس time (الزامی برای Lightweight Charts)
+    candles.sort(key=lambda x: x["time"])
+
     return jsonify({
         "symbol": sym,
         "timeframe": tf_raw,
@@ -1356,10 +1356,7 @@ def api_ohlc():
         "decimals": asset.decimals,
     })
 
-def _run_flask():
-    flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
-
-MINI_APP_URL = "https://f79d8db2.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://fd541f64.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
