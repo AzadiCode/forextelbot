@@ -1356,7 +1356,7 @@ def api_ohlc():
         "decimals": asset.decimals,
     })
 
-MINI_APP_URL = "https://829e8a4d.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://caae1c42.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
