@@ -8,6 +8,7 @@ import os, sys, asyncio, logging, signal, atexit, io, threading, time, statistic
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 import requests, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -70,11 +71,12 @@ class Asset:
     contract_size: float = 100000.0
     quote_is_usd: bool = True
     notional_direct_usd: bool = False
+    stooq_sym: str = ""
 
 ASSETS: dict[str, Asset] = {
     "XAUUSD": Asset(
         key="XAUUSD", name="Gold", emoji="🥇", symbol="XAU/USD",
-        decimals=2, pip_size=0.1, yahoo_syms=["XAUUSD=X", "GC=F"],
+        decimals=2, pip_size=0.1, yahoo_syms=["XAUUSD=X", "GC=F"], stooq_sym="xauusd",
         contract_size=100.0, quote_is_usd=True, notional_direct_usd=False,
         sources=[
             Source("GoldPrice", "https://data-asg.goldprice.org/dbXRates/USD",
@@ -87,7 +89,7 @@ ASSETS: dict[str, Asset] = {
     ),
     "EURUSD": Asset(
         key="EURUSD", name="EUR/USD", emoji="💶", symbol="EUR/USD",
-        decimals=5, pip_size=0.0001, yahoo_syms=["EURUSD=X"],
+        decimals=5, pip_size=0.0001, yahoo_syms=["EURUSD=X"], stooq_sym="eurusd",
         contract_size=100000.0, quote_is_usd=True, notional_direct_usd=False,
         sources=[
             Source("Swissquote", "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/EUR/USD",
@@ -98,7 +100,7 @@ ASSETS: dict[str, Asset] = {
     ),
     "USDJPY": Asset(
         key="USDJPY", name="USD/JPY", emoji="💴", symbol="USD/JPY",
-        decimals=3, pip_size=0.01, yahoo_syms=["USDJPY=X"],
+        decimals=3, pip_size=0.01, yahoo_syms=["USDJPY=X"], stooq_sym="usdjpy",
         contract_size=100000.0, quote_is_usd=False, notional_direct_usd=True,
         sources=[
             Source("Swissquote", "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/USD/JPY",
@@ -109,7 +111,7 @@ ASSETS: dict[str, Asset] = {
     ),
     "GBPUSD": Asset(
         key="GBPUSD", name="GBP/USD", emoji="💷", symbol="GBP/USD",
-        decimals=5, pip_size=0.0001, yahoo_syms=["GBPUSD=X"],
+        decimals=5, pip_size=0.0001, yahoo_syms=["GBPUSD=X"], stooq_sym="gbpusd",
         contract_size=100000.0, quote_is_usd=True, notional_direct_usd=False,
         sources=[
             Source("Swissquote", "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/GBP/USD",
@@ -174,7 +176,7 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
     asset = ASSETS[symbol]
     for src in asset.sources:
         try:
-            r = requests.get(src.url, headers=_HEADERS, timeout=10)
+            r = requests.get(src.url, headers=_HEADERS, timeout=6)
             r.raise_for_status()
             p = float(src.parser(r.json()))
             if src.min_val < p < src.max_val:
@@ -186,7 +188,10 @@ def get_price(symbol: str, force: bool = False) -> Optional[float]:
     return None
 
 def _all_prices(force: bool = False) -> dict:
-    return {s: get_price(s, force=force) for s in ASSETS}
+    # موازی می‌گیریم نه سریالی؛ وگرنه اگر یک منبع کند/خراب باشد کل چرخه (همه نمادها) معطل می‌ماند
+    with ThreadPoolExecutor(max_workers=len(ASSETS)) as ex:
+        futures = {s: ex.submit(get_price, s, force) for s in ASSETS}
+        return {s: f.result() for s, f in futures.items()}
 
 _YAHOO_HOSTS = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]
 
@@ -220,9 +225,77 @@ def _fetch_ohlc(yahoo_sym: str, interval: str, range_: str) -> Optional[tuple]:
             log.error(f"fetch_ohlc {host}/{yahoo_sym}: {str(e)[:80]}")
     return None
 
+_BINANCE_TF_MAP = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
+
+def _fetch_binance_ohlc(interval: str, limit: int = 300) -> Optional[tuple]:
+    """کندل‌های BTC از بایننس (بدون نیاز به کلید، خیلی پایدارتر از فید کریپتوی یاهو)"""
+    try:
+        r = requests.get("https://api.binance.com/api/v3/klines",
+                          params={"symbol": "BTCUSDT", "interval": interval, "limit": limit},
+                          headers=_HEADERS, timeout=8)
+        r.raise_for_status()
+        rows = r.json()
+        if not rows: return None
+        times, opens, highs, lows, closes, vols = [], [], [], [], [], []
+        for row in rows:
+            times.append(datetime.fromtimestamp(row[0] / 1000, tz=IRAN_TZ))
+            opens.append(float(row[1])); highs.append(float(row[2]))
+            lows.append(float(row[3])); closes.append(float(row[4]))
+            vols.append(float(row[5]))
+        return times, opens, highs, lows, closes, vols
+    except Exception as e:
+        log.warning(f"binance ohlc: {str(e)[:80]}")
+        return None
+
+_STOOQ_TF_MAP = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "1d": "d"}
+
+def _fetch_stooq_ohlc(stooq_sym: str, interval: str) -> Optional[tuple]:
+    """فالبک بدون کلید برای فارکس/طلا؛ فقط وقتی یاهو جواب نداد استفاده می‌شود"""
+    code = _STOOQ_TF_MAP.get(interval)
+    if not code: return None
+    try:
+        r = requests.get("https://stooq.com/q/d/l/",
+                          params={"s": stooq_sym, "i": code}, headers=_HEADERS, timeout=8)
+        r.raise_for_status()
+        text = r.text.strip()
+        if not text or "<html" in text.lower() or text.lower().startswith("no data"):
+            return None
+        lines = text.splitlines()
+        header = [h.strip() for h in lines[0].split(",")]
+        has_time = "Time" in header
+        times, opens, highs, lows, closes, vols = [], [], [], [], [], []
+        for row in lines[1:]:
+            parts = row.split(",")
+            try:
+                if has_time and len(parts) >= 6:
+                    dt = datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
+                    o, h_, l, c = parts[2], parts[3], parts[4], parts[5]
+                elif not has_time and len(parts) >= 5:
+                    dt = datetime.strptime(parts[0], "%Y-%m-%d")
+                    o, h_, l, c = parts[1], parts[2], parts[3], parts[4]
+                else:
+                    continue
+                times.append(dt.replace(tzinfo=IRAN_TZ))
+                opens.append(float(o)); highs.append(float(h_))
+                lows.append(float(l)); closes.append(float(c))
+                vols.append(0.0)
+            except Exception:
+                continue
+        if len(closes) < 5: return None
+        return times, opens, highs, lows, closes, vols
+    except Exception as e:
+        log.warning(f"stooq ohlc/{stooq_sym}: {str(e)[:80]}")
+        return None
+
 def fetch_ohlc_asset(asset: Asset, interval: str, range_: str) -> Optional[tuple]:
+    if asset.key == "BTCUSD" and interval in _BINANCE_TF_MAP:
+        result = _fetch_binance_ohlc(_BINANCE_TF_MAP[interval])
+        if result is not None: return result
     for sym in asset.yahoo_syms:
         result = _fetch_ohlc(sym, interval, range_)
+        if result is not None: return result
+    if asset.stooq_sym:
+        result = _fetch_stooq_ohlc(asset.stooq_sym, interval)
         if result is not None: return result
     return None
 
