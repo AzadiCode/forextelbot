@@ -43,6 +43,15 @@ IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 def now_ir(): return datetime.now(IRAN_TZ)
 def str_ir(fmt="%H:%M:%S"): return now_ir().strftime(fmt)
 
+def _next_contest_reset() -> datetime:
+    """اولین شنبه ساعت ۰۰:۰۰ (به وقت ایران) بعد از الان — لحظه ریست هفتگی لیدربورد"""
+    now = now_ir()
+    days_ahead = (5 - now.weekday()) % 7  # Saturday = 5
+    candidate = (now + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=7)
+    return candidate
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -107,6 +116,19 @@ ASSETS: dict[str, Asset] = {
                    lambda d: (float(d[0]["spreadProfilePrices"][0]["ask"]) + float(d[0]["spreadProfilePrices"][0]["bid"])) / 2, 1.1, 1.6),
             Source("Yahoo", "https://query1.finance.yahoo.com/v8/finance/chart/GBPUSD=X",
                    lambda d: d["chart"]["result"][0]["meta"]["regularMarketPrice"], 1.1, 1.6),
+        ],
+    ),
+    "BTCUSD": Asset(
+        key="BTCUSD", name="Bitcoin", emoji="₿", symbol="BTC/USD",
+        decimals=2, pip_size=1.0, yahoo_syms=["BTC-USD"],
+        contract_size=1.0, quote_is_usd=True, notional_direct_usd=False,
+        sources=[
+            Source("Binance", "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+                   lambda d: d["price"], 1000, 1000000),
+            Source("Coinbase", "https://api.coinbase.com/v2/prices/BTC-USD/spot",
+                   lambda d: d["data"]["amount"], 1000, 1000000),
+            Source("CoinGecko", "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+                   lambda d: d["bitcoin"]["usd"], 1000, 1000000),
         ],
     ),
 }
@@ -622,11 +644,26 @@ class CloudStorage:
             sorted_lb = sorted(lb.items(), key=lambda x: x[1].get("profit_pct", 0), reverse=True)[:10]
             res = []
             for i, (uid, data) in enumerate(sorted_lb, 1):
+                pct = data.get("profit_pct", 0)
                 res.append({"rank": i, "uid": uid,
                             "username": data.get("username", "Trader"),
-                            "profit_pct": data.get("profit_pct", 0),
+                            "profit_pct": pct,
+                            "growth_pct": pct,
                             "phase": data.get("phase", 1)})
             return res
+
+    def get_user_rank(self, uid):
+        """رتبه کاربر در لیدربورد هفته جاری (کل لیست، نه فقط ۱۰ نفر برتر)"""
+        self.check_weekly_reset()
+        key = str(uid)
+        with self._lock:
+            lb = self._data.get("leaderboard", {})
+            sorted_lb = sorted(lb.items(), key=lambda x: x[1].get("profit_pct", 0), reverse=True)
+            total = len(sorted_lb)
+            for i, (k, data) in enumerate(sorted_lb, 1):
+                if k == key:
+                    return i, total, data.get("profit_pct", 0)
+            return None, total, 0.0
 
     def check_weekly_reset(self):
         with self._lock:
@@ -979,6 +1016,21 @@ def api_dashboard():
     floating = _floating_pnl(acc, prices)
     equity = acc["balance"] + floating
 
+    # آپدیت لیدربورد بلافاصله تا رتبه/رشد نمایش داده شده در مینی‌اپ به‌روز باشد
+    profit_pct = ((acc["balance"] - PROP_INITIAL_BALANCE) / PROP_INITIAL_BALANCE) * 100
+    cloud.update_leaderboard(uid, profit_pct, acc["phase"])
+    rank, total_traders, best_growth_pct = cloud.get_user_rank(uid)
+    reset_dt = _next_contest_reset()
+    delta = reset_dt - now_ir()
+    contest = {
+        "rank": rank,
+        "total_traders": total_traders,
+        "growth_pct": best_growth_pct,
+        "days_left": max(0, delta.days),
+        "hours_left": max(0, int(delta.seconds // 3600)),
+        "end_date": reset_dt.strftime("%Y/%m/%d"),
+    }
+
     positions = []
     for pid, pos in acc["positions"].items():
         a = ASSETS[pos["sym"]]
@@ -1038,6 +1090,7 @@ def api_dashboard():
         },
         "positions": positions,
         "history": history,
+        "contest": contest,
         "ref_code": cloud.get_ref_code(uid),
         "points": cloud.get_user_points(uid),
         "time": str_ir(),
