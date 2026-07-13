@@ -168,24 +168,43 @@ def _live_price_thread():
             log.error(f"Live price thread error: {e}")
             time.sleep(5)
 
+def _fetch_one_source(src: Source, decimals: int):
+    try:
+        r = requests.get(src.url, headers=_HEADERS, timeout=6)
+        r.raise_for_status()
+        p = float(src.parser(r.json()))
+        if src.min_val < p < src.max_val:
+            return (src.name, round(p, decimals))
+    except Exception as e:
+        log.warning(f"src {src.name}: {str(e)[:60]}")
+    return None
+
 def get_price(symbol: str, force: bool = False) -> Optional[float]:
     if symbol not in ASSETS: return None
     if not force and symbol in _price_cache:
         p, ts = _price_cache[symbol]
         if time.time() - ts < CACHE_TTL: return p
     asset = ASSETS[symbol]
-    for src in asset.sources:
-        try:
-            r = requests.get(src.url, headers=_HEADERS, timeout=6)
-            r.raise_for_status()
-            p = float(src.parser(r.json()))
-            if src.min_val < p < src.max_val:
-                p = round(p, asset.decimals)
-                _price_cache[symbol] = (p, time.time())
-                return p
-        except Exception as e:
-            log.warning(f"src {src.name}/{symbol}: {str(e)[:60]}")
-    return None
+    if not asset.sources: return None
+    # همه‌ی منابع را موازی می‌گیریم و به‌جای اعتماد کورکورانه به اولین جوابی که رسید،
+    # میانه (median) بین منابعی که جواب دادند را به‌عنوان قیمت واقعی در نظر می‌گیریم؛
+    # این جلوی اثر یک منبع تک‌افتاده/بیات را می‌گیرد (که باعث اختلاف قیمت با بازار واقعی می‌شد)
+    with ThreadPoolExecutor(max_workers=len(asset.sources)) as ex:
+        futs = [ex.submit(_fetch_one_source, src, asset.decimals) for src in asset.sources]
+        results = [f.result() for f in futs if f.result() is not None]
+    if not results:
+        log.warning(f"price {symbol}: همه‌ی منابع fail شدند")
+        return None
+    prices = sorted(p for _, p in results)
+    mid = len(prices) // 2
+    median = prices[mid] if len(prices) % 2 == 1 else (prices[mid - 1] + prices[mid]) / 2
+    for name, p in results:
+        if median and abs(p - median) / median > 0.01:
+            log.warning(f"price outlier {symbol}/{name}={p} vs median={median}")
+    log.info(f"price {symbol}={median:.5f} از منابع {[n for n,_ in results]}")
+    median = round(median, asset.decimals)
+    _price_cache[symbol] = (median, time.time())
+    return median
 
 def _all_prices(force: bool = False) -> dict:
     # موازی می‌گیریم نه سریالی؛ وگرنه اگر یک منبع کند/خراب باشد کل چرخه (همه نمادها) معطل می‌ماند
@@ -1482,7 +1501,7 @@ def api_ohlc():
         "decimals": asset.decimals,
     })
 
-MINI_APP_URL = "https://6ad2f125.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
+MINI_APP_URL = "https://630e1b3f.proptrader-tel.pages.dev/"  # ⚠️ لینک مینی‌اپ خودت
 
 def kb_main():
     return InlineKeyboardMarkup([
