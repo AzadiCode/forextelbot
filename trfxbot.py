@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Gold Prediction Tournament Bot
+Gold Prediction Tournament Bot — نسخه‌ی حرفه‌ای
 ════════════════════════════════════════════════════════════════════
 تورنومنت هفتگی پیش‌بینی قیمت انس جهانی طلا (XAU/USD)
 
-قابلیت‌ها:
-  • ادمین با دستور /newround یک دور پیش‌بینی باز می‌کند (پیش‌فرض ۱ ساعته)
-    و پیام آن با دو دکمه «بالا / پایین» در کانال منتشر می‌شود.
-  • کاربران با زدن دکمه، جهت حرکت قیمت طلا تا پایان دور را پیش‌بینی می‌کنند.
-  • در پایان دور، ربات به‌صورت خودکار نتیجه را با قیمت لحظه‌ای می‌سنجد و
-    به همه‌ی کسانی که جهت را درست حدس زده باشند امتیاز ثابت می‌دهد.
-  • هر کاربر با دعوت دوستان (لینک رفرال اختصاصی) امتیاز می‌گیرد.
-  • لیدربرد ۱۰ نفر برتر هر لحظه در دسترس است.
-  • آخر هر هفته‌ی معاملاتی (جمعه) تورنومنت خودکار ریست می‌شود و گزارش
-    ۱۰ نفر برتر (برای هماهنگی جایزه‌ی پراپ به ۳ نفر اول و جایزه‌ی نقدی
-    به بقیه) مستقیم برای ادمین(ها) ارسال می‌شود.
+قابلیت‌های این نسخه:
+  • ادمین با دستور /newround یک دور پیش‌بینی باز می‌کند و پیام آن با دو
+    دکمه‌ی «بالا / پایین» + دکمه‌ی «پروفایل من» در کانال منتشر می‌شود.
+  • فقط در ۳۰ دقیقه‌ی اول هر دور امکان ثبت رأی وجود دارد (قابل تنظیم).
+    این بازه به‌صورت شمارش معکوس زنده — با بروزرسانی هر ۱۰ ثانیه —
+    بالای پست کانال نمایش داده می‌شود. بعد از اتمام شمارش، دکمه‌های
+    رأی از پیام حذف و ثبت رأی برای همیشه بسته می‌شود.
+  • هر کاربر فقط یک‌بار می‌تواند در هر دور رأی بدهد؛ رأی اول نهایی است
+    و امکان تغییر آن وجود ندارد.
+  • متن پست کانال دیگر شمار رأی‌دهندگان، تعداد برندگان یا تفکیک بالا/
+    پایین را نشان نمی‌دهد؛ در عوض یک دکمه‌ی «پروفایل من» با لینک مستقیم
+    به داخل ربات نمایش می‌دهد تا کاربر برای دیدن جزئیات و امتیازش وارد
+    ربات شود.
+  • در پایان هر دور، به‌صورت خصوصی به تک‌تک شرکت‌کنندگان اطلاعیه‌ی
+    برد/باخت همراه با قیمت شروع، انتخاب خودشان، قیمت پایان و امتیاز
+    کسب‌شده ارسال می‌شود.
+  • هرکس با لینک اختصاصی یک کاربر وارد ربات و ثبت‌نام شود، هم به
+    دعوت‌کننده و هم به کاربر جدید پیام اطلاع‌رسانی و امتیاز هدیه داده
+    می‌شود.
+  • لیدربرد ۱۰ نفر برتر هر لحظه در دسترس است و زمان باقی‌مانده تا پایان
+    تورنومنت هفتگی هم در همان بخش به‌صورت زنده نمایش داده می‌شود.
+  • آخر هر هفته‌ی معاملاتی تورنومنت خودکار ریست می‌شود و گزارش نفرات
+    برتر (برای هماهنگی جایزه‌ی پراپ به چند نفر اول و جایزه‌ی نقدی به
+    بقیه) مستقیم برای ادمین(ها) ارسال می‌شود.
+  • متن‌های خوش‌آمدگویی و راهنما به‌صورت کامل و جذاب بازنویسی شده‌اند.
 
 هسته‌ی دریافت قیمت طلا (چند منبع با فال‌بک) و ساختار CloudStorage
 (ذخیره‌سازی ابری روی JSONBin) از سورس اصلی کاربر حفظ شده است.
@@ -73,11 +87,18 @@ POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 10))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 20))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 10))
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
-TALLY_EDIT_EVERY_SEC = 25          # حداقل فاصله‌ی زمانی بین آپدیت‌های شمارش رأی
+VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 30))   # بازه‌ی مجاز ثبت رأی
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 10))       # فاصله‌ی بروزرسانی شمارش معکوس زنده
+WATCHER_TICK_SEC      = 5           # فاصله‌ی بررسی داخلی round_watcher (باید کوچکتر از LIVE_UPDATE_SEC باشد)
 TOP_REPORT_COUNT     = 10          # تعداد نفراتی که در گزارش پایان‌هفته به ادمین می‌رود
 PROP_PRIZE_RANKS     = 3           # چند نفر اول، جایزه‌ی پراپ می‌گیرند (بقیه تا رتبه ۱۰ نقدی)
+NOTIFY_SEND_DELAY    = 0.05        # فاصله‌ی کوتاه بین ارسال پیام‌های خصوصی برای جلوگیری از فلود
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+
+# نام کاربری ربات — یک‌بار در استارت‌آپ پر می‌شود و برای ساخت دکمه‌ها/لینک‌های
+# دیپ‌لینک (مثل دکمه‌ی «پروفایل من» زیر پست کانال) استفاده می‌شود.
+BOT_USERNAME = ""
 
 
 def now_ir() -> datetime:
@@ -86,6 +107,36 @@ def now_ir() -> datetime:
 
 def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
+
+
+def next_weekly_reset_dt(now: datetime) -> datetime:
+    """نزدیک‌ترین لحظه‌ی ریست هفتگی (نیمه‌شب شنبه به وقت ایران، هم‌راستا با
+    منطق weekly_reset_watcher) را برمی‌گرداند — صرفاً برای نمایش شمارش معکوس."""
+    days_ahead = (5 - now.weekday()) % 7  # 5 = شنبه (Python: Monday=0..Sunday=6)
+    reset_dt = (now + timedelta(days=days_ahead)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if reset_dt <= now:
+        reset_dt += timedelta(days=7)
+    return reset_dt
+
+
+def _fmt_mmss(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    m, s = divmod(seconds, 60)
+    return f"{m:02d}:{s:02d}"
+
+
+def _fmt_timedelta_long(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    parts = []
+    if d:
+        parts.append(f"{d} روز")
+    if h or d:
+        parts.append(f"{h} ساعت")
+    parts.append(f"{m} دقیقه")
+    return " و ".join(parts)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -316,16 +367,22 @@ class CloudStorage:
             rnd = self._data.get("active_round")
             return dict(rnd) if rnd else None
 
-    def create_round(self, start_price: float, duration_min: int, chat_id, message_id: int) -> dict:
+    def create_round(self, start_price: float, duration_min: int, chat_id, message_id: int,
+                      vote_minutes: Optional[int] = None) -> dict:
         with self._lock:
             rid = self._data.get("next_round_id", 1)
             self._data["next_round_id"] = rid + 1
             start = now_ir()
+            vm = vote_minutes or VOTE_WINDOW_MINUTES
+            vm = max(1, min(vm, duration_min))   # بازه‌ی رأی هرگز از کل دور بیشتر نمی‌شود
             rnd = {
                 "id": rid,
                 "start_price": start_price,
                 "start_time": start.isoformat(),
                 "duration_min": duration_min,
+                "vote_minutes": vm,
+                "vote_deadline": (start + timedelta(minutes=vm)).isoformat(),
+                "vote_closed": False,
                 "lock_time": (start + timedelta(minutes=duration_min)).isoformat(),
                 "chat_id": chat_id,
                 "message_id": message_id,
@@ -337,17 +394,35 @@ class CloudStorage:
             self._dirty = True
             return dict(rnd)
 
-    def record_vote(self, round_id: int, uid: int, direction: str, username: str) -> bool:
+    def record_vote(self, round_id: int, uid: int, direction: str, username: str) -> str:
+        """نتیجه یکی از این مقادیر است:
+        "ok" ثبت موفق | "already_voted" قبلاً رأی داده | "closed" بازه‌ی رأی تمام شده |
+        "invalid" دور فعال یا مطابقی وجود ندارد."""
         with self._lock:
             rnd = self._data.get("active_round")
             if not rnd or rnd["id"] != round_id or rnd["status"] != "open":
-                return False
-            is_new = str(uid) not in rnd["predictions"]
+                return "invalid"
+            if rnd.get("vote_closed"):
+                return "closed"
+            vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
+            if now_ir() >= vote_deadline_dt:
+                rnd["vote_closed"] = True
+                self._dirty = True
+                return "closed"
+            if str(uid) in rnd["predictions"]:
+                return "already_voted"
             rnd["predictions"][str(uid)] = {
                 "dir": direction, "username": username or "", "at": now_ir().isoformat(),
             }
             self._dirty = True
-            return is_new
+            return "ok"
+
+    def mark_vote_closed(self, round_id: int):
+        with self._lock:
+            rnd = self._data.get("active_round")
+            if rnd and rnd["id"] == round_id:
+                rnd["vote_closed"] = True
+                self._dirty = True
 
     def touch_round_edit(self, round_id: int):
         with self._lock:
@@ -398,6 +473,12 @@ cloud = CloudStorage()
 # ══════════════════════════════════════════════════════════════════════
 # KEYBOARDS
 # ══════════════════════════════════════════════════════════════════════
+def _profile_deeplink_url() -> str:
+    if BOT_USERNAME:
+        return f"https://t.me/{BOT_USERNAME}?start=profile"
+    return "https://t.me/"
+
+
 def kb_main() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
@@ -407,11 +488,19 @@ def kb_main() -> InlineKeyboardMarkup:
     ])
 
 
-def kb_round(round_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("⬆️ بالا", callback_data=f"vote:{round_id}:up"),
-        InlineKeyboardButton("⬇️ پایین", callback_data=f"vote:{round_id}:down"),
-    ]])
+def kb_round_voting(round_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬆️ بالا", callback_data=f"vote:{round_id}:up"),
+         InlineKeyboardButton("⬇️ پایین", callback_data=f"vote:{round_id}:down")],
+        [InlineKeyboardButton("📍 پروفایل من در ربات", url=_profile_deeplink_url())],
+    ])
+
+
+def kb_round_teaser() -> InlineKeyboardMarkup:
+    """برای فاز بسته‌شدن رأی‌گیری و فاز نتیجه — فقط دکمه‌ی ورود به پروفایل."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📍 برای دیدن جزئیات و امتیازت کلیک کن", url=_profile_deeplink_url())],
+    ])
 
 
 def kb_back() -> InlineKeyboardMarkup:
@@ -427,57 +516,65 @@ def _fmt_price(p: float) -> str:
 
 def build_welcome_text() -> str:
     return (
-        "🥇 <b>به تورنومنت پیش‌بینی طلا خوش اومدی!</b>\n\n"
-        "هر دور، قیمت انس جهانی طلا (XAU/USD) رو برای بازه‌ی مشخصی پیش‌بینی می‌کنی: "
-        "<b>بالا میره یا پایین؟</b>\n"
-        f"اگه درست حدس بزنی، <b>{POINTS_PER_CORRECT} امتیاز</b> می‌گیری.\n\n"
-        "🎁 با دعوت دوستات هم امتیاز اضافه می‌گیری.\n"
-        "🏆 هر هفته آخر روز جمعه، تورنومنت ریست می‌شه و به نفرات برتر جایزه تعلق می‌گیره:\n"
-        f"  • رتبه ۱ تا {PROP_PRIZE_RANKS}: 🏅 جایزه پراپ\n"
-        f"  • رتبه {PROP_PRIZE_RANKS + 1} تا {TOP_REPORT_COUNT}: 💵 جایزه نقدی\n\n"
-        "منتظر باش تا دور بعدی پیش‌بینی باز بشه 👇"
+        "🥇✨ <b>به بزرگ‌ترین تورنومنت پیش‌بینی قیمت طلا خوش اومدی!</b> ✨🥇\n\n"
+        "اینجا هر دور، فقط با یک لمس روی «بالا» یا «پایین»، نبض بازار جهانی "
+        "انس طلا (XAU/USD) رو حدس می‌زنی و اگه درست پیش‌بینی کنی، امتیاز واقعی "
+        "می‌گیری که در پایان هفته به جایزه تبدیل می‌شه!\n\n"
+        "🎯 <b>قوانین طلایی بازی:</b>\n"
+        f"  • هر دور فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> امکان ثبت رأی داری — یه شمارش "
+        "معکوس زنده بالای هر پست، دقیقاً بهت نشون می‌ده چقدر وقت داری ⏳\n"
+        "  • هر کاربر فقط <b>یک‌بار</b> در هر دور رأی می‌ده؛ بعد از ثبت، رأی قابل تغییر نیست 🔒\n"
+        f"  • پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> مستقیم به حسابت\n\n"
+        "🎁 با دعوت دوستات هم امتیاز رایگان می‌گیری — هم تو، هم دوستت!\n"
+        "🏆 هر هفته لیدربرد ریست می‌شه و به نفرات برتر جایزه‌ی واقعی تعلق می‌گیره:\n"
+        f"  🏅 رتبه‌ی ۱ تا {PROP_PRIZE_RANKS}: جایزه‌ی پراپ\n"
+        f"  💵 رتبه‌ی {PROP_PRIZE_RANKS + 1} تا {TOP_REPORT_COUNT}: جایزه‌ی نقدی\n\n"
+        "همین حالا از منوی زیر شروع کن و منتظر باز شدن دور بعدی توی کانال بمون 👇"
     )
 
 
-def build_round_text(rnd: dict, status: str, up: int, down: int,
-                      end_price: Optional[float] = None, direction: Optional[str] = None,
-                      winners_count: Optional[int] = None) -> str:
-    a_emoji = "🥇"
+def build_round_text(rnd: dict, phase: str,
+                      end_price: Optional[float] = None, direction: Optional[str] = None) -> str:
+    """phase یکی از: 'voting' (رأی‌گیری باز)، 'voting_closed' (بسته، منتظر نتیجه)، 'resolved' (پایان‌یافته)."""
     start_p = _fmt_price(rnd["start_price"])
-    lock_dt = datetime.fromisoformat(rnd["lock_time"])
-    total = up + down
 
-    if status == "open":
+    if phase == "voting":
+        vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
+        remaining = (vote_deadline_dt - now_ir()).total_seconds()
+        countdown = _fmt_mmss(remaining)
         return (
-            f"{a_emoji} <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n\n"
+            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
-            f"⏰ بسته‌شدن رأی‌گیری: <code>{lock_dt.strftime('%H:%M')}</code> (به وقت ایران)\n\n"
-            f"طلا تا اون موقع بالا می‌ره یا پایین؟ رأی بده 👇\n\n"
-            f"📊 مشارکت تا این لحظه: {total} نفر (⬆️ {up} | ⬇️ {down})\n"
-            f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b>"
+            f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n\n"
+            "طلا تا پایان این دور، نسبت به قیمت شروع بالا می‌ره یا پایین؟ "
+            "نظرت رو با یکی از دکمه‌های زیر ثبت کن 👇\n\n"
+            "⚠️ <i>هر کاربر فقط یک‌بار می‌تونه رأی بده و بعدش امکان تغییرش نیست.</i>\n"
+            f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b>\n\n"
+            "📍 برای دیدن جزئیات، امتیاز و رتبه‌ات، روی دکمه‌ی «پروفایل من» بزن."
         )
-    if status == "locked":
+
+    if phase == "voting_closed":
         return (
-            f"{a_emoji} <b>دور پیش‌بینی طلا #{rnd['id']} — رأی‌گیری بسته شد ⏳</b>\n\n"
+            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
-            f"📊 مجموع شرکت‌کننده: {total} نفر (⬆️ {up} | ⬇️ {down})\n\n"
-            f"در انتظار قیمت نهایی برای اعلام نتیجه..."
+            "⛔️ <b>زمان ثبت رأی به پایان رسید — دیگه امکان رأی دادن نیست.</b>\n\n"
+            "نتیجه‌ی نهایی به‌محض بسته‌شدن دور اعلام می‌شه، منتظر بمون... ⏱\n\n"
+            "📍 برای دیدن جزئیات و امتیازت، روی دکمه‌ی زیر بزن."
         )
-    # resolved
-    arrow = {"up": "📈 بالا", "down": "📉 پایین", "flat": "➖ بدون تغییر"}[direction]
+
+    # phase == "resolved"
+    arrow = {"up": "📈 صعودی", "down": "📉 نزولی", "flat": "➖ بدون تغییر"}[direction]
     end_p = _fmt_price(end_price)
-    result_line = (
-        f"نتیجه: <b>{arrow}</b>  ( {start_p} ← {end_p} )"
-        if direction != "flat" else
-        f"نتیجه: <b>{arrow}</b> — این دور باطل شد و امتیازی داده نشد."
-    )
+    if direction == "flat":
+        result_line = f"نتیجه: <b>{arrow}</b> — این دور به‌دلیل عدم تغییر قیمت باطل شد و امتیازی اعطا نشد."
+    else:
+        result_line = f"نتیجه‌ی این دور: <b>{arrow}</b>"
     return (
-        f"{a_emoji} <b>دور پیش‌بینی طلا #{rnd['id']} — پایان یافت ✅</b>\n\n"
+        f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']} — پایان یافت ✅</b>\n\n"
         f"💰 شروع: <code>{start_p}</code>   →   پایان: <code>{end_p}</code>\n"
         f"{result_line}\n\n"
-        f"📊 مجموع شرکت‌کننده: {total} نفر (⬆️ {up} | ⬇️ {down})\n"
-        f"🏆 برندگان این دور: <b>{winners_count or 0} نفر</b> (هرکدام +{POINTS_PER_CORRECT} امتیاز)\n\n"
-        f"امتیاز و رتبه‌ات رو با /profile ببین."
+        "📍 برای دیدن اینکه پیش‌بینی تو درست بوده یا نه، امتیاز کسب‌شده و رتبه‌ی "
+        "فعلیت، روی دکمه‌ی زیر بزن 👇"
     )
 
 
@@ -501,14 +598,24 @@ def build_profile_text(uid: int, u: dict) -> str:
 
 def build_leaderboard_text() -> str:
     lb = cloud.get_weekly_leaderboard(top=10)
+    reset_dt = next_weekly_reset_dt(now_ir())
+    remaining = (reset_dt - now_ir()).total_seconds()
+    countdown_line = f"\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+
     if not lb:
-        return "🏆 <b>لیدربرد این هفته</b>\n\nهنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
+        return (
+            "🏆 <b>لیدربرد این هفته</b>\n\n"
+            "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
+            f"{countdown_line}"
+        )
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     lines = ["🏆 <b>لیدربرد تورنومنت این هفته</b>\n"]
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         lines.append(f"{tag} {row['username']} — <b>{row['points']}</b> امتیاز")
-    lines.append(f"\n🔔 جمعه پایان هفته: رتبه ۱ تا {PROP_PRIZE_RANKS} 🏅 جایزه پراپ، مابقی تا ۱۰ 💵 جایزه نقدی.")
+    lines.append(countdown_line)
+    lines.append(f"\n🔔 در پایان: رتبه ۱ تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی پراپ، رتبه {PROP_PRIZE_RANKS + 1} "
+                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی نقدی.")
     return "\n".join(lines)
 
 
@@ -526,21 +633,36 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "ℹ️ <b>راهنمای ربات</b>\n\n"
+        "ℹ️ <b>راهنمای کامل بازی</b>\n\n"
+        "🥇 هر دور، یک قیمت شروع برای انس جهانی طلا (XAU/USD) در کانال اعلام می‌شه. "
+        f"تو فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> فرصت داری با زدن دکمه‌ی «⬆️ بالا» یا "
+        "«⬇️ پایین» پیش‌بینی کنی که تا پایان دور، قیمت طلا نسبت به قیمت شروع صعودی می‌شه یا نزولی.\n\n"
+        "⏳ بالای پست کانال یه شمارش معکوس زنده می‌بینی که هر چند ثانیه بروزرسانی می‌شه — "
+        "دقیقاً نشون می‌ده چقدر وقت برای رأی دادن مونده. وقتی این زمان تموم بشه، دکمه‌های رأی از "
+        "پیام حذف می‌شن و دیگه امکان رأی دادن یا تغییر رأی نیست.\n\n"
+        "🔒 هر کاربر فقط یک‌بار در هر دور می‌تونه رأی بده — رأی اول، رأی نهایی‌ست.\n\n"
+        "✅ در پایان دور، ربات به‌صورت خودکار قیمت لحظه‌ای رو با قیمت شروع مقایسه می‌کنه. اگه "
+        f"جهتی که انتخاب کردی درست باشه، بلافاصله پیام برد + <b>{POINTS_PER_CORRECT} امتیاز</b> رو "
+        "به‌صورت خصوصی دریافت می‌کنی. اگه اشتباه حدس زده باشی هم پیام نتیجه برات میاد تا بدونی چی شد.\n\n"
+        "🎁 <b>دعوت دوستان:</b> با لینک اختصاصی‌ات (از /invite) هر دوستی که وارد بشه، هم به تو و هم "
+        "به اون امتیاز هدیه تعلق می‌گیره و هر دوتون فوری باخبر می‌شید.\n\n"
+        "🏆 <b>تورنومنت هفتگی:</b> امتیازهای هر هفته توی لیدربرد جمع می‌شن. آخر هفته لیدربرد ریست "
+        "می‌شه و به نفرات برتر جایزه‌ی واقعی تعلق می‌گیره — رتبه‌های بالا جایزه‌ی پراپ و بقیه تا "
+        "رتبه‌ی ۱۰ جایزه‌ی نقدی می‌گیرن. زمان باقی‌مانده تا پایان تورنومنت رو همیشه توی «لیدربرد» ببین.\n\n"
+        "📋 <b>دستورات:</b>\n"
         "/start — شروع و ثبت‌نام\n"
         "/profile — مشاهده امتیاز و رتبه‌ات\n"
-        "/leaderboard — لیدربرد ۱۰ نفر برتر\n"
+        "/leaderboard — لیدربرد و شمارش معکوس تورنومنت\n"
         "/invite — لینک دعوت دوستان\n"
-        "/help — همین راهنما\n\n"
-        "طرز بازی: هروقت یک دور پیش‌بینی در کانال باز بشه، با زدن دکمه‌ی «بالا» یا «پایین» "
-        "پیش‌بینی‌ات رو ثبت کن. اگه جهت حرکت قیمت طلا رو درست حدس بزنی، امتیاز می‌گیری."
+        "/help — همین راهنما"
     )
     if admin:
         txt += (
             "\n\n👑 <b>دستورات ادمین</b>\n"
-            "/newround [دقیقه] — باز کردن دور جدید (پیش‌فرض ۶۰ دقیقه)\n"
+            "/newround [دقیقه کل] [دقیقه رأی‌گیری] — باز کردن دور جدید "
+            f"(پیش‌فرض {DEFAULT_ROUND_MIN} دقیقه‌ی کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n"
             "/cancelround — باطل کردن دور فعال بدون اعطای امتیاز\n"
-            "/status — وضعیت دور فعال"
+            "/status — وضعیت دور فعال (شامل شمار رأی‌ها، مخصوص ادمین)"
         )
     return txt
 
@@ -554,11 +676,10 @@ def _vote_counts(rnd: dict) -> tuple:
     return up, down
 
 
-async def _edit_round_message(app: Application, rnd: dict, status: str,
-                               end_price=None, direction=None, winners_count=None):
-    up, down = _vote_counts(rnd)
-    text = build_round_text(rnd, status, up, down, end_price, direction, winners_count)
-    markup = kb_round(rnd["id"]) if status == "open" else None
+async def _edit_round_message(app: Application, rnd: dict, phase: str,
+                               end_price=None, direction=None):
+    text = build_round_text(rnd, phase, end_price, direction)
+    markup = kb_round_voting(rnd["id"]) if phase == "voting" else kb_round_teaser()
     try:
         await app.bot.edit_message_text(
             chat_id=rnd["chat_id"], message_id=rnd["message_id"],
@@ -579,6 +700,54 @@ async def _send_to_admins(app: Application, text: str):
             log.warning(f"admin {admin_id} has not started the bot yet")
         except Exception as e:
             log.warning(f"send to admin {admin_id} failed: {e}")
+
+
+async def _notify_participants(app: Application, rnd: dict, price_now: float,
+                                direction: str, winners: set):
+    """اطلاعیه‌ی برد/باخت خصوصی برای تک‌تک شرکت‌کنندگان دور."""
+    start_p = _fmt_price(rnd["start_price"])
+    end_p = _fmt_price(price_now)
+    for uid_str, pred in rnd["predictions"].items():
+        try:
+            uid = int(uid_str)
+        except ValueError:
+            continue
+        choice_fa = "بالا ⬆️" if pred["dir"] == "up" else "پایین ⬇️"
+        u = cloud.get_user(uid) or {}
+        try:
+            if direction == "flat":
+                text = (
+                    f"➖ <b>دور #{rnd['id']} باطل شد</b>\n\n"
+                    f"قیمت شروع و پایان این دور برابر بود (<code>{start_p}</code>)، بنابراین دور "
+                    "بدون برنده لغو شد و امتیازی کم یا اضافه نشد.\n"
+                    f"🎯 پیش‌بینی تو: <b>{choice_fa}</b>"
+                )
+            elif uid_str in winners:
+                text = (
+                    f"🎉 <b>تبریک! توی دور #{rnd['id']} برنده شدی</b>\n\n"
+                    f"💰 قیمت شروع دور: <code>{start_p}</code>\n"
+                    f"🎯 پیش‌بینی تو: <b>{choice_fa}</b>\n"
+                    f"💰 قیمت پایان دور: <code>{end_p}</code>\n"
+                    "✅ پیش‌بینی‌ات کاملاً درست بود!\n"
+                    f"⭐️ <b>+{POINTS_PER_CORRECT} امتیاز</b> به حسابت اضافه شد.\n"
+                    f"🥇 امتیاز این هفته‌ات الان: <b>{u.get('points', 0)}</b>"
+                )
+            else:
+                text = (
+                    f"😔 <b>دور #{rnd['id']} این‌بار به نفعت تموم نشد</b>\n\n"
+                    f"💰 قیمت شروع دور: <code>{start_p}</code>\n"
+                    f"🎯 پیش‌بینی تو: <b>{choice_fa}</b>\n"
+                    f"💰 قیمت پایان دور: <code>{end_p}</code>\n"
+                    "❌ این‌بار پیش‌بینی‌ات درست از آب در نیومد و امتیازی نگرفتی.\n"
+                    "🔁 نگران نباش، توی دور بعدی دوباره شانستو امتحان کن!\n"
+                    f"🥇 امتیاز این هفته‌ات الان: <b>{u.get('points', 0)}</b>"
+                )
+            await app.bot.send_message(chat_id=uid, text=text, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(NOTIFY_SEND_DELAY)
+        except Forbidden:
+            pass
+        except Exception as e:
+            log.warning(f"notify participant {uid_str} failed: {e}")
 
 
 async def _resolve_round(app: Application, rnd: dict):
@@ -603,9 +772,13 @@ async def _resolve_round(app: Application, rnd: dict):
         if direction != "flat" and pred["dir"] == direction:
             winners.append(uid_str)
             cloud.award_correct_prediction(int(uid_str))
+    winners_set = set(winners)
 
     cloud.finish_round(rnd["id"], price_now, direction, winners)
-    await _edit_round_message(app, rnd, "resolved", price_now, direction, len(winners))
+    await _edit_round_message(app, rnd, "resolved", price_now, direction)
+
+    # اطلاعیه‌ی خصوصی برد/باخت برای تک‌تک شرکت‌کننده‌ها
+    await _notify_participants(app, rnd, price_now, direction, winners_set)
 
     up, down = _vote_counts(rnd)
     winners_list = ", ".join(
@@ -632,9 +805,18 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     is_new = cloud.get_user(uid) is None
     cloud.ensure_user(uid, username)
 
-    if is_new and ctx.args:
+    if ctx.args:
         arg = ctx.args[0]
-        if arg.startswith("ref_"):
+
+        # دیپ‌لینک ورود مستقیم به پروفایل (از دکمه‌ی زیر پست کانال)
+        if arg == "profile":
+            u = cloud.ensure_user(uid, username)
+            await update.effective_message.reply_text(
+                build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+            return
+
+        # دیپ‌لینک رفرال
+        if is_new and arg.startswith("ref_"):
             ref_code = arg[4:]
             ref_uid = cloud.find_uid_by_ref(ref_code)
             if ref_uid:
@@ -643,7 +825,15 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     try:
                         await ctx.bot.send_message(
                             chat_id=ref_uid, parse_mode=ParseMode.HTML,
-                            text=f"🎉 یک نفر با لینک دعوت تو وارد شد! +{REF_POINTS_REFERRER} امتیاز گرفتی.")
+                            text=("🎉 <b>خبر خوب!</b> یک نفر با لینک دعوت اختصاصی تو وارد ربات شد.\n"
+                                  f"⭐️ +{REF_POINTS_REFERRER} امتیاز به حسابت اضافه شد."))
+                    except Exception:
+                        pass
+                    try:
+                        await ctx.bot.send_message(
+                            chat_id=uid, parse_mode=ParseMode.HTML,
+                            text=("🎁 <b>خوش اومدی!</b> چون از طریق لینک دعوت یک دوست وارد شدی، "
+                                  f"⭐️ +{REF_POINTS_INVITEE} امتیاز رایگان بهت تعلق گرفت."))
                     except Exception:
                         pass
 
@@ -690,11 +880,15 @@ async def cmd_newround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     minutes = DEFAULT_ROUND_MIN
+    vote_minutes = VOTE_WINDOW_MINUTES
     if ctx.args:
         try:
             minutes = max(1, int(ctx.args[0]))
+            if len(ctx.args) > 1:
+                vote_minutes = max(1, int(ctx.args[1]))
         except ValueError:
-            await update.effective_message.reply_text("⚠️ فرمت درست: /newround 60")
+            await update.effective_message.reply_text(
+                "⚠️ فرمت درست: /newround 60  یا  /newround 60 30 (۶۰ دقیقه کل، ۳۰ دقیقه رأی‌گیری)")
             return
 
     price = get_gold_price(force=True)
@@ -704,10 +898,11 @@ async def cmd_newround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     placeholder = await ctx.bot.send_message(
         chat_id=CHANNEL_ID, text="⏳ در حال باز کردن دور جدید...")
-    rnd = cloud.create_round(price, minutes, CHANNEL_ID, placeholder.message_id)
-    await _edit_round_message(ctx.application, rnd, "open")
+    rnd = cloud.create_round(price, minutes, CHANNEL_ID, placeholder.message_id, vote_minutes)
+    await _edit_round_message(ctx.application, rnd, "voting")
     await update.effective_message.reply_text(
-        f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد.")
+        f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
+        f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
     cloud.save(force=True)
 
 
@@ -737,11 +932,14 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("در حال حاضر دور فعالی وجود نداره.")
         return
     up, down = _vote_counts(rnd)
+    vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
     lock_dt = datetime.fromisoformat(rnd["lock_time"])
+    vote_state = "بسته (زمان تمام شده)" if rnd.get("vote_closed") or now_ir() >= vote_deadline_dt else "باز"
     await update.effective_message.reply_text(
         f"دور #{rnd['id']} فعال است.\n"
         f"شروع: {_fmt_price(rnd['start_price'])}\n"
-        f"بسته‌شدن: {lock_dt.strftime('%H:%M:%S')}\n"
+        f"وضعیت رأی‌گیری: {vote_state} (بسته‌شدن رأی: {vote_deadline_dt.strftime('%H:%M:%S')})\n"
+        f"بسته‌شدن نهایی دور: {lock_dt.strftime('%H:%M:%S')}\n"
         f"رأی‌ها: ⬆️ {up} | ⬇️ {down}")
 
 
@@ -761,13 +959,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             rid = int(rid_s)
         except Exception:
             await q.answer(); return
-        rnd = cloud.get_active_round()
-        if not rnd or rnd["id"] != rid or rnd["status"] != "open":
-            await q.answer("⛔️ این دور دیگه بسته شده.", show_alert=True)
-            return
-        cloud.record_vote(rid, uid, direction, username)
-        dir_fa = "بالا ⬆️" if direction == "up" else "پایین ⬇️"
-        await q.answer(f"✅ پیش‌بینی‌ات ثبت شد: {dir_fa}")
+
+        result = cloud.record_vote(rid, uid, direction, username)
+        if result == "ok":
+            dir_fa = "بالا ⬆️" if direction == "up" else "پایین ⬇️"
+            await q.answer(f"✅ پیش‌بینی‌ات ثبت شد: {dir_fa}\nاین رأی نهایی توئه و قابل تغییر نیست.", show_alert=True)
+        elif result == "already_voted":
+            await q.answer("⚠️ شما قبلاً برای این دور رأی داده‌اید. امکان تغییر رأی وجود نداره.", show_alert=True)
+        elif result == "closed":
+            await q.answer("⛔️ زمان ثبت رأی برای این دور به پایان رسیده.", show_alert=True)
+        else:
+            await q.answer("⛔️ این دور دیگه فعال نیست.", show_alert=True)
         return
 
     if data == "menu:profile":
@@ -806,20 +1008,33 @@ async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
 async def round_watcher(app: Application):
     while True:
         try:
-            await asyncio.sleep(15)
+            await asyncio.sleep(WATCHER_TICK_SEC)
             rnd = cloud.get_active_round()
             if not rnd or rnd["status"] != "open":
                 continue
+
+            vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
             lock_dt = datetime.fromisoformat(rnd["lock_time"])
-            if now_ir() >= lock_dt:
-                cloud.set_round_status(rnd["id"], "locked")
-                await _edit_round_message(app, rnd, "locked")
-                await _resolve_round(app, rnd)
-            else:
+            now = now_ir()
+
+            # فاز ۱: بازه‌ی رأی‌گیری هنوز باز است — شمارش معکوس زنده را بروزرسانی کن
+            if not rnd.get("vote_closed") and now < vote_deadline_dt:
                 last_edit = rnd.get("last_edit_ts", 0)
-                if time.time() - last_edit >= TALLY_EDIT_EVERY_SEC:
+                if time.time() - last_edit >= LIVE_UPDATE_SEC:
                     cloud.touch_round_edit(rnd["id"])
-                    await _edit_round_message(app, rnd, "open")
+                    await _edit_round_message(app, rnd, "voting")
+
+            # فاز ۲: زمان رأی‌گیری تازه تمام شده — پیام را به حالت «بسته» تغییر بده
+            elif not rnd.get("vote_closed") and now >= vote_deadline_dt:
+                cloud.mark_vote_closed(rnd["id"])
+                rnd = cloud.get_active_round() or rnd
+                await _edit_round_message(app, rnd, "voting_closed")
+
+            # فاز ۳: زمان کل دور تمام شده — نتیجه را نهایی کن
+            if now >= lock_dt:
+                cloud.set_round_status(rnd["id"], "locked")
+                await _resolve_round(app, rnd)
+
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -865,6 +1080,12 @@ async def autosave_loop(app: Application):
 
 
 async def on_startup(app: Application):
+    global BOT_USERNAME
+    try:
+        me = await app.bot.get_me()
+        BOT_USERNAME = me.username or ""
+    except Exception as e:
+        log.warning(f"could not fetch bot username at startup: {e}")
     threading.Thread(target=_run_flask, daemon=True).start()
     asyncio.create_task(round_watcher(app))
     asyncio.create_task(weekly_reset_watcher(app))
