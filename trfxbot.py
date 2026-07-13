@@ -83,6 +83,13 @@ ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()
 # آیدی عددی کانال (مثلاً -1001234567890) یا یوزرنیم آن (مثلاً @mychannel)
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
 
+# کانال عضویت اجباری — قبل از استفاده از خدمات ربات (رأی، پروفایل، لیدربرد،
+# دعوت) بررسی می‌شود. اگر خالی بماند از CHANNEL_ID استفاده می‌شود؛ اگر آن هم
+# خالی باشد، بررسی عضویت کلاً غیرفعال است. برای کانال خصوصی، لینک دعوت را در
+# FORCE_JOIN_CHANNEL_URL هم ست کن (چون آیدی/یوزرنیم به‌تنهایی لینک نمی‌سازد).
+FORCE_JOIN_CHANNEL_ID  = os.environ.get("FORCE_JOIN_CHANNEL_ID", CHANNEL_ID)
+FORCE_JOIN_CHANNEL_URL = os.environ.get("FORCE_JOIN_CHANNEL_URL", "")
+
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 10))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 20))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 10))
@@ -100,6 +107,11 @@ IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 # دیپ‌لینک (مثل دکمه‌ی «پروفایل من» زیر پست کانال) استفاده می‌شود.
 BOT_USERNAME = ""
 
+# حالت انتظار ورودی متنی پنل ادمین: uid -> (action, extra)
+# مثلاً وقتی ادمین روی «تغییر امتیاز» یه کاربر می‌زنه، تا رسیدن پیام بعدیش
+# (که شامل عدد امتیازه) این دیکشنری وضعیتشو نگه می‌داره.
+ADMIN_PENDING: dict = {}
+
 
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
@@ -107,6 +119,33 @@ def now_ir() -> datetime:
 
 def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
+
+
+# ══════════════════════════════════════════════════════════════════════
+# FORCE-JOIN (عضویت اجباری کانال)
+# ══════════════════════════════════════════════════════════════════════
+def _force_join_url() -> str:
+    if FORCE_JOIN_CHANNEL_URL:
+        return FORCE_JOIN_CHANNEL_URL
+    cid = str(FORCE_JOIN_CHANNEL_ID)
+    if cid.startswith("@"):
+        return f"https://t.me/{cid[1:]}"
+    return "https://t.me/"
+
+
+async def _is_channel_member(bot, uid: int) -> bool:
+    """بررسی می‌کند کاربر عضو کانال اجباری هست یا نه. اگر کانالی تنظیم نشده
+    باشد، همیشه True برمی‌گردد (بررسی غیرفعال). اگر بررسی با خطا مواجه شود
+    (مثلاً ربات ادمین کانال نیست)، برای جلوگیری از قفل‌شدن کاربران، اجازه‌ی
+    عبور داده می‌شود و فقط در لاگ هشدار ثبت می‌شود."""
+    if not FORCE_JOIN_CHANNEL_ID:
+        return True
+    try:
+        member = await bot.get_chat_member(FORCE_JOIN_CHANNEL_ID, uid)
+        return member.status not in ("left", "kicked")
+    except Exception as e:
+        log.warning(f"membership check failed for uid={uid}: {e}")
+        return True
 
 
 def next_weekly_reset_dt(now: datetime) -> datetime:
@@ -268,26 +307,39 @@ class CloudStorage:
             log.error(f"CloudStorage save error: {e}")
 
     # ---------- users ----------
-    def ensure_user(self, uid: int, username: str = "") -> dict:
+    def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> dict:
         key = str(uid)
         with self._lock:
             if key not in self._data["users"]:
                 ref_code = hashlib.md5((key + str(time.time())).encode()).hexdigest()[:8]
                 self._data["users"][key] = {
-                    "username": username or "", "joined": now_ir().isoformat(),
+                    "username": username or "", "full_name": full_name or "",
+                    "joined": now_ir().isoformat(),
                     "ref": ref_code, "referred_by": None,
                     "points": 0, "total_points": 0,
                     "correct": 0, "predictions": 0, "invites": 0,
+                    "is_fake": False,
                 }
                 self._dirty = True
-            elif username and self._data["users"][key].get("username") != username:
-                self._data["users"][key]["username"] = username
-                self._dirty = True
+            else:
+                u = self._data["users"][key]
+                if username and u.get("username") != username:
+                    u["username"] = username
+                    self._dirty = True
+                if full_name and u.get("full_name") != full_name:
+                    u["full_name"] = full_name
+                    self._dirty = True
             return dict(self._data["users"][key])
 
     def get_user(self, uid: int) -> Optional[dict]:
         with self._lock:
             u = self._data["users"].get(str(uid))
+            return dict(u) if u else None
+
+    def get_user_by_key(self, key: str) -> Optional[dict]:
+        """مشابه get_user ولی با کلید خام (uid رشته‌ای یا کلید کاربر فیک مثل fake_xxxx)."""
+        with self._lock:
+            u = self._data["users"].get(key)
             return dict(u) if u else None
 
     # ---------- referral ----------
