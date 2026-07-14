@@ -53,12 +53,12 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
 
-POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 10))
-REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 20))
-REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 10))
+POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
+REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 120))
+REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 90))
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
-VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 30))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 10))
+VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 10
 PROP_PRIZE_RANKS     = 3
@@ -729,7 +729,7 @@ def build_welcome_text() -> str:
         "اینجا هر دور، فقط با یک لمس روی «بالا» یا «پایین»، نبض بازار جهانی "
         "انس طلا (XAU/USD) رو حدس می‌زنی و اگه درست پیش‌بینی کنی، امتیاز واقعی "
         "می‌گیری که در پایان هفته به جایزه تبدیل می‌شه!\n\n"
-        "🎯 <b>قوانین طلایی بازی:</b>\n"
+        "🎯 <b>قوانین طلایی تورنومنت:</b>\n"
         f"  • هر دور فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> امکان ثبت رأی داری ⏳\n"
         "  • هر کاربر فقط <b>یک‌بار</b> در هر دور رأی می‌ده؛ رأی اول نهایی‌ست 🔒\n"
         f"  • پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> مستقیم به حسابت\n\n"
@@ -854,7 +854,7 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "ℹ️ <b>راهنمای کامل بازی</b>\n\n"
+        "ℹ️ <b>راهنمای کامل تورنومنت</b>\n\n"
         "🥇 هر دور، یک قیمت شروع برای انس جهانی طلا (XAU/USD) در کانال اعلام می‌شه. "
         f"تو فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> فرصت داری با زدن دکمه‌ی «⬆️ بالا» یا "
         "«⬇️ پایین» پیش‌بینی کنی.\n\n"
