@@ -4,22 +4,6 @@
 Gold Prediction Tournament Bot — نسخه‌ی ۲ (ارتقا یافته)
 ════════════════════════════════════════════════════════════════════
 تورنومنت هفتگی پیش‌بینی قیمت انس جهانی طلا (XAU/USD)
-
-ارتقاهای نسخه‌ی ۲ نسبت به نسخه‌ی قبل:
-  ① /newround [کل دقیقه] [دقیقه رأی‌گیری] — از ابتدا پشتیبانی داشت، بدون تغییر.
-  ② پنل ادمین (/adminpanel):
-      • لیست کاربران واقعی با: اسم کامل | یوزرنیم | امتیاز | زیرمجموعه‌ها
-      • دادن امتیاز دلخواه به هر کاربر با callback
-      • افزودن/ویرایش کاربر فیک (برای لیدربرد)
-  ③ لیدربرد با اسم کامل (first_name + last_name) به جای یوزرنیم
-  ④ عضویت اجباری کانال قبل از استفاده از هر دکمه یا دستور
-     (نه هنگام /start بلکه زمان کلیک روی دکمه یا ارسال هر دستور دیگر)
-
-متغیر محیطی جدید:
-  FORCE_JOIN_CHANNEL  — آیدی یا یوزرنیم کانالی که کاربر باید عضو آن باشد
-                        (می‌تواند با CHANNEL_ID یکی باشد یا متفاوت)
-                        مثال: @mygoldchannel  یا  -1001234567890
-════════════════════════════════════════════════════════════════════
 """
 import os
 import sys
@@ -748,10 +732,17 @@ def build_round_text(rnd: dict, phase: str,
         vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
         remaining = (vote_deadline_dt - now_ir()).total_seconds()
         countdown = _fmt_mmss(remaining)
+        
+        # محاسبه زمان باقی‌مانده تا پایان کل دور و مشخص شدن نتیجه
+        lock_dt = datetime.fromisoformat(rnd["lock_time"])
+        total_remaining = (lock_dt - now_ir()).total_seconds()
+        total_countdown = _fmt_mmss(total_remaining)
+        
         return (
-            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n\n"
+            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
-            f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n\n"
+            f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n"
+            f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
             "طلا تا پایان این دور، نسبت به قیمت شروع بالا می‌ره یا پایین؟ "
             "نظرت رو با یکی از دکمه‌های زیر ثبت کن 👇\n\n"
             "⚠️ <i>هر کاربر فقط یک‌بار می‌تونه رأی بده و بعدش امکان تغییرش نیست.</i>\n"
@@ -992,6 +983,42 @@ async def _resolve_round(app: Application, rnd: dict):
     cloud.save(force=True)
 
 
+async def broadcast_round_start(app: Application, rnd: dict):
+    """ارسال همگانی پیام شروع دور به پی‌وی (PV) همه کاربران"""
+    users = cloud.get_all_users()
+    text = build_round_text(rnd, "voting")
+    markup = kb_round_voting(rnd["id"])
+    
+    sent = 0
+    for u in users:
+        # اگر ادمین دور را کنسل کرد، ارسال متوقف شود تا پیام دور باطل شده به بقیه نرود
+        active = cloud.get_active_round()
+        if not active or active["id"] != rnd["id"] or active["status"] != "open":
+            log.info("Broadcast stopped: round is no longer active.")
+            break
+            
+        uid_str = u.get("uid_str") or str(u.get("uid"))
+        if not uid_str.isdigit():
+            continue
+            
+        try:
+            await app.bot.send_message(
+                chat_id=int(uid_str),
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+            )
+            sent += 1
+            # مکث استاندارد برای جلوگیری از بلاک شدن ربات توسط تلگرام
+            await asyncio.sleep(NOTIFY_SEND_DELAY) 
+        except Forbidden:
+            pass # کاربر ربات را بلاک کرده یا استارت نکرده
+        except Exception as e:
+            log.warning(f"broadcast to {uid_str} failed: {e}")
+            
+    log.info(f"📢 Broadcast finished: {sent} messages sent to users PV.")
+
+
 # ══════════════════════════════════════════════════════════════════════
 # COMMAND HANDLERS
 # ══════════════════════════════════════════════════════════════════════
@@ -1133,9 +1160,14 @@ async def cmd_newround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     placeholder = await ctx.bot.send_message(chat_id=CHANNEL_ID, text="⏳ در حال باز کردن دور جدید...")
     rnd = cloud.create_round(price, minutes, CHANNEL_ID, placeholder.message_id, vote_minutes)
     await _edit_round_message(ctx.application, rnd, "voting")
+    
+    # 🚀 استارت ارسال همگانی به پی‌وی (PV) کاربران در پس‌زمینه
+    asyncio.create_task(broadcast_round_start(ctx.application, rnd))
+    
     await update.effective_message.reply_text(
         f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
-        f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
+        f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).\n\n"
+        f"📢 <b>ارسال همگانی به پی‌وی همه کاربران آغاز شد...</b>")
     cloud.save(force=True)
 
 
