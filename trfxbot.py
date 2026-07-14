@@ -565,6 +565,23 @@ def build_join_required_text() -> str:
         "بعد از عضویت روی دکمه‌ی «✅ عضو شدم» بزن."
     )
 
+def build_referral_join_text() -> str:
+    """متن جذاب برای عضویت اجباری هنگام ورود با لینک دعوت"""
+    channel_link = FORCE_JOIN_CHANNEL if FORCE_JOIN_CHANNEL.startswith("@") else "کانال"
+    return (
+        "🎁✨ <b>تبریک! دوستت تو رو به تورنومنت طلایی دعوت کرده!</b> ✨🎁\n\n"
+        "🥇 اینجا بزرگ‌ترین مسابقه‌ی پیش‌بینی قیمت انس جهانی طلاست که هر هفته "
+        "جوایز <b>نقدی و پراپ‌ترید</b> به نفرات برتر اهدا می‌شه!\n\n"
+        "💰 <b>برای دریافت پاداش دعوت و شرکت در تورنومنت:</b>\n"
+        f"👉 ابتدا باید عضو {channel_link} اصلی ربات بشی\n"
+        "📢 جایی که تمام دورهای مسابقه و اطلاعیه‌های مهم منتشر می‌شن\n\n"
+        "✅ بعد از عضویت، روی دکمه‌ی زیر بزن تا:\n"
+        "  • امتیاز رایگان دعوت به حسابت اضافه بشه\n"
+        "  • به‌عنوان زیرمجموعه‌ی دوستت ثبت بشی\n"
+        "  • بتونی توی دورهای بعدی شرکت کنی\n\n"
+        "🔥 <b>همین الان عضو شو و منتظر دور بعدی بمون!</b>"
+    )
+
 
 def kb_join_required() -> InlineKeyboardMarkup:
     btns = []
@@ -1014,7 +1031,6 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if ctx.args:
         arg = ctx.args[0]
-
         if arg == "profile":
             # چک عضویت برای دیپ‌لینک پروفایل
             if not await check_membership(ctx.bot, uid):
@@ -1026,9 +1042,18 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text(
                 build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
             return
-
         if is_new and arg.startswith("ref_"):
             ref_code = arg[4:]
+            
+            # 🛡 چک عضویت اجباری قبل از ثبت رفرال
+            if not await check_membership(ctx.bot, uid):
+                # ذخیره کد رفرال برای پردازش بعد از عضویت
+                ctx.user_data["pending_referral"] = ref_code
+                await update.effective_message.reply_text(
+                    build_referral_join_text(), parse_mode=ParseMode.HTML,
+                    reply_markup=kb_join_required())
+                return
+            
             ref_uid = cloud.find_uid_by_ref(ref_code)
             if ref_uid:
                 ok = cloud.apply_referral(uid, ref_uid)
@@ -1200,6 +1225,34 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "check_join":
         if await check_membership(q.get_bot(), uid):
             await q.answer("✅ عضویت تأیید شد!")
+            
+            # بررسی اینکه آیا کاربر از طریق لینک دعوت وارد شده بود و منتظر تایید عضویت بود؟
+            pending_ref = ctx.user_data.get("pending_referral")
+            if pending_ref:
+                ref_uid = cloud.find_uid_by_ref(pending_ref)
+                if ref_uid:
+                    # تابع apply_referral خودش چک می‌کند که کاربر از قبل زیرمجموعه نباشد
+                    ok = cloud.apply_referral(uid, ref_uid)
+                    if ok:
+                        try:
+                            await ctx.bot.send_message(
+                                chat_id=ref_uid, parse_mode=ParseMode.HTML,
+                                text=("🎉 <b>خبر خوب!</b> یک نفر با لینک دعوت اختصاصی تو وارد ربات شد.\n"
+                                      f"⭐️ +{REF_POINTS_REFERRER} امتیاز به حسابت اضافه شد."))
+                        except Exception:
+                            pass
+                        try:
+                            await ctx.bot.send_message(
+                                chat_id=uid, parse_mode=ParseMode.HTML,
+                                text=("🎁 <b>خوش اومدی!</b> چون از طریق لینک دعوت یک دوست وارد شدی، "
+                                      f"⭐️ +{REF_POINTS_INVITEE} امتیاز رایگان بهت تعلق گرفت."))
+                        except Exception:
+                            pass
+                
+                # پاک کردن state موقت
+                ctx.user_data.pop("pending_referral", None)
+                cloud.save(force=True)
+            
             await q.edit_message_text(
                 build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         else:
