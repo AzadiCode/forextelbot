@@ -1444,12 +1444,20 @@ async def round_watcher(app: Application):
                 if time.time() - last_edit >= LIVE_UPDATE_SEC:
                     cloud.touch_round_edit(rnd["id"])
                     await _edit_round_message(app, rnd, "voting")
-
+                    
             elif not rnd.get("vote_closed") and now >= vote_deadline_dt:
                 cloud.mark_vote_closed(rnd["id"])
                 rnd = cloud.get_active_round() or rnd
+                cloud.touch_round_edit(rnd["id"])  # ریست کردن تایمر برای آپدیت‌های بعدی
                 await _edit_round_message(app, rnd, "voting_closed")
-
+                
+            elif rnd.get("vote_closed") and now < lock_dt:
+                # آپدیت زنده‌ی پیام در فاز بسته شدن رأی‌گیری تا زمان پایان کل دور
+                last_edit = rnd.get("last_edit_ts", 0)
+                if time.time() - last_edit >= LIVE_UPDATE_SEC:
+                    cloud.touch_round_edit(rnd["id"])
+                    await _edit_round_message(app, rnd, "voting_closed")
+                    
             if now >= lock_dt:
                 cloud.set_round_status(rnd["id"], "locked")
                 await _resolve_round(app, rnd)
