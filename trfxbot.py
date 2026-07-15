@@ -53,7 +53,7 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
 
-POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
+PPOINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
@@ -569,16 +569,15 @@ def build_referral_join_text() -> str:
     """متن جذاب برای عضویت اجباری هنگام ورود با لینک دعوت"""
     channel_link = FORCE_JOIN_CHANNEL if FORCE_JOIN_CHANNEL.startswith("@") else "کانال"
     return (
-        "🎁✨ <b>تبریک! دوستت تو رو به تورنومنت طلایی دعوت کرده!</b> ✨🎁\n\n"
-        "🥇 اینجا بزرگ‌ترین مسابقه‌ی پیش‌بینی قیمت انس جهانی طلاست که هر هفته "
-        "جوایز <b>نقدی و پراپ‌ترید</b> به نفرات برتر اهدا می‌شه!\n\n"
-        "💰 <b>برای دریافت پاداش دعوت و شرکت در تورنومنت:</b>\n"
-        f"👉 ابتدا باید عضو {channel_link} اصلی ربات بشی\n"
-        "📢 جایی که تمام دورهای مسابقه و اطلاعیه‌های مهم منتشر می‌شن\n\n"
-        "✅ بعد از عضویت، روی دکمه‌ی زیر بزن تا:\n"
-        "  • امتیاز رایگان دعوت به حسابت اضافه بشه\n"
-        "  • بتونی توی دورهای بعدی تورنومنت شرکت کنی\n\n"
-        "🔥 <b>همین الان عضو شو و برای ادامه روی عضو شدم بزن !</b>"
+        "🎁✨ <b>تبریک! دوستت تو رو به تورنومنت و جمع شکارچیان طلا دعوت کرده!</b> ✨🎁\n\n"
+        "🔥 <b>توی این کانال چی می‌گذره؟</b>\n"
+        "  🥇 <b>تورنومنت هفتگی طلا</b> با جوایز <b>نقدی دلاری</b>\n"
+        "  💰 نفر اول <b>۸۰$</b> | دوم <b>۶۰$</b> | سوم <b>۴۰$</b>\n"
+        "  🎲 قرعه‌کشی <b>۳۰ دلاری</b> بین نفرات ۴ تا ۱۰\n"
+        "  ⚡️ <b>لایو تریدهای اسکلپ</b> روی طلا\n"
+        "  📊 وین‌ریت مثبت، کاملاً <b>شفاف و لایو</b>، بدون ابهام\n\n"
+        f"👉 همه چیز فقط در این چنل اختصاصی طلا {channel_link} \n\n"
+        "🔥 <b>برای دریافت پاداش دعوت و شرکت در تورنومنت ها و استفاده از لایو ترید های ویژه همین الان عضو شو و برای ادامه روی عضو شدم بزن !</b>"
     )
 
 
@@ -641,6 +640,7 @@ def kb_admin_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
         [InlineKeyboardButton("➕ افزودن کاربر فیک", callback_data="admin:fake:add_prompt")],
+        [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -725,18 +725,16 @@ def _fmt_price(p: float) -> str:
 def build_welcome_text() -> str:
     return (
         "🥇✨ <b>به بزرگ‌ترین تورنومنت پیش‌بینی قیمت طلا خوش اومدی!</b> ✨🥇\n\n"
-        "اینجا هر دور در روز، فقط با یک لمس روی «بالا» یا «پایین»، نبض بازار جهانی "
-        "انس طلا (XAU/USD) رو حدس می‌زنی و اگه درست پیش‌بینی کنی، امتیاز واقعی "
-        "می‌گیری که در پایان هفته به جایزه واقعی تبدیل می‌شه!\n\n"
-        "🎯 <b>قوانین طلایی تورنومنت:</b>\n"
-        f"  • هر دور فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> امکان ثبت رأی داری ⏳\n"
-        "  • هر کاربر فقط <b>یک‌بار</b> در هر دور رأی می‌ده؛ رأی اول نهایی‌ست 🔒\n"
-        f"  • پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> مستقیم به حسابت\n\n"
-        "🎁 با دعوت دوستات هم امتیاز بیشتری می‌گیری و شانست برای برنده شدن بیشتر میشه!\n"
-        "🏆 هر هفته لیدربرد ریست می‌شه و به نفرات برتر جایزه‌ی واقعی تعلق می‌گیره:\n"
-        f"  🏅 رتبه‌ی 1 تا {PROP_PRIZE_RANKS}: جایزه‌ی دلاری\n"
-        f"  💵 رتبه‌ی {PROP_PRIZE_RANKS + 1} تا {TOP_REPORT_COUNT}: جایزه‌ی اکانت پراپ بزودی ...\n\n"
-        "همین حالا از منوی زیر شروع کن و منتظر باز شدن دور بعدی پیشبینی توی کانال بمون 👇"
+        "اینجا هر روز علاوه بر ارعه لایو ترید ها و سیگنال های اسکلپ در کانال ویژه طلا، هر روز طی ساعت مشخصی با پیشبینی 1 ساعت اینده روند طلا ، امتیاز دریافت میکنی که در اخر هر هفته به جوایز واقعی تبدیل میشه !! "
+        "قیمت طلا بالا می‌ره یا پایین؟ پیش‌بینی کن، امتیاز بگیر، جایزه ببر!\n\n"
+        "🔥 <b>توی کانال چی می‌گذره؟</b>\n"
+        "  🥇 <b>تورنومنت هفتگی طلا</b> با جوایز نقدی\n"
+        "  💰 نفر اول <b>۸۰$</b> | دوم <b>۶۰$</b> | سوم <b>۴۰$</b>\n"
+        "  🎲 قرعه‌کشی <b>۳۰ دلاری</b> بین نفرات ۴ تا ۱۰\n"
+        "  ⚡️ <b>لایو تریدهای اسکلپ</b> روی طلا\n"
+        "  📊 وین‌ریت کل همیشه مثبت، کاملاً <b>شفاف و لایو</b>\n\n"
+        "ℹ️ برای راهنمایی بیشتر، دکمه‌ی <b>راهنما</b> رو بزن \n"
+        "همین حالا از منوی زیر شروع کن و منتظر باز شدن دور بعدی تورنومنت توی کانال بمون 👇"
     )
 
 
@@ -815,7 +813,7 @@ def build_profile_text(uid: int, u: dict) -> str:
 
 
 def build_leaderboard_text(uid: int = 0) -> str:
-    lb = cloud.get_weekly_leaderboard(top=10)
+    lb = cloud.get_weekly_leaderboard(top=TOP_REPORT_COUNT)
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
     countdown_line = f"\n\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
@@ -838,8 +836,11 @@ def build_leaderboard_text(uid: int = 0) -> str:
         lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
     
     lines.append(countdown_line)
-    lines.append(f"🔔 در پایان هر هفته: رتبه 1 تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی نقدی دلاری، رتبه {PROP_PRIZE_RANKS + 1} "
-                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی اکانت پراپ بزودی ...")
+    lines.append(
+        "\n🏆 <b>جوایز نقدی پایان هفته:</b>\n"
+        "🥇 نفر اول: <b>۸۰$</b> | 🥈 دوم: <b>۶۰$</b> | 🥉 سوم: <b>۴۰$</b>\n"
+        "🎲 نفرات ۴ تا ۱۰: قرعه‌کشی <b>۳۰ دلاری</b> بین ۱ الی ۲ نفر"
+    )
     return "\n".join(lines)
 
 
@@ -864,9 +865,12 @@ def build_help_text(admin: bool) -> str:
         "⏳ شمارش معکوس زنده روی پست کانال بروزرسانی می‌شه — وقتی تمام شد، رأی‌گیری بسته می‌شه.\n\n"
         "🔒 هر کاربر فقط یک‌بار در هر دور می‌تونه رأی بده.\n\n"
         f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> — نتیجه خصوصی اطلاع‌رسانی می‌شه.\n\n"
-        "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز بیشتری می‌گیرید وشانس برنده شدنتون بیشتر میشه.\n\n"
-        "🏆 <b>تورنومنت هفتگی:</b> آخر هفته لیدربرد ریست می‌شه و جوایز تعلق می‌گیره.\n\n"
-        "📋 <b>جوایز توسط مدیر در کانال اطلاع رسانی و مشخص میشود </b>\n\n"
+        "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز بیشتری می‌گیرید و شانس برنده شدنتون بیشتر میشه.\n\n"
+        "🏆 <b>تورنومنت هفتگی و جوایز نقدی:</b>\n"
+        "  • 🥇 نفر اول: <b>۸۰ دلار</b>\n"
+        "  • 🥈 نفر دوم: <b>۶۰ دلار</b>\n"
+        "  • 🥉 نفر سوم: <b>۴۰ دلار</b>\n"
+        "  • 🎲 نفرات ۴ تا ۱۰: قرعه‌کشی <b>۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
         "📋 <b>دستورات:</b>\n"
         "/start — شروع و ثبت‌نام\n"
         "/profile — مشاهده امتیاز و رتبه‌ات\n"
@@ -1007,6 +1011,53 @@ async def _resolve_round(app: Application, rnd: dict):
     ))
     cloud.save(force=True)
 
+
+async def broadcast_message(app: Application, text: str, admin_uid: int):
+    """ارسال پیام همگانی به همه کاربران در پس‌زمینه"""
+    users = cloud.get_all_users()
+    sent = 0
+    failed = 0
+    blocked = 0
+    
+    await app.bot.send_message(
+        chat_id=admin_uid,
+        text=f"📢 <b>شروع ارسال همگانی...</b>\n\n"
+             f"👥 تعداد کل کاربران: <b>{len(users)}</b>\n"
+             f"⏳ لطفاً صبر کنید...",
+        parse_mode=ParseMode.HTML,
+    )
+    
+    for u in users:
+        uid_str = u.get("uid_str") or str(u.get("uid"))
+        if not uid_str.isdigit():
+            continue
+        
+        try:
+            await app.bot.send_message(
+                chat_id=int(uid_str),
+                text=text,
+                parse_mode=ParseMode.HTML,
+            )
+            sent += 1
+            await asyncio.sleep(NOTIFY_SEND_DELAY)
+        except Forbidden:
+            blocked += 1  # کاربر ربات را بلاک کرده
+        except BadRequest:
+            failed += 1  # پیام نامعتبر بود
+        except Exception:
+            failed += 1
+    
+    # ارسال گزارش نهایی به ادمین
+    await app.bot.send_message(
+        chat_id=admin_uid,
+        text=f"✅ <b>ارسال همگانی به پایان رسید!</b>\n\n"
+             f"📊 <b>آمار ارسال:</b>\n"
+             f"✅ ارسال موفق: <b>{sent}</b>\n"
+             f"⛔️ بلاک‌کرده: <b>{blocked}</b>\n"
+             f"❌ خطا: <b>{failed}</b>\n\n"
+             f"🎯 <b>نرخ موفقیت:</b> {round(sent / len(users) * 100, 1)}%",
+        parse_mode=ParseMode.HTML,
+    )
 
 # ══════════════════════════════════════════════════════════════════════
 # COMMAND HANDLERS
@@ -1360,6 +1411,20 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ── ارسال همگانی ───────────────────────────────────────────────
+    if data == "admin:broadcast:prompt":
+        ctx.user_data["awaiting"] = "broadcast_text"
+        await q.answer()
+        await q.edit_message_text(
+            "📢 <b>ارسال همگانی به همه کاربران</b>\n\n"
+            "پیام خود را بنویسید (می‌توانید از فرمت HTML استفاده کنید):\n"
+            "مثال: <code>&lt;b&gt;متن بولد&lt;/b&gt;</code>\n\n"
+            "⚠️ این پیام به پی‌وی تمام کاربران ارسال می‌شود.\n"
+            "برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
     if data.startswith("admin:fake:edit:"):
         fid = data[len("admin:fake:edit:"):]
         ctx.user_data["awaiting"] = "fake_edit_pts"
@@ -1401,6 +1466,19 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if text_in == "/cancel":
         ctx.user_data.pop("awaiting", None)
         await update.message.reply_text("❌ لغو شد.", reply_markup=kb_admin_main())
+        return
+
+    # ارسال همگانی
+    if awaiting == "broadcast_text":
+        ctx.user_data.pop("awaiting", None)
+        await update.message.reply_text(
+            "🚀 <b>در حال شروع ارسال همگانی...</b>\n\n"
+            "پیام شما در پس‌زمینه به همه کاربران ارسال می‌شود.\n"
+            "پس از اتمام، گزارش کامل را دریافت خواهید کرد.",
+            parse_mode=ParseMode.HTML,
+        )
+        # اجرای ارسال در پس‌زمینه
+        asyncio.create_task(broadcast_message(ctx.application, text_in, uid))
         return
 
     # مرحله‌ی ۱ افزودن فیک — نام
