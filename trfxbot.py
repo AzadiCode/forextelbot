@@ -46,7 +46,7 @@ PORT        = int(os.environ.get("PORT", 5000))
 JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
 JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
 
-_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
+_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", ""))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 
 CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
@@ -606,8 +606,8 @@ def _profile_deeplink_url() -> str:
 def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
-         InlineKeyboardButton("🏆 لیدربرد", callback_data="menu:leaderboard")],
-        [InlineKeyboardButton("🎁 دعوت دوستان", callback_data="menu:invite")],
+         InlineKeyboardButton("🏆 لیدربرد هفتگی زنده", callback_data="menu:leaderboard")],
+        [InlineKeyboardButton("🎁 پاداش و کسب امتیاز بیشتر ", callback_data="menu:invite")],
         [InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
     ]
     if uid and is_admin(uid):
@@ -755,7 +755,7 @@ def build_round_text(rnd: dict, phase: str,
         total_countdown = _fmt_mmss(total_remaining)
         
         return (
-            f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا </b>\n"
+            f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
             f"💰 قیمت شروع در این لحضه : <code>{start_p}</code>\n"
             f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
@@ -771,7 +771,7 @@ def build_round_text(rnd: dict, phase: str,
         total_remaining = (lock_dt - now_ir()).total_seconds()
         total_countdown = _fmt_mmss(total_remaining)
         return (
-            f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا </b>\n"
+            f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
             "⛔️ <b>زمان ثبت رأی به پایان رسید — دیگه امکان رأی دادن نیست.</b>\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
@@ -1552,7 +1552,8 @@ async def autosave_loop(app: Application):
     while True:
         try:
             await asyncio.sleep(300)
-            cloud.save(force=True)
+            # بدون force=True تا فقط در صورتی که تغییری (_dirty) ایجاد شده بود ذخیره کند
+            cloud.save()
         except asyncio.CancelledError:
             break
         except Exception as e:
