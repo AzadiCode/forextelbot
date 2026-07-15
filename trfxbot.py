@@ -60,7 +60,7 @@ DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
 WATCHER_TICK_SEC     = 5
-TOP_REPORT_COUNT     = 10
+TOP_REPORT_COUNT     = 20
 PROP_PRIZE_RANKS     = 3
 NOTIFY_SEND_DELAY    = 0.05
 
@@ -818,7 +818,7 @@ def build_leaderboard_text(uid: int = 0) -> str:
     lb = cloud.get_weekly_leaderboard(top=10)
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
-    countdown_line = f"\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+    countdown_line = f"\n\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
     
     if not lb:
         return (
@@ -828,7 +828,7 @@ def build_leaderboard_text(uid: int = 0) -> str:
         )
     
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیدربرد تورنومنت این هفته</b>\n"]
+    lines = ["🏆 <b>لیست #20 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
@@ -838,8 +838,8 @@ def build_leaderboard_text(uid: int = 0) -> str:
         lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
     
     lines.append(countdown_line)
-    lines.append(f"\n🔔 در پایان: رتبه ۱ تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی پراپ، رتبه {PROP_PRIZE_RANKS + 1} "
-                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی نقدی.")
+    lines.append(f"🔔 در پایان هر هفته: رتبه 1 تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی نقدی دلاری، رتبه {PROP_PRIZE_RANKS + 1} "
+                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی اکانت پراپ بزودی ...")
     return "\n".join(lines)
 
 
