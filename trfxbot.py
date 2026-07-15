@@ -814,28 +814,32 @@ def build_profile_text(uid: int, u: dict) -> str:
     )
 
 
-def build_leaderboard_text() -> str:
+def build_leaderboard_text(uid: int = 0) -> str:
     lb = cloud.get_weekly_leaderboard(top=10)
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
-    countdown_line = f"\n\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
-
+    countdown_line = f"\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+    
     if not lb:
         return (
-            "🏆 <b>لیدربرد این هفته</b>\n\n"
+            "🏆 <b>لیدربرد این هفته</b>\n"
             "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
             f"{countdown_line}"
         )
+    
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیدربرد زنده تورنومنت این هفته</b>\n"]
+    lines = ["🏆 <b>لیدربرد تورنومنت این هفته</b>\n"]
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
-        # اسم کامل نمایش داده می‌شود
         name = row["full_name"]
-        lines.append(f"{tag} {name} — <b>{row['points']}</b> امتیاز")
+        
+        # اگر این رتبه متعلق به کاربر فعلی است، علامت ویژه اضافه کن
+        marker = "🔹 " if uid and row["uid"] == str(uid) else ""
+        lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
+    
     lines.append(countdown_line)
-    lines.append(f"🔔 در پایان هر هفته: رتبه 1 تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی نقدی دلاری، رتبه {PROP_PRIZE_RANKS + 1} "
-                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی اکانت پراپ بزودی ...")
+    lines.append(f"\n🔔 در پایان: رتبه ۱ تا {PROP_PRIZE_RANKS} 🏅 جایزه‌ی پراپ، رتبه {PROP_PRIZE_RANKS + 1} "
+                 f"تا {TOP_REPORT_COUNT} 💵 جایزه‌ی نقدی.")
     return "\n".join(lines)
 
 
@@ -1100,8 +1104,9 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_leaderboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await _require_membership(update, ctx.bot):
         return
+    uid = update.effective_user.id
     await update.effective_message.reply_text(
-        build_leaderboard_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        build_leaderboard_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_back())
 
 
 async def cmd_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1287,7 +1292,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if data == "menu:leaderboard":
         await q.answer()
-        await q.edit_message_text(build_leaderboard_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        await q.edit_message_text(build_leaderboard_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_back())
         return
     if data == "menu:invite":
         bot_username = (await ctx.bot.get_me()).username
