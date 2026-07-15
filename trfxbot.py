@@ -54,8 +54,8 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
 
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
-REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 120))
-REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 90))
+REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
+REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
@@ -577,9 +577,8 @@ def build_referral_join_text() -> str:
         "📢 جایی که تمام دورهای مسابقه و اطلاعیه‌های مهم منتشر می‌شن\n\n"
         "✅ بعد از عضویت، روی دکمه‌ی زیر بزن تا:\n"
         "  • امتیاز رایگان دعوت به حسابت اضافه بشه\n"
-        "  • به‌عنوان زیرمجموعه‌ی دوستت ثبت بشی\n"
-        "  • بتونی توی دورهای بعدی شرکت کنی\n\n"
-        "🔥 <b>همین الان عضو شو و منتظر دور بعدی بمون!</b>"
+        "  • بتونی توی دورهای بعدی تورنومنت شرکت کنی\n\n"
+        "🔥 <b>همین الان عضو شو و برای ادامه روی عضو شدم بزن !</b>"
     )
 
 
@@ -726,18 +725,18 @@ def _fmt_price(p: float) -> str:
 def build_welcome_text() -> str:
     return (
         "🥇✨ <b>به بزرگ‌ترین تورنومنت پیش‌بینی قیمت طلا خوش اومدی!</b> ✨🥇\n\n"
-        "اینجا هر دور، فقط با یک لمس روی «بالا» یا «پایین»، نبض بازار جهانی "
+        "اینجا هر دور در روز، فقط با یک لمس روی «بالا» یا «پایین»، نبض بازار جهانی "
         "انس طلا (XAU/USD) رو حدس می‌زنی و اگه درست پیش‌بینی کنی، امتیاز واقعی "
-        "می‌گیری که در پایان هفته به جایزه تبدیل می‌شه!\n\n"
+        "می‌گیری که در پایان هفته به جایزه واقعی تبدیل می‌شه!\n\n"
         "🎯 <b>قوانین طلایی تورنومنت:</b>\n"
         f"  • هر دور فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> امکان ثبت رأی داری ⏳\n"
         "  • هر کاربر فقط <b>یک‌بار</b> در هر دور رأی می‌ده؛ رأی اول نهایی‌ست 🔒\n"
         f"  • پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> مستقیم به حسابت\n\n"
-        "🎁 با دعوت دوستات هم امتیاز رایگان می‌گیری!\n"
+        "🎁 با دعوت دوستات هم امتیاز بیشتری می‌گیری و شانست برای برنده شدن بیشتر میشه!\n"
         "🏆 هر هفته لیدربرد ریست می‌شه و به نفرات برتر جایزه‌ی واقعی تعلق می‌گیره:\n"
-        f"  🏅 رتبه‌ی ۱ تا {PROP_PRIZE_RANKS}: جایزه‌ی پراپ\n"
-        f"  💵 رتبه‌ی {PROP_PRIZE_RANKS + 1} تا {TOP_REPORT_COUNT}: جایزه‌ی نقدی\n\n"
-        "همین حالا از منوی زیر شروع کن و منتظر باز شدن دور بعدی توی کانال بمون 👇"
+        f"  🏅 رتبه‌ی 1 تا {PROP_PRIZE_RANKS}: جایزه‌ی دلاری\n"
+        f"  💵 رتبه‌ی {PROP_PRIZE_RANKS + 1} تا {TOP_REPORT_COUNT}: جایزه‌ی اکانت پراپ بزودی ...\n\n"
+        "همین حالا از منوی زیر شروع کن و منتظر باز شدن دور بعدی پیشبینی توی کانال بمون 👇"
     )
 
 
@@ -756,8 +755,8 @@ def build_round_text(rnd: dict, phase: str,
         total_countdown = _fmt_mmss(total_remaining)
         
         return (
-            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n"
-            f"💰 قیمت شروع: <code>{start_p}</code>\n"
+            f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا </b>\n"
+            f"💰 قیمت شروع در این لحضه : <code>{start_p}</code>\n"
             f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
             "طلا تا پایان این دور، نسبت به قیمت شروع بالا می‌ره یا پایین؟ "
@@ -772,7 +771,7 @@ def build_round_text(rnd: dict, phase: str,
         total_remaining = (lock_dt - now_ir()).total_seconds()
         total_countdown = _fmt_mmss(total_remaining)
         return (
-            f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']}</b>\n"
+            f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا </b>\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
             "⛔️ <b>زمان ثبت رأی به پایان رسید — دیگه امکان رأی دادن نیست.</b>\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
@@ -787,8 +786,8 @@ def build_round_text(rnd: dict, phase: str,
     else:
         result_line = f"نتیجه‌ی این دور: <b>{arrow}</b>"
     return (
-        f"🥇 <b>دور پیش‌بینی طلا #{rnd['id']} — پایان یافت ✅</b>\n\n"
-        f"💰 شروع: <code>{start_p}</code>   →   پایان: <code>{end_p}</code>\n"
+        f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا  — پایان یافت ✅</b>\n\n"
+        f"💰 قیمت در شروع دور: <code>{start_p}</code>   →   در پایان: <code>{end_p}</code>\n"
         f"{result_line}\n\n"
         "📍 برای دیدن اینکه پیش‌بینی تو درست بوده یا نه، امتیاز کسب‌شده و رتبه‌ی "
         "فعلیت، روی دکمه‌ی زیر بزن 👇"
@@ -845,7 +844,7 @@ def build_referral_text(uid: int, bot_username: str) -> str:
     link = f"https://t.me/{bot_username}?start=ref_{u['ref']}"
     return (
         "🎁 <b>دعوت دوستان</b>\n\n"
-        f"با لینک اختصاصی زیر دوستاتو دعوت کن:\n<code>{link}</code>\n\n"
+        f"با لینک اختصاصی زیر دوستاتو دعوت کن کافیه بزنی رو لینک تا کپی بشه :\n<code>{link}</code>\n\n"
         f"✅ به ازای هر دعوت موفق: <b>{REF_POINTS_REFERRER} امتیاز</b> برای تو\n"
         f"🎉 دوستت هم با ورود از لینکت: <b>{REF_POINTS_INVITEE} امتیاز</b> هدیه می‌گیره\n\n"
         f"👥 تعداد دعوت‌های موفق تو: <b>{u.get('invites', 0)}</b>"
@@ -861,8 +860,9 @@ def build_help_text(admin: bool) -> str:
         "⏳ شمارش معکوس زنده روی پست کانال بروزرسانی می‌شه — وقتی تمام شد، رأی‌گیری بسته می‌شه.\n\n"
         "🔒 هر کاربر فقط یک‌بار در هر دور می‌تونه رأی بده.\n\n"
         f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> — نتیجه خصوصی اطلاع‌رسانی می‌شه.\n\n"
-        "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز می‌گیرید.\n\n"
+        "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز بیشتری می‌گیرید وشانس برنده شدنتون بیشتر میشه.\n\n"
         "🏆 <b>تورنومنت هفتگی:</b> آخر هفته لیدربرد ریست می‌شه و جوایز تعلق می‌گیره.\n\n"
+        "📋 <b>جوایز توسط مدیر در کانال اطلاع رسانی و مشخص میشود </b>\n"
         "📋 <b>دستورات:</b>\n"
         "/start — شروع و ثبت‌نام\n"
         "/profile — مشاهده امتیاز و رتبه‌ات\n"
