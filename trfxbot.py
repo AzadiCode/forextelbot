@@ -51,7 +51,7 @@ ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()
 
 CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
 
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
@@ -862,7 +862,7 @@ def build_help_text(admin: bool) -> str:
         f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> — نتیجه خصوصی اطلاع‌رسانی می‌شه.\n\n"
         "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز بیشتری می‌گیرید وشانس برنده شدنتون بیشتر میشه.\n\n"
         "🏆 <b>تورنومنت هفتگی:</b> آخر هفته لیدربرد ریست می‌شه و جوایز تعلق می‌گیره.\n\n"
-        "📋 <b>جوایز توسط مدیر در کانال اطلاع رسانی و مشخص میشود </b>\n"
+        "📋 <b>جوایز توسط مدیر در کانال اطلاع رسانی و مشخص میشود </b>\n\n"
         "📋 <b>دستورات:</b>\n"
         "/start — شروع و ثبت‌نام\n"
         "/profile — مشاهده امتیاز و رتبه‌ات\n"
