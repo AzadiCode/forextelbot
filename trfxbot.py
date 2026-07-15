@@ -53,7 +53,7 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
 
-PPOINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
+POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
@@ -256,7 +256,6 @@ class CloudStorage:
                     "uid": uid,
                     "username": username or "",
                     "full_name": full_name or "",
-                    "joined": now_ir().isoformat(),
                     "ref": ref_code, "referred_by": None,
                     "points": 0, "total_points": 0,
                     "correct": 0, "predictions": 0, "invites": 0,
@@ -526,6 +525,10 @@ class CloudStorage:
             record["direction"] = direction
             record["winners"] = winners
             record["status"] = "resolved"
+            record["participants_count"] = len(rnd.get("predictions", {}))
+            # حذف فیلدهای غیرضروری برای کاهش حجم دیتابیس
+            record.pop("predictions", None)
+            record.pop("last_edit_ts", None)
             self._data.setdefault("rounds_history", []).insert(0, record)
             self._data["rounds_history"] = self._data["rounds_history"][:50]
             self._data["active_round"] = None
@@ -537,6 +540,36 @@ class CloudStorage:
             self._data["active_round"] = None
             self._dirty = True
             return dict(rnd) if rnd else None
+
+    def cleanup_legacy_data(self) -> bool:
+        """پاکسازی یک‌باره فیلدهای غیرضروری از داده‌های قدیمی JSONBin"""
+        with self._lock:
+            if self._data.get("_cleanup_done"):
+                return False  # قبلاً پاکسازی شده
+            
+            cleaned = False
+            
+            # ۱. حذف فیلد joined از همه کاربران
+            for uid_str, user_data in self._data.get("users", {}).items():
+                if "joined" in user_data:
+                    del user_data["joined"]
+                    cleaned = True
+            
+            # ۲. حذف فیلدهای غیرضروری از rounds_history
+            for rnd in self._data.get("rounds_history", []):
+                if "predictions" in rnd:
+                    # ذخیره تعداد شرکت‌کنندگان قبل از حذف
+                    rnd["participants_count"] = len(rnd["predictions"])
+                    del rnd["predictions"]
+                    cleaned = True
+                if "last_edit_ts" in rnd:
+                    del rnd["last_edit_ts"]
+                    cleaned = True
+            
+            # ۳. علامت‌گذاری که پاکسازی انجام شده
+            self._data["_cleanup_done"] = True
+            self._dirty = True
+            return cleaned
 
 
 cloud = CloudStorage()
@@ -1170,8 +1203,19 @@ async def cmd_invite(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_adminpanel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    # پاکسازی یک‌باره فیلد joined از همه کاربران (فقط یک بار اجرا کنید)
+    with cloud._lock:
+        for uid_str, user_data in cloud._data["users"].items():
+            if "joined" in user_data:
+                del user_data["joined"]
+                cloud._dirty = True
+    if cloud._dirty:
+        cloud.save(force=True)
+        log.info("🧹 فیلد joined از همه کاربران حذف شد")
+    
     if not is_admin(update.effective_user.id):
         return
+    # ... بقیه کد
     await update.effective_message.reply_text(
         build_admin_panel_text(), parse_mode=ParseMode.HTML, reply_markup=kb_admin_main())
 
@@ -1645,6 +1689,12 @@ async def autosave_loop(app: Application):
 
 async def on_startup(app: Application):
     global BOT_USERNAME
+    
+    # 🧹 پاکسازی یک‌باره داده‌های قدیمی (فقط یک بار در عمر ربات اجرا می‌شود)
+    if cloud.cleanup_legacy_data():
+        cloud.save(force=True)
+        log.info("🧹 پاکسازی داده‌های قدیمی انجام شد (predictions و joined حذف شدند)")
+    
     try:
         me = await app.bot.get_me()
         BOT_USERNAME = me.username or ""
