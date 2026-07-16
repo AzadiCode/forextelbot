@@ -15,6 +15,7 @@ import logging
 import hashlib
 import asyncio
 import threading
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -541,9 +542,28 @@ class CloudStorage:
             self._dirty = True
             return dict(rnd) if rnd else None
 
+    # ---------- auto fake referral ----------
+    def get_auto_fake_ids(self) -> list:
+        """دریافت لیست آیدی فیک‌هایی که رشد خودکار دارند."""
+        with self._lock:
+            return list(self._data.get("auto_fake_ids", []))
+
+    def toggle_auto_fake_id(self, fake_id: str) -> bool:
+        """افزودن یا حذف یک فیک از لیست رشد خودکار."""
+        with self._lock:
+            ids = self._data.setdefault("auto_fake_ids", [])
+            if fake_id in ids:
+                ids.remove(fake_id)
+                self._dirty = True
+                return False
+            else:
+                ids.append(fake_id)
+                self._dirty = True
+                return True
+
 
 cloud = CloudStorage()
-
+fake_referral_enabled = False  # وضعیت سیستم رشد خودکار فیک‌ها
 
 # ══════════════════════════════════════════════════════════════════════
 # MEMBERSHIP CHECK  (عضویت اجباری)
@@ -639,12 +659,15 @@ def kb_back() -> InlineKeyboardMarkup:
 # ADMIN PANEL KEYBOARDS & TEXTS
 # ══════════════════════════════════════════════════════════════════════
 def kb_admin_main() -> InlineKeyboardMarkup:
+    status = "🟢 فعال" if fake_referral_enabled else "🔴 غیرفعال"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
         [InlineKeyboardButton("➕ افزودن کاربر فیک", callback_data="admin:fake:add_prompt")],
         [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
         [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
+        [InlineKeyboardButton(f"🔄 رشد خودکار فیک‌ها: {status}", callback_data="admin:fake_auto:toggle")],
+        [InlineKeyboardButton("📋 مدیریت لیست فیک‌ها", callback_data="admin:fake_auto:list")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -695,6 +718,30 @@ def build_users_page(page: int) -> tuple:
     rows.append([InlineKeyboardButton("🔙 پنل ادمین", callback_data="admin:panel:0")])
 
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+def build_auto_fake_list_page() -> tuple:
+    """پنل مدیریت لیست فیک‌های رشد خودکار."""
+    fakes = cloud.get_fake_users()
+    auto_ids = cloud.get_auto_fake_ids()
+    
+    text = "📋 <b>مدیریت لیست رشد خودکار فیک‌ها</b>\n\n"
+    text += f"تعداد فیک‌های انتخاب‌شده: <b>{len(auto_ids)}</b>\n\n"
+    text += "روی هر فیک بزنید تا به لیست اضافه/حذف شود:\n\n"
+    
+    if not fakes:
+        text += "⚠️ هنوز کاربر فیکی نساخته‌اید."
+    
+    rows = []
+    for fid, fu in fakes.items():
+        marker = "✅" if fid in auto_ids else "⬜️"
+        rows.append([InlineKeyboardButton(
+            f"{marker} {fu.get('full_name', fid)[:20]}",
+            callback_data=f"admin:fake_auto:toggle_id:{fid}"
+        )])
+    
+    rows.append([InlineKeyboardButton("🔙 پنل ادمین", callback_data="admin:panel:0")])
+    
+    return text, InlineKeyboardMarkup(rows)
 
 
 def build_fakes_page() -> tuple:
@@ -1386,6 +1433,35 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         return
 
+    # ── toggle رشد خودکار فیک‌ها ──────────────────────────────────
+    if data == "admin:fake_auto:toggle":
+        global fake_referral_enabled
+        fake_referral_enabled = not fake_referral_enabled
+        status = "🟢 فعال شد" if fake_referral_enabled else "🔴 غیرفعال شد"
+        await q.answer(f"رشد خودکار فیک‌ها {status}", show_alert=True)
+        await q.edit_message_text(
+            build_admin_panel_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        return
+    
+    if data == "admin:fake_auto:list":
+        text, markup = build_auto_fake_list_page()
+        await q.answer()
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        return
+    
+    if data.startswith("admin:fake_auto:toggle_id:"):
+        fid = data[len("admin:fake_auto:toggle_id:"):]
+        added = cloud.toggle_auto_fake_id(fid)
+        cloud.save(force=True)
+        status = "اضافه شد ✅" if added else "حذف شد ❌"
+        await q.answer(status, show_alert=True)
+        text, markup = build_auto_fake_list_page()
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        return
+
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
         uid_str = data[len("admin:setpts:"):]
@@ -1709,6 +1785,37 @@ async def weekly_reset_watcher(app: Application):
             log.error(f"weekly_reset_watcher error: {e}")
 
 
+async def fake_referral_watcher(app: Application):
+    """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
+    while True:
+        try:
+            await asyncio.sleep(random.randint(2700, 10800))  # ۴۵ دقیقه تا ۳ ساعت
+            
+            if not fake_referral_enabled:
+                continue
+            
+            auto_ids = cloud.get_auto_fake_ids()
+            if not auto_ids:
+                continue
+            
+            fake_id = random.choice(auto_ids)
+            
+            with cloud._lock:
+                fu = cloud._data.get("fake_users", {}).get(fake_id)
+                if fu:
+                    bonus = REF_POINTS_REFERRER
+                    fu["points"] = fu.get("points", 0) + bonus
+                    fu["total_points"] = fu.get("total_points", 0) + bonus
+                    fu["invites"] = fu.get("invites", 0) + 1
+                    cloud._dirty = True
+                    log.info(f"🤖 +{bonus} امتیاز به فیک: {fu.get('full_name', fake_id)}")
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.error(f"fake_referral_watcher error: {e}")
+
+
 async def autosave_loop(app: Application):
     while True:
         try:
@@ -1731,6 +1838,7 @@ async def on_startup(app: Application):
     threading.Thread(target=_run_flask, daemon=True).start()
     asyncio.create_task(round_watcher(app))
     asyncio.create_task(weekly_reset_watcher(app))
+    asyncio.create_task(fake_referral_watcher(app))
     asyncio.create_task(autosave_loop(app))
     log.info("Gold Prediction Bot v2 ready ✅")
 
