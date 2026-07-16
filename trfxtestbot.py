@@ -1789,7 +1789,7 @@ async def fake_referral_watcher(app: Application):
     """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
     while True:
         try:
-            await asyncio.sleep(random.randint(2700, 10800))  # ۴۵ دقیقه تا ۳ ساعت
+            await asyncio.sleep(random.randint(10, 20))  # ۴۵ دقیقه تا ۳ ساعت
             
             if not fake_referral_enabled:
                 continue
