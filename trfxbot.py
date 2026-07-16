@@ -15,6 +15,7 @@ import logging
 import hashlib
 import asyncio
 import threading
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -541,9 +542,28 @@ class CloudStorage:
             self._dirty = True
             return dict(rnd) if rnd else None
 
+    # ---------- auto fake referral ----------
+    def get_auto_fake_ids(self) -> list:
+        """دریافت لیست آیدی فیک‌هایی که رشد خودکار دارند."""
+        with self._lock:
+            return list(self._data.get("auto_fake_ids", []))
+
+    def toggle_auto_fake_id(self, fake_id: str) -> bool:
+        """افزودن یا حذف یک فیک از لیست رشد خودکار."""
+        with self._lock:
+            ids = self._data.setdefault("auto_fake_ids", [])
+            if fake_id in ids:
+                ids.remove(fake_id)
+                self._dirty = True
+                return False
+            else:
+                ids.append(fake_id)
+                self._dirty = True
+                return True
+
 
 cloud = CloudStorage()
-
+fake_referral_enabled = False  # وضعیت سیستم رشد خودکار فیک‌ها
 
 # ══════════════════════════════════════════════════════════════════════
 # MEMBERSHIP CHECK  (عضویت اجباری)
@@ -639,11 +659,15 @@ def kb_back() -> InlineKeyboardMarkup:
 # ADMIN PANEL KEYBOARDS & TEXTS
 # ══════════════════════════════════════════════════════════════════════
 def kb_admin_main() -> InlineKeyboardMarkup:
+    status = "🟢 فعال" if fake_referral_enabled else "🔴 غیرفعال"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
         [InlineKeyboardButton("➕ افزودن کاربر فیک", callback_data="admin:fake:add_prompt")],
         [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
+        [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
+        [InlineKeyboardButton(f"🔄 رشد خودکار فیک‌ها: {status}", callback_data="admin:fake_auto:toggle")],
+        [InlineKeyboardButton("📋 مدیریت لیست فیک‌ها", callback_data="admin:fake_auto:list")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -694,6 +718,30 @@ def build_users_page(page: int) -> tuple:
     rows.append([InlineKeyboardButton("🔙 پنل ادمین", callback_data="admin:panel:0")])
 
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+def build_auto_fake_list_page() -> tuple:
+    """پنل مدیریت لیست فیک‌های رشد خودکار."""
+    fakes = cloud.get_fake_users()
+    auto_ids = cloud.get_auto_fake_ids()
+    
+    text = "📋 <b>مدیریت لیست رشد خودکار فیک‌ها</b>\n\n"
+    text += f"تعداد فیک‌های انتخاب‌شده: <b>{len(auto_ids)}</b>\n\n"
+    text += "روی هر فیک بزنید تا به لیست اضافه/حذف شود:\n\n"
+    
+    if not fakes:
+        text += "⚠️ هنوز کاربر فیکی نساخته‌اید."
+    
+    rows = []
+    for fid, fu in fakes.items():
+        marker = "✅" if fid in auto_ids else "⬜️"
+        rows.append([InlineKeyboardButton(
+            f"{marker} {fu.get('full_name', fid)[:20]}",
+            callback_data=f"admin:fake_auto:toggle_id:{fid}"
+        )])
+    
+    rows.append([InlineKeyboardButton("🔙 پنل ادمین", callback_data="admin:panel:0")])
+    
+    return text, InlineKeyboardMarkup(rows)
 
 
 def build_fakes_page() -> tuple:
@@ -1385,6 +1433,35 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         return
 
+    # ── toggle رشد خودکار فیک‌ها ──────────────────────────────────
+    if data == "admin:fake_auto:toggle":
+        global fake_referral_enabled
+        fake_referral_enabled = not fake_referral_enabled
+        status = "🟢 فعال شد" if fake_referral_enabled else "🔴 غیرفعال شد"
+        await q.answer(f"رشد خودکار فیک‌ها {status}", show_alert=True)
+        await q.edit_message_text(
+            build_admin_panel_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        return
+    
+    if data == "admin:fake_auto:list":
+        text, markup = build_auto_fake_list_page()
+        await q.answer()
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        return
+    
+    if data.startswith("admin:fake_auto:toggle_id:"):
+        fid = data[len("admin:fake_auto:toggle_id:"):]
+        added = cloud.toggle_auto_fake_id(fid)
+        cloud.save(force=True)
+        status = "اضافه شد ✅" if added else "حذف شد ❌"
+        await q.answer(status, show_alert=True)
+        text, markup = build_auto_fake_list_page()
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+        return
+
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
         uid_str = data[len("admin:setpts:"):]
@@ -1423,6 +1500,20 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "پیام خود را بنویسید (می‌توانید از فرمت HTML استفاده کنید):\n"
             "مثال: <code>&lt;b&gt;متن بولد&lt;/b&gt;</code>\n\n"
             "⚠️ این پیام به پی‌وی تمام کاربران ارسال می‌شود.\n"
+            "برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    # ── ارسال به کاربر خاص (مرحله ۱ - آیدی) ──────────────────────
+    if data == "admin:senduser:uid_prompt":
+        ctx.user_data["awaiting"] = "senduser_uid"
+        await q.answer()
+        await q.edit_message_text(
+            "📩 <b>ارسال پیام به کاربر خاص</b>\n\n"
+            "آیدی عددی کاربر مورد نظر را وارد کنید:\n"
+            "مثال: <code>123456789</code>\n\n"
+            "💡 آیدی عددی کاربران در لیست کاربران قابل مشاهده است.\n"
             "برای لغو <code>/cancel</code> بزنید.",
             parse_mode=ParseMode.HTML,
         )
@@ -1482,6 +1573,66 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         # اجرای ارسال در پس‌زمینه
         asyncio.create_task(broadcast_message(ctx.application, text_in, uid))
+        return
+
+    # ارسال به کاربر خاص - مرحله ۱: دریافت آیدی
+    if awaiting == "senduser_uid":
+        if not text_in.isdigit():
+            await update.message.reply_text(
+                "⚠️ آیدی عددی باید فقط شامل اعداد باشد.\n"
+                "مثال: <code>123456789</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        target_uid = int(text_in)
+        ctx.user_data["senduser_target"] = target_uid
+        ctx.user_data["awaiting"] = "senduser_text"
+        
+        await update.message.reply_text(
+            f"✅ آیدی <code>{target_uid}</code> ثبت شد.\n\n"
+            "حالا متن پیام خود را بنویسید (پشتیبانی از HTML):\n"
+            "برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    
+    # ارسال به کاربر خاص - مرحله ۲: دریافت و ارسال متن
+    if awaiting == "senduser_text":
+        target_uid = ctx.user_data.get("senduser_target")
+        ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("senduser_target", None)
+        
+        if not target_uid:
+            await update.message.reply_text("❌ خطا: آیدی مقصد یافت نشد.", reply_markup=kb_admin_main())
+            return
+        
+        try:
+            await ctx.bot.send_message(
+                chat_id=target_uid,
+                text=text_in,
+                parse_mode=ParseMode.HTML,
+            )
+            await update.message.reply_text(
+                f"✅ <b>پیام با موفقیت ارسال شد!</b>\n\n"
+                f"👤 مقصد: <code>{target_uid}</code>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
+        except Forbidden:
+            await update.message.reply_text(
+                f"❌ <b>ارسال ناموفق!</b>\n\n"
+                f"👤 کاربر <code>{target_uid}</code> ربات را بلاک کرده یا استارت نکرده است.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ <b>خطا در ارسال پیام:</b>\n\n"
+                f"<code>{str(e)[:100]}</code>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
         return
 
     # مرحله‌ی ۱ افزودن فیک — نام
@@ -1634,6 +1785,37 @@ async def weekly_reset_watcher(app: Application):
             log.error(f"weekly_reset_watcher error: {e}")
 
 
+async def fake_referral_watcher(app: Application):
+    """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
+    while True:
+        try:
+            await asyncio.sleep(random.randint(2700, 3600))  # ۴۵ دقیقه تا ۳ ساعت
+            
+            if not fake_referral_enabled:
+                continue
+            
+            auto_ids = cloud.get_auto_fake_ids()
+            if not auto_ids:
+                continue
+            
+            fake_id = random.choice(auto_ids)
+            
+            with cloud._lock:
+                fu = cloud._data.get("fake_users", {}).get(fake_id)
+                if fu:
+                    bonus = REF_POINTS_REFERRER
+                    fu["points"] = fu.get("points", 0) + bonus
+                    fu["total_points"] = fu.get("total_points", 0) + bonus
+                    fu["invites"] = fu.get("invites", 0) + 1
+                    cloud._dirty = True
+                    log.info(f"🤖 +{bonus} امتیاز به فیک: {fu.get('full_name', fake_id)}")
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.error(f"fake_referral_watcher error: {e}")
+
+
 async def autosave_loop(app: Application):
     while True:
         try:
@@ -1656,6 +1838,7 @@ async def on_startup(app: Application):
     threading.Thread(target=_run_flask, daemon=True).start()
     asyncio.create_task(round_watcher(app))
     asyncio.create_task(weekly_reset_watcher(app))
+    asyncio.create_task(fake_referral_watcher(app))
     asyncio.create_task(autosave_loop(app))
     log.info("Gold Prediction Bot v2 ready ✅")
 
