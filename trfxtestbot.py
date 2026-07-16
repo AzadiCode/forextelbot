@@ -256,7 +256,6 @@ class CloudStorage:
                     "uid": uid,
                     "username": username or "",
                     "full_name": full_name or "",
-                    "joined": now_ir().isoformat(),
                     "ref": ref_code, "referred_by": None,
                     "points": 0, "total_points": 0,
                     "correct": 0, "predictions": 0, "invites": 0,
@@ -526,6 +525,10 @@ class CloudStorage:
             record["direction"] = direction
             record["winners"] = winners
             record["status"] = "resolved"
+            record["participants_count"] = len(rnd.get("predictions", {}))
+            # حذف فیلدهای غیرضروری برای کاهش حجم دیتابیس
+            record.pop("predictions", None)
+            record.pop("last_edit_ts", None)
             self._data.setdefault("rounds_history", []).insert(0, record)
             self._data["rounds_history"] = self._data["rounds_history"][:50]
             self._data["active_round"] = None
@@ -641,6 +644,7 @@ def kb_admin_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
         [InlineKeyboardButton("➕ افزودن کاربر فیک", callback_data="admin:fake:add_prompt")],
         [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
+        [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -1425,6 +1429,20 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ── ارسال به کاربر خاص (مرحله ۱ - آیدی) ──────────────────────
+    if data == "admin:senduser:uid_prompt":
+        ctx.user_data["awaiting"] = "senduser_uid"
+        await q.answer()
+        await q.edit_message_text(
+            "📩 <b>ارسال پیام به کاربر خاص</b>\n\n"
+            "آیدی عددی کاربر مورد نظر را وارد کنید:\n"
+            "مثال: <code>123456789</code>\n\n"
+            "💡 آیدی عددی کاربران در لیست کاربران قابل مشاهده است.\n"
+            "برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
     if data.startswith("admin:fake:edit:"):
         fid = data[len("admin:fake:edit:"):]
         ctx.user_data["awaiting"] = "fake_edit_pts"
@@ -1479,6 +1497,66 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         # اجرای ارسال در پس‌زمینه
         asyncio.create_task(broadcast_message(ctx.application, text_in, uid))
+        return
+
+    # ارسال به کاربر خاص - مرحله ۱: دریافت آیدی
+    if awaiting == "senduser_uid":
+        if not text_in.isdigit():
+            await update.message.reply_text(
+                "⚠️ آیدی عددی باید فقط شامل اعداد باشد.\n"
+                "مثال: <code>123456789</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        target_uid = int(text_in)
+        ctx.user_data["senduser_target"] = target_uid
+        ctx.user_data["awaiting"] = "senduser_text"
+        
+        await update.message.reply_text(
+            f"✅ آیدی <code>{target_uid}</code> ثبت شد.\n\n"
+            "حالا متن پیام خود را بنویسید (پشتیبانی از HTML):\n"
+            "برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    
+    # ارسال به کاربر خاص - مرحله ۲: دریافت و ارسال متن
+    if awaiting == "senduser_text":
+        target_uid = ctx.user_data.get("senduser_target")
+        ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("senduser_target", None)
+        
+        if not target_uid:
+            await update.message.reply_text("❌ خطا: آیدی مقصد یافت نشد.", reply_markup=kb_admin_main())
+            return
+        
+        try:
+            await ctx.bot.send_message(
+                chat_id=target_uid,
+                text=text_in,
+                parse_mode=ParseMode.HTML,
+            )
+            await update.message.reply_text(
+                f"✅ <b>پیام با موفقیت ارسال شد!</b>\n\n"
+                f"👤 مقصد: <code>{target_uid}</code>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
+        except Forbidden:
+            await update.message.reply_text(
+                f"❌ <b>ارسال ناموفق!</b>\n\n"
+                f"👤 کاربر <code>{target_uid}</code> ربات را بلاک کرده یا استارت نکرده است.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ <b>خطا در ارسال پیام:</b>\n\n"
+                f"<code>{str(e)[:100]}</code>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_admin_main(),
+            )
         return
 
     # مرحله‌ی ۱ افزودن فیک — نام
