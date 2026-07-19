@@ -56,7 +56,7 @@ FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
 
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
-REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
+REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 20))
 REF_BONUS_STEP1      = int(os.environ.get("REF_BONUS_STEP1", 20))  # ورود اولیه
 REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین شرکت در دور
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
@@ -815,6 +815,23 @@ def build_fakes_page() -> tuple:
 # ══════════════════════════════════════════════════════════════════════
 # TEXT BUILDERS
 # ══════════════════════════════════════════════════════════════════════
+
+def mention_html(uid: int, name: str, username: str = "") -> str:
+    """ساخت HTML mention برای کاربر - ۱۰۰٪ در تلگرام کار می‌کند (حتی بدون یوزرنیم)"""
+    # Escape کردن کاراکترهای خاص HTML در نام
+    safe_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if not safe_name.strip():
+        safe_name = f"کاربر {uid}"
+    if username:
+        # اگر یوزرنیم دارد، لینک به پروفایل عمومی
+        return f'<a href="https://t.me/{username}">{safe_name}</a>'
+    else:
+        # اگر یوزرنیم ندارد، لینک مستقیم به ID (mention خصوصی - ۱۰۰٪ کار می‌کند)
+        return f'<a href="tg://user?id={uid}">{safe_name}</a>'
+
+
+
+
 def _fmt_price(p: float) -> str:
     return f"{p:,.2f}"
 
@@ -969,13 +986,13 @@ def build_help_text(admin: bool) -> str:
         "⏰ <b>زمان‌بندی برگزاری دورها:</b>\n"
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
-        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد\n"
-        "🔸 در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
+        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
+        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
         "۱. منتظر پست دور های مسابقه توسط ربات در کانال باش\n"
         "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
-        "۳. پیش‌بینی درست = <b>+۱۳۰ امتیاز</b> 💰\n\n"
+        "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
         
         "🏆 <b>جوایز نقدی هر هفته:</b>\n"
         "🥇 نفر اول: <b>۸۰ دلار</b>\n"
@@ -1320,19 +1337,12 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         pass
                     
                     # پیام به ادمین‌ها
-                    ref_username = new_user.get("username", "") or ""
-                    new_username = new_user.get("username", "") or ""
+                    ref_uname = referrer_user.get("username", "") or ""
+                    new_uname = new_user.get("username", "") or ""
                     
-                    # ساخت لینک پروفایل
-                    if referrer_user.get("username"):
-                        ref_profile = f"https://t.me/{referrer_user['username']}"
-                    else:
-                        ref_profile = f"tg://user?id={ref_uid}"
-                    
-                    if new_user.get("username"):
-                        new_profile = f"https://t.me/{new_user['username']}"
-                    else:
-                        new_profile = f"tg://user?id={uid}"
+                    # ساخت mention قابل کلیک برای هر دو کاربر (۱۰۰٪ کار می‌کند)
+                    ref_mention = mention_html(ref_uid, referrer_name, ref_uname)
+                    new_mention = mention_html(uid, new_user_name, new_uname)
                     
                     for admin_id in ADMIN_IDS:
                         try:
@@ -1340,14 +1350,12 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                 chat_id=admin_id, parse_mode=ParseMode.HTML,
                                 text=(
                                     f"🆕 <b>دعوت موفق جدید</b>\n\n"
-                                    f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                    f"👤 <b>دعوت‌کننده:</b> {ref_mention}\n"
                                     f"🆔 آیدی: <code>{ref_uid}</code>\n"
-                                    f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
-                                    f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
-                                    f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                    f"📛 یوزرنیم: {'@' + ref_uname if ref_uname else '—'}\n\n"
+                                    f"👤 <b>دعوت‌شده:</b> {new_mention}\n"
                                     f"🆔 آیدی: <code>{uid}</code>\n"
-                                    f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
-                                    f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                    f"📛 یوزرنیم: {'@' + new_uname if new_uname else '—'}\n\n"
                                     f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                 )
                             )
@@ -1553,16 +1561,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             pass
                         
                         # پیام به ادمین‌ها
-                        # ساخت لینک پروفایل
-                        if referrer_user.get("username"):
-                            ref_profile = f"https://t.me/{referrer_user['username']}"
-                        else:
-                            ref_profile = f"tg://user?id={ref_uid}"
+                        ref_uname = referrer_user.get("username", "") or ""
+                        new_uname = new_user.get("username", "") or ""
                         
-                        if new_user.get("username"):
-                            new_profile = f"https://t.me/{new_user['username']}"
-                        else:
-                            new_profile = f"tg://user?id={uid}"
+                        # ساخت mention قابل کلیک برای هر دو کاربر (۱۰۰٪ کار می‌کند)
+                        ref_mention = mention_html(ref_uid, referrer_name, ref_uname)
+                        new_mention = mention_html(uid, new_user_name, new_uname)
                         
                         for admin_id in ADMIN_IDS:
                             try:
@@ -1570,14 +1574,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                     chat_id=admin_id, parse_mode=ParseMode.HTML,
                                     text=(
                                         f"🆕 <b>دعوت موفق جدید</b>\n\n"
-                                        f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                        f"👤 <b>دعوت‌کننده:</b> {ref_mention}\n"
                                         f"🆔 آیدی: <code>{ref_uid}</code>\n"
-                                        f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
-                                        f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
-                                        f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                        f"📛 یوزرنیم: {'@' + ref_uname if ref_uname else '—'}\n\n"
+                                        f"👤 <b>دعوت‌شده:</b> {new_mention}\n"
                                         f"🆔 آیدی: <code>{uid}</code>\n"
-                                        f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
-                                        f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                        f"📛 یوزرنیم: {'@' + new_uname if new_uname else '—'}\n\n"
                                         f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                     )
                                 )
@@ -2035,7 +2037,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(30, 60))
+            await asyncio.sleep(random.randint(7200, 10800))
             
             if not fake_referral_enabled:
                 continue
