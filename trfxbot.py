@@ -64,7 +64,7 @@ DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
 WATCHER_TICK_SEC     = 5
-TOP_REPORT_COUNT     = 20
+TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
 NOTIFY_SEND_DELAY    = 0.05
 
@@ -815,6 +815,23 @@ def build_fakes_page() -> tuple:
 # ══════════════════════════════════════════════════════════════════════
 # TEXT BUILDERS
 # ══════════════════════════════════════════════════════════════════════
+
+def mention_html(uid: int, name: str, username: str = "") -> str:
+    """ساخت HTML mention برای کاربر - ۱۰۰٪ در تلگرام کار می‌کند (حتی بدون یوزرنیم)"""
+    # Escape کردن کاراکترهای خاص HTML در نام
+    safe_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if not safe_name.strip():
+        safe_name = f"کاربر {uid}"
+    if username:
+        # اگر یوزرنیم دارد، لینک به پروفایل عمومی
+        return f'<a href="https://t.me/{username}">{safe_name}</a>'
+    else:
+        # اگر یوزرنیم ندارد، لینک مستقیم به ID (mention خصوصی - ۱۰۰٪ کار می‌کند)
+        return f'<a href="tg://user?id={uid}">{safe_name}</a>'
+
+
+
+
 def _fmt_price(p: float) -> str:
     return f"{p:,.2f}"
 
@@ -923,7 +940,7 @@ def build_leaderboard_text(uid: int = 0) -> str:
         )
     
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیست #20 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
+    lines = ["🏆 <b>لیست #30 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
@@ -960,21 +977,19 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "══════════════════════════\n"
-        "📖 <b>بخش اول: راهنمای مسابقات</b>\n"
-        "══════════════════════════\n\n"
+        "📖 <b>بخش اول: راهنمای مسابقات</b>\n\n"
         
         "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
         
-        "⏰ <b>زمان‌بندی برگزاری دورها:</b>\n"
+        "⏰ <b>زمان‌بندی برگزاری دور ها:</b>\n"
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
         "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
         "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. منتظر پست دور های مسابقه توسط ربات در کانال باش\n"
-        "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
+        "۱. در ساعات مشخص شده ربات یک پست در قالب نظرسنجی در کانال منتظر میکند\n"
+        "۲. با دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> روند یک ساعت پیش رو طلا رو حدس بزن\n"
         "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
         
         "🏆 <b>جوایز نقدی هر هفته:</b>\n"
@@ -983,12 +998,10 @@ def build_help_text(admin: bool) -> str:
         "🥉 نفر سوم: <b>۴۰ دلار</b>\n"
         "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
         
-        "══════════════════════════\n"
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        "══════════════════════════\n\n"
         
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
-        "برای دریافت امتیاز کامل از دعوت دوستانت، مراحل زیر باید طی شود:\n\n"
+        "برای دریافت امتیاز کامل از دعوت دوستان فارکسیتون، مراحل زیر باید طی شود:\n\n"
         "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
         "✅ <b>مرحله ۲:</b> شرکت دوستت در ۲ دور مسابقه → <b>+۳۰ امتیاز</b>\n"
         "✅ <b>مرحله ۳:</b> اولین پیش‌بینی درست دوستت → <b>+۴۰ امتیاز</b>\n\n"
@@ -996,7 +1009,7 @@ def build_help_text(admin: bool) -> str:
         "💡 <b>نکته مهم:</b>\n"
         "فقط <b>تریدرها و تحلیلگران فعال بازار فارکس</b> را دعوت کن! 📊\n"
         "دوستان عادی که علاقه‌ای به بازارهای مالی ندارند، در مسابقات شرکت نمی‌کنند و امتیاز کامل به تو تعلق نمی‌گیرد.\n\n"
-        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n"
+        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n\n"
         
         "🛡 <b>سیستم ضدتقلب هوشمند:</b>\n"
         "ربات به‌صورت خودکار رفتار کاربران را رصد می‌کند و موارد زیر را <b>تقلب</b> محسوب می‌کند:\n"
@@ -1015,12 +1028,12 @@ def build_help_text(admin: bool) -> str:
         "📌 <b>نکات پایانی:</b>\n"
         "🔹 هر کاربر در هر دور فقط <b>یک رأی</b> می‌تواند بدهد\n"
         "🔹 رأی اول <b>نهایی</b> است و قابل تغییر نیست\n"
-        "🔹 نتیجه هر دور <b>خصوصی</b> به شما اطلاع داده می‌شود\n"
+        "🔹 نتیجه هر دور <b>پیوی ربات</b> پس از اتمام به شما اطلاع داده می‌شود\n"
         "🔹 لیدربرد هر <b>شنبه ساعت ۰۰:۰۰</b> ریست می‌شود\n"
         "🔹 برندگان باید ظرف <b>۴۸ ساعت</b> برای دریافت جایزه اقدام کنند\n\n"
         
         "💎 <b>فرصت طلایی:</b>\n"
-        "هرچه بیشتر در مسابقات شرکت کنی و دوستان واقعی فارکسی دعوت کنی، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
+        "هرچه بیشتر در مسابقات شرکت کنی و حدست درست باشه و دوستان واقعی فارکسی دعوت کنی به مسابقه، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
         
         "🎯 <b>هدف ما:</b>\n"
         "ایجاد یک جامعه‌ی حرفه‌ای از تریدرها که با دانش و تحلیل واقعی و حدس مسابقات ، جوایز نقدی کسب کنند ودر کنار لایو ترید ها به سود دهی مستمر برسند.\n"
@@ -1028,9 +1041,7 @@ def build_help_text(admin: bool) -> str:
     
     if admin:
         txt += (
-            "\n══════════════════════════\n"
             "👑 <b>دستورات ادمین</b>\n"
-            "════════════════════════════\n\n"
             "/newround [دقیقه کل] [دقیقه رأی‌گیری]\n"
             f"   (پیش‌فرض: {DEFAULT_ROUND_MIN} دقیقه کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n\n"
             "/cancelround — باطل کردن دور فعال\n"
@@ -1320,19 +1331,12 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         pass
                     
                     # پیام به ادمین‌ها
-                    ref_username = new_user.get("username", "") or ""
-                    new_username = new_user.get("username", "") or ""
+                    ref_uname = referrer_user.get("username", "") or ""
+                    new_uname = new_user.get("username", "") or ""
                     
-                    # ساخت لینک پروفایل
-                    if referrer_user.get("username"):
-                        ref_profile = f"https://t.me/{referrer_user['username']}"
-                    else:
-                        ref_profile = f"tg://user?id={ref_uid}"
-                    
-                    if new_user.get("username"):
-                        new_profile = f"https://t.me/{new_user['username']}"
-                    else:
-                        new_profile = f"tg://user?id={uid}"
+                    # ساخت mention قابل کلیک برای هر دو کاربر (۱۰۰٪ کار می‌کند)
+                    ref_mention = mention_html(ref_uid, referrer_name, ref_uname)
+                    new_mention = mention_html(uid, new_user_name, new_uname)
                     
                     for admin_id in ADMIN_IDS:
                         try:
@@ -1340,14 +1344,12 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                 chat_id=admin_id, parse_mode=ParseMode.HTML,
                                 text=(
                                     f"🆕 <b>دعوت موفق جدید</b>\n\n"
-                                    f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                    f"👤 <b>دعوت‌کننده:</b> {ref_mention}\n"
                                     f"🆔 آیدی: <code>{ref_uid}</code>\n"
-                                    f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
-                                    f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
-                                    f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                    f"📛 یوزرنیم: {'@' + ref_uname if ref_uname else '—'}\n\n"
+                                    f"👤 <b>دعوت‌شده:</b> {new_mention}\n"
                                     f"🆔 آیدی: <code>{uid}</code>\n"
-                                    f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
-                                    f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                    f"📛 یوزرنیم: {'@' + new_uname if new_uname else '—'}\n\n"
                                     f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                 )
                             )
@@ -1553,16 +1555,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             pass
                         
                         # پیام به ادمین‌ها
-                        # ساخت لینک پروفایل
-                        if referrer_user.get("username"):
-                            ref_profile = f"https://t.me/{referrer_user['username']}"
-                        else:
-                            ref_profile = f"tg://user?id={ref_uid}"
+                        ref_uname = referrer_user.get("username", "") or ""
+                        new_uname = new_user.get("username", "") or ""
                         
-                        if new_user.get("username"):
-                            new_profile = f"https://t.me/{new_user['username']}"
-                        else:
-                            new_profile = f"tg://user?id={uid}"
+                        # ساخت mention قابل کلیک برای هر دو کاربر (۱۰۰٪ کار می‌کند)
+                        ref_mention = mention_html(ref_uid, referrer_name, ref_uname)
+                        new_mention = mention_html(uid, new_user_name, new_uname)
                         
                         for admin_id in ADMIN_IDS:
                             try:
@@ -1570,14 +1568,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                     chat_id=admin_id, parse_mode=ParseMode.HTML,
                                     text=(
                                         f"🆕 <b>دعوت موفق جدید</b>\n\n"
-                                        f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                        f"👤 <b>دعوت‌کننده:</b> {ref_mention}\n"
                                         f"🆔 آیدی: <code>{ref_uid}</code>\n"
-                                        f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
-                                        f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
-                                        f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                        f"📛 یوزرنیم: {'@' + ref_uname if ref_uname else '—'}\n\n"
+                                        f"👤 <b>دعوت‌شده:</b> {new_mention}\n"
                                         f"🆔 آیدی: <code>{uid}</code>\n"
-                                        f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
-                                        f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                        f"📛 یوزرنیم: {'@' + new_uname if new_uname else '—'}\n\n"
                                         f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                     )
                                 )
