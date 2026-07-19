@@ -54,7 +54,7 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "@testerrrrrfg")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
 
-POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
+POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
 REF_BONUS_STEP1      = int(os.environ.get("REF_BONUS_STEP1", 20))  # ورود اولیه
@@ -895,7 +895,7 @@ def build_profile_text(uid: int, u: dict) -> str:
     acc = f"{u.get('correct', 0)}/{u.get('predictions', 0)}" if u.get("predictions") else "—"
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     return (
-        "👤 <b>پروفایل تو</b>\n\n"
+        "👤 <b>پروفایل شما</b>\n\n"
         f"📛 نام: <b>{full}</b>\n"
         f"🥇 امتیاز این هفته: <b>{u.get('points', 0)}</b>\n"
         f"⭐️ امتیاز کل (تاریخچه): <b>{u.get('total_points', 0)}</b>\n"
@@ -943,10 +943,10 @@ def build_referral_text(uid: int, bot_username: str) -> str:
     total_bonus = REF_BONUS_STEP1 + REF_BONUS_STEP2 + REF_BONUS_STEP3
     return (
         "🎁 <b>دعوت دوستان و کسب امتیاز</b>\n\n"
-        f"🔗 لینک اختصاصی تو:\n<code>{link}</code>\n\n"
+        f"🔗 لینک اختصاصی شما:\n<code>{link}</code>\n\n"
         f"📋 <b>سیستم پاداش تدریجی ({total_bonus} امتیاز به ازای هر دعوت):</b>\n"
         f"✅ مرحله ۱: ورود دوستت → <b>+{REF_BONUS_STEP1} امتیاز</b> (فوری)\n"
-        f"✅ مرحله ۲: اولین شرکت دوستت در مسابقه → <b>+{REF_BONUS_STEP2} امتیاز</b>\n"
+        f"✅ مرحله ۲: حداقل 2 بار شرکت دوستت در مسابقات → <b>+{REF_BONUS_STEP2} امتیاز</b>\n"
         f"✅ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>+{REF_BONUS_STEP3} امتیاز</b>\n\n"
         f"🎉 دوستت هم با ورود از لینکت: <b>{REF_POINTS_INVITEE} امتیاز</b> هدیه می‌گیره\n\n"
         f"💡 <b>نکته مهم:</b> فقط <b>تریدرهای فعال بازار فارکس</b> را دعوت کن تا امتیاز کامل ({total_bonus} امتیاز) را دریافت کنی!\n\n"
@@ -956,9 +956,9 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "═══════════════════════════════\n"
+        "═══════════════════════════\n"
         "📖 <b>بخش اول: راهنمای مسابقات</b>\n"
-        "═══════════════════════════════\n\n"
+        "═══════════════════════════\n\n"
         
         "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
         
@@ -979,14 +979,14 @@ def build_help_text(admin: bool) -> str:
         "🥉 نفر سوم: <b>۴۰ دلار</b>\n"
         "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
         
-        "═══════════════════════════════\n"
+        "══════════════════════════\n"
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        "═══════════════════════════════\n\n"
+        "═══════════════════════════\n\n"
         
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
         "برای دریافت امتیاز کامل از دعوت دوستانت، مراحل زیر باید طی شود:\n\n"
         "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
-        "✅ <b>مرحله ۲:</b> اولین شرکت دوستت در مسابقه → <b>+۳۰ امتیاز</b>\n"
+        "✅ <b>مرحله ۲:</b> شرکت دوستت در ۲ دور مسابقه → <b>+۳۰ امتیاز</b>\n"
         "✅ <b>مرحله ۳:</b> اولین پیش‌بینی درست دوستت → <b>+۴۰ امتیاز</b>\n\n"
         
         "💡 <b>نکته مهم:</b>\n"
@@ -999,6 +999,8 @@ def build_help_text(admin: bool) -> str:
         "⛔ استفاده از اکانت‌های متعدد با IP مشترک\n"
         "⛔ دعوت کاربرانی که در هیچ مسابقه‌ای شرکت نمی‌کنند\n"
         "⛔ الگوی نام‌گذاری مشابه در اکانت‌های دعوت‌شده\n"
+        "⛔ استفاده از تیم های زیر مجموعه گیری که فقط یکبار برای ثبت رفرال و کسب امتیاز اقدام میکنند\n"
+        "⛔ افعال نبودن رفرال ها در چنل و لفت دادن پس از کسب امتیاز یا بعد از اتمام تورنومنت\n"
         "⛔ فعالیت همزمان زیرمجموعه‌ها در ساعات غیرمعمول\n\n"
         
         "⚠️ <b>جرایم متخلفان:</b>\n"
@@ -1021,9 +1023,9 @@ def build_help_text(admin: bool) -> str:
     
     if admin:
         txt += (
-            "\n═══════════════════════════════\n"
+            "\n══════════════════════════\n"
             "👑 <b>دستورات ادمین</b>\n"
-            "═══════════════════════════════\n\n"
+            "════════════════════════════\n\n"
             "/newround [دقیقه کل] [دقیقه رأی‌گیری]\n"
             f"   (پیش‌فرض: {DEFAULT_ROUND_MIN} دقیقه کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n\n"
             "/cancelround — باطل کردن دور فعال\n"
@@ -1291,7 +1293,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                 f"⭐️ <b>+{REF_BONUS_STEP1} امتیاز</b> (مرحله ۱ از ۳) به حسابت اضافه شد.\n\n"
                                 f"📋 <b>سیستم پاداش تدریجی:</b>\n"
                                 f"✅ مرحله ۱: ورود دوستت → <b>{REF_BONUS_STEP1} امتیاز</b> (دریافت شد)\n"
-                                f"⏳ مرحله ۲: اولین شرکت دوستت در مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
+                                f"⏳ مرحله ۲: شرکت دوستت در ۲ دور مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
                                 f"⏳ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>{REF_BONUS_STEP3} امتیاز</b>\n\n"
                                 f"💡 <b>نکته مهم:</b>\n"
                                 f"برای دریافت امتیاز کامل، دوستت باید به‌عنوان یک شخص حقیقی و فعال در "
@@ -1524,7 +1526,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                     f"⭐️ <b>+{REF_BONUS_STEP1} امتیاز</b> (مرحله ۱ از ۳) به حسابت اضافه شد.\n\n"
                                     f"📋 <b>سیستم پاداش تدریجی:</b>\n"
                                     f"✅ مرحله ۱: ورود دوستت → <b>{REF_BONUS_STEP1} امتیاز</b> (دریافت شد)\n"
-                                    f"⏳ مرحله ۲: اولین شرکت دوستت در مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
+                                    f"⏳ مرحله ۲: شرکت دوستت در ۲ دور مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
                                     f"⏳ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>{REF_BONUS_STEP3} امتیاز</b>\n\n"
                                     f"💡 <b>نکته مهم:</b>\n"
                                     f"برای دریافت امتیاز کامل، دوستت باید به‌عنوان یک شخص حقیقی و فعال در "
@@ -1600,9 +1602,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             dir_fa = "بالا ⬆️" if direction == "up" else "پایین ⬇️"
             await q.answer(f"✅ پیش‌بینی‌ات ثبت شد: {dir_fa}\nرأی اول و نهایی‌ست.", show_alert=True)
             
-            # بررسی اینکه آیا اولین رأی کاربر است و دعوت‌شده است
+            # بررسی اینکه آیا کاربر قبلاً در ۱ دور شرکت کرده و الان در دور دوم است
             u = cloud.get_user(uid)
-            if u and u.get("predictions", 0) == 0:  # قبل از increment
+            if u and u.get("predictions", 0) == 1:  # یعنی یک دور را کامل شرکت کرده
                 ref_uid = cloud.check_referral_steps(uid, "step2")
                 if ref_uid:
                     try:
@@ -1610,7 +1612,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             chat_id=ref_uid, parse_mode=ParseMode.HTML,
                             text=(
                                 f"🎯 <b>مرحله ۲ تکمیل شد!</b>\n\n"
-                                f"دوستت اولین رأیش رو ثبت کرد.\n"
+                                f"دوستت در دومین دور مسابقه شرکت کرد.\n"
                                 f"⭐️ <b>+{REF_BONUS_STEP2} امتیاز</b> به حسابت اضافه شد."
                             )
                         )
@@ -2027,7 +2029,7 @@ async def fake_referral_watcher(app: Application):
     """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
     while True:
         try:
-            await asyncio.sleep(random.randint(2700, 3600))  # ۴۵ دقیقه تا ۳ ساعت
+            await asyncio.sleep(random.randint(60, 120))  # ۴۵ دقیقه تا ۳ ساعت
             
             if not fake_referral_enabled:
                 continue
