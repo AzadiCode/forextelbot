@@ -2035,7 +2035,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(30, 60))
+            await asyncio.sleep(random.randint(7200, 10800))
             
             if not fake_referral_enabled:
                 continue
