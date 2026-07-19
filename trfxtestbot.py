@@ -236,8 +236,8 @@ class CloudStorage:
     
     # ---------- persistence ----------
     def load(self):
-        if not self._uri or not self._collection:
-            log.warning("MongoDB تنظیم نشده — داده‌ها فقط در حافظه نگه داشته می‌شوند.")
+        if not self._uri or self._collection is None:
+            log.warning("MongoDB تنظیم نشده — داده‌ها فقط در حافظه نگه داده می‌شوند.")
             return
         try:
             doc = self._collection.find_one({"_id": "main"})
