@@ -973,7 +973,7 @@ def build_help_text(admin: bool) -> str:
         "🔸 در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. منتظر پست دور های مسابقه توسط ربات جدید در کانال باش\n"
+        "۱. منتظر پست دور های مسابقه توسط ربات در کانال باش\n"
         "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
         "۳. پیش‌بینی درست = <b>+۱۳۰ امتیاز</b> 💰\n\n"
         
@@ -2035,7 +2035,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(2700, 3600))
+            await asyncio.sleep(random.randint(30, 60))
             
             if not fake_referral_enabled:
                 continue
