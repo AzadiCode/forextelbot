@@ -261,7 +261,7 @@ class CloudStorage:
             log.error(f"MongoDB load error: {e}")
 
     def save(self, force: bool = False):
-        if not self._uri or not self._collection:
+        if not self._uri or self._collection is None:
             return
         if not force and not self._dirty:
             return
