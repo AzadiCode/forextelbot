@@ -56,7 +56,7 @@ FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
 
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
-REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
+REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 20))
 REF_BONUS_STEP1      = int(os.environ.get("REF_BONUS_STEP1", 20))  # ورود اولیه
 REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین شرکت در دور
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
