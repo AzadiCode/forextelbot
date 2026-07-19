@@ -297,12 +297,14 @@ class CloudStorage:
     def set_fake_user(self, fake_id: str, full_name: str, points: int):
         """افزودن یا ویرایش کاربر فیک."""
         with self._lock:
+            existing = self._data["fake_users"].get(fake_id)
             self._data["fake_users"][fake_id] = {
                 "full_name": full_name,
                 "username": "",
                 "points": points,
                 "total_points": points,
                 "is_fake": True,
+                "auto_step": existing.get("auto_step", 0) if existing else 0,  # حفظ مرحله قبلی در ویرایش
             }
             self._dirty = True
 
@@ -474,6 +476,8 @@ class CloudStorage:
                 u["points"] = 0
             for fu in self._data.get("fake_users", {}).values():
                 fu["points"] = 0
+                # ریست کردن مرحله خودکار فیک‌ها برای شروع مجدد در هفته جدید
+                fu["auto_step"] = 0
             self._data["last_lb_reset"] = date_key
             self._dirty = True
 
@@ -672,7 +676,7 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
          InlineKeyboardButton("🏆 لیدربرد هفتگی زنده", callback_data="menu:leaderboard")],
         [InlineKeyboardButton("🎁 پاداش و کسب امتیاز بیشتر ", callback_data="menu:invite")],
-        [InlineKeyboardButton("ℹ️و قوانین راهنما", callback_data="menu:help")],
+        [InlineKeyboardButton("ℹ️ قوانین و راهنما ", callback_data="menu:help")],
     ]
     if uid and is_admin(uid):
         rows.append([InlineKeyboardButton("👑 پنل ادمین", callback_data="admin:panel:0")])
@@ -956,9 +960,9 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "═══════════════════════════\n"
+        "══════════════════════════\n"
         "📖 <b>بخش اول: راهنمای مسابقات</b>\n"
-        "═══════════════════════════\n\n"
+        "══════════════════════════\n\n"
         
         "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
         
@@ -966,10 +970,10 @@ def build_help_text(admin: bool) -> str:
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
         "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد\n"
-        "🔸 در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدهی ⏳\n\n"
+        "🔸 در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. منتظر پست جدید در کانال باش\n"
+        "۱. منتظر پست دور های مسابقه توسط ربات جدید در کانال باش\n"
         "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
         "۳. پیش‌بینی درست = <b>+۱۳۰ امتیاز</b> 💰\n\n"
         
@@ -981,7 +985,7 @@ def build_help_text(admin: bool) -> str:
         
         "══════════════════════════\n"
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        "═══════════════════════════\n\n"
+        "══════════════════════════\n\n"
         
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
         "برای دریافت امتیاز کامل از دعوت دوستانت، مراحل زیر باید طی شود:\n\n"
@@ -992,6 +996,7 @@ def build_help_text(admin: bool) -> str:
         "💡 <b>نکته مهم:</b>\n"
         "فقط <b>تریدرها و تحلیلگران فعال بازار فارکس</b> را دعوت کن! 📊\n"
         "دوستان عادی که علاقه‌ای به بازارهای مالی ندارند، در مسابقات شرکت نمی‌کنند و امتیاز کامل به تو تعلق نمی‌گیرد.\n\n"
+        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n"
         
         "🛡 <b>سیستم ضدتقلب هوشمند:</b>\n"
         "ربات به‌صورت خودکار رفتار کاربران را رصد می‌کند و موارد زیر را <b>تقلب</b> محسوب می‌کند:\n"
@@ -1000,12 +1005,12 @@ def build_help_text(admin: bool) -> str:
         "⛔ دعوت کاربرانی که در هیچ مسابقه‌ای شرکت نمی‌کنند\n"
         "⛔ الگوی نام‌گذاری مشابه در اکانت‌های دعوت‌شده\n"
         "⛔ استفاده از تیم های زیر مجموعه گیری که فقط یکبار برای ثبت رفرال و کسب امتیاز اقدام میکنند\n"
-        "⛔ افعال نبودن رفرال ها در چنل و لفت دادن پس از کسب امتیاز یا بعد از اتمام تورنومنت\n"
+        "⛔ فعال نبودن رفرال ها در چنل و لفت دادن پس از کسب امتیاز یا بعد از اتمام تورنومنت\n"
         "⛔ فعالیت همزمان زیرمجموعه‌ها در ساعات غیرمعمول\n\n"
         
         "⚠️ <b>جرایم متخلفان:</b>\n"
-        "🔸 <b>تخلف اول:</b> امتیازهای کسب‌شده از روش غیرمجاز <b>حذف</b> می‌شود\n"
-        "🔸 <b>تخلف دوم:</b> کاربر برای همیشه از تورنومنت <b>حذف</b> می‌شود 🚫\n\n"
+        "🔸 <b>تخلف برای بار اول:</b> امتیازهای کسب‌شده از روش غیرمجاز <b>حذف</b> می‌شود\n"
+        "🔸 <b>تخلف برای بار دوم:</b> کاربر برای همیشه از تورنومنت <b>حذف</b> می‌شود 🚫\n\n"
         
         "📌 <b>نکات پایانی:</b>\n"
         "🔹 هر کاربر در هر دور فقط <b>یک رأی</b> می‌تواند بدهد\n"
@@ -1018,7 +1023,7 @@ def build_help_text(admin: bool) -> str:
         "هرچه بیشتر در مسابقات شرکت کنی و دوستان واقعی فارکسی دعوت کنی، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
         
         "🎯 <b>هدف ما:</b>\n"
-        "ایجاد یک جامعه‌ی حرفه‌ای از تریدرها که با دانش و تحلیل واقعی، جوایز نقدی کسب می‌کنند.\n"
+        "ایجاد یک جامعه‌ی حرفه‌ای از تریدرها که با دانش و تحلیل واقعی و حدس مسابقات ، جوایز نقدی کسب کنند ودر کنار لایو ترید ها به سود دهی مستمر برسند.\n"
     )
     
     if admin:
@@ -2026,10 +2031,11 @@ async def weekly_reset_watcher(app: Application):
 
 
 async def fake_referral_watcher(app: Application):
-    """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
+    """رشد خودکار و تدریجی فیک‌های انتخاب‌شده (دقیقاً مشابه سیستم ۳ مرحله‌ای)"""
     while True:
         try:
-            await asyncio.sleep(random.randint(60, 120))  # ۴۵ دقیقه تا ۳ ساعت
+            # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
+            await asyncio.sleep(random.randint(2700, 3600))
             
             if not fake_referral_enabled:
                 continue
@@ -2038,18 +2044,49 @@ async def fake_referral_watcher(app: Application):
             if not auto_ids:
                 continue
             
-            fake_id = random.choice(auto_ids)
+            # فیلتر کردن فیک‌هایی که هنوز مراحل‌شان کامل نشده
+            eligible_fakes = []
+            with cloud._lock:
+                for fid in auto_ids:
+                    fu = cloud._data.get("fake_users", {}).get(fid)
+                    if fu and fu.get("auto_step", 0) < 3:
+                        eligible_fakes.append((fid, fu))
+            
+            if not eligible_fakes:
+                # همه فیک‌ها مراحل‌شان تمام شده، منتظر ریست هفتگی می‌مانیم
+                continue
+            
+            # انتخاب رندوم یکی از فیک‌های واجد شرایط
+            fid, fu = random.choice(eligible_fakes)
             
             with cloud._lock:
-                fu = cloud._data.get("fake_users", {}).get(fake_id)
-                if fu:
-                    bonus = REF_POINTS_REFERRER
-                    fu["points"] = fu.get("points", 0) + bonus
-                    fu["total_points"] = fu.get("total_points", 0) + bonus
-                    fu["invites"] = fu.get("invites", 0) + 1
-                    cloud._dirty = True
-                    log.info(f"🤖 +{bonus} امتیاز به فیک: {fu.get('full_name', fake_id)}")
-            
+                # دوباره چک می‌کنیم چون ممکن است در فاصله قفل تغییر کرده باشد
+                fu = cloud._data.get("fake_users", {}).get(fid)
+                if not fu:
+                    continue
+                
+                current_step = fu.get("auto_step", 0)
+                next_step = current_step + 1
+                
+                # تعیین امتیاز بر اساس مرحله (دقیقاً مثل کاربران واقعی)
+                if next_step == 1:
+                    bonus = REF_BONUS_STEP1  # 20
+                elif next_step == 2:
+                    bonus = REF_BONUS_STEP2  # 30
+                elif next_step == 3:
+                    bonus = REF_BONUS_STEP3  # 40
+                else:
+                    continue
+                
+                fu["points"] = fu.get("points", 0) + bonus
+                fu["total_points"] = fu.get("total_points", 0) + bonus
+                fu["invites"] = fu.get("invites", 0) + 1
+                fu["auto_step"] = next_step
+                cloud._dirty = True
+                
+                step_names = {1: "ورود", 2: "شرکت در ۲ دور", 3: "پیش‌بینی درست"}
+                log.info(f"🤖 مرحله {next_step} ({step_names[next_step]}): +{bonus} امتیاز به فیک: {fu.get('full_name', fid)}")
+        
         except asyncio.CancelledError:
             break
         except Exception as e:
