@@ -64,7 +64,7 @@ DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
 WATCHER_TICK_SEC     = 5
-TOP_REPORT_COUNT     = 20
+TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
 NOTIFY_SEND_DELAY    = 0.05
 
@@ -185,17 +185,28 @@ def get_gold_price(force: bool = False) -> Optional[float]:
 # ══════════════════════════════════════════════════════════════════════
 # CLOUD STORAGE
 # ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# CLOUD STORAGE (MongoDB Atlas - جایگزین JSONBin)
+# ══════════════════════════════════════════════════════════════════════
+try:
+    from pymongo import MongoClient
+    from pymongo.errors import PyMongoError
+    MONGODB_AVAILABLE = True
+except ImportError:
+    MONGODB_AVAILABLE = False
+
+
 class CloudStorage:
     def __init__(self):
-        self._key  = JSONBIN_KEY
-        self._bin  = JSONBIN_BIN
-        self._url  = "https://api.jsonbin.io/v3/b"
-        self._hdrs = {"X-Master-Key": self._key, "Content-Type": "application/json"}
+        self._uri = os.environ.get("MONGODB_URI", "")
+        self._client = None
+        self._db = None
+        self._collection = None
         self._lock = threading.Lock()
         self._dirty = False
         self._data = {
             "users": {},
-            "fake_users": {},            # ← کاربران فیک برای لیدربرد
+            "fake_users": {},
             "active_round": None,
             "next_round_id": 1,
             "rounds_history": [],
@@ -203,52 +214,66 @@ class CloudStorage:
             "last_lb_reset": None,
             "last_updated": None,
         }
-
+        
+        # اتصال اولیه به MongoDB
+        if self._uri and MONGODB_AVAILABLE:
+            try:
+                self._client = MongoClient(
+                    self._uri,
+                    serverSelectionTimeoutMS=10000,
+                    connectTimeoutMS=10000,
+                )
+                # تست اتصال
+                self._client.admin.command('ping')
+                self._db = self._client.get_database()
+                self._collection = self._db["bot_data"]
+                log.info("MongoDB: اتصال اولیه برقرار شد ✅")
+            except Exception as e:
+                log.error(f"MongoDB اتصال اولیه ناموفق: {e}")
+                self._collection = None
+        elif not MONGODB_AVAILABLE:
+            log.critical("کتابخانه pymongo نصب نیست! لطفاً requirements1.txt را بررسی کنید.")
+    
     # ---------- persistence ----------
     def load(self):
-        if not (self._key and self._bin):
-            log.warning("JSONBin تنظیم نشده — داده‌ها فقط در حافظه نگه داشته می‌شوند.")
+        if not self._uri or not self._collection:
+            log.warning("MongoDB تنظیم نشده — داده‌ها فقط در حافظه نگه داشته می‌شوند.")
             return
         try:
-            r = requests.get(f"{self._url}/{self._bin}/latest", headers=self._hdrs, timeout=15)
-            r.raise_for_status()
-            remote = r.json().get("record", {})
-            with self._lock:
-                for k, v in remote.items():
-                    self._data[k] = v
-                self._data.setdefault("users", {})
-                self._data.setdefault("fake_users", {})
-                self._data.setdefault("active_round", None)
-                self._data.setdefault("next_round_id", 1)
-                self._data.setdefault("rounds_history", [])
-                self._data.setdefault("leaderboard_history", [])
-                self._data.setdefault("last_lb_reset", None)
-            log.info("CloudStorage: داده‌ها با موفقیت بارگذاری شد.")
+            doc = self._collection.find_one({"_id": "main"})
+            if doc:
+                with self._lock:
+                    doc.pop("_id", None)
+                    for k, v in doc.items():
+                        self._data[k] = v
+                    # اطمینان از وجود کلیدهای ضروری
+                    self._data.setdefault("users", {})
+                    self._data.setdefault("fake_users", {})
+                    self._data.setdefault("active_round", None)
+                    self._data.setdefault("next_round_id", 1)
+                    self._data.setdefault("rounds_history", [])
+                    self._data.setdefault("leaderboard_history", [])
+                    self._data.setdefault("last_lb_reset", None)
+                log.info("MongoDB: داده‌ها با موفقیت بارگذاری شد.")
+            else:
+                log.info("MongoDB: دیتابیس خالی — شروع از صفر.")
         except Exception as e:
-            log.error(f"CloudStorage load error: {e}")
+            log.error(f"MongoDB load error: {e}")
 
     def save(self, force: bool = False):
-        if not self._key:
+        if not self._uri or not self._collection:
             return
         if not force and not self._dirty:
             return
         with self._lock:
             self._data["last_updated"] = now_ir().isoformat()
-            payload = dict(self._data)
+            payload = {"_id": "main"}
+            payload.update(self._data)
         try:
-            if self._bin:
-                r = requests.put(f"{self._url}/{self._bin}", headers=self._hdrs, json=payload, timeout=15)
-            else:
-                r = requests.post(self._url, headers={**self._hdrs, "X-Bin-Private": "false"},
-                                   json=payload, timeout=15)
-                bid = r.json().get("metadata", {}).get("id", "")
-                if bid:
-                    self._bin = bid
-                    log.info(f"JSONBin جدید ساخته شد: {bid}")
-            r.raise_for_status()
+            self._collection.replace_one({"_id": "main"}, payload, upsert=True)
             self._dirty = False
         except Exception as e:
-            log.error(f"CloudStorage save error: {e}")
+            log.error(f"MongoDB save error: {e}")
 
     # ---------- users ----------
     def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> dict:
@@ -273,7 +298,6 @@ class CloudStorage:
                 if full_name and self._data["users"][key].get("full_name") != full_name:
                     self._data["users"][key]["full_name"] = full_name
                     changed = True
-                # اطمینان از وجود uid در پروفایل قدیمی
                 if "uid" not in self._data["users"][key]:
                     self._data["users"][key]["uid"] = uid
                     changed = True
@@ -295,7 +319,6 @@ class CloudStorage:
 
     # ---------- fake users ----------
     def set_fake_user(self, fake_id: str, full_name: str, points: int):
-        """افزودن یا ویرایش کاربر فیک."""
         with self._lock:
             existing = self._data["fake_users"].get(fake_id)
             self._data["fake_users"][fake_id] = {
@@ -304,7 +327,7 @@ class CloudStorage:
                 "points": points,
                 "total_points": points,
                 "is_fake": True,
-                "auto_step": existing.get("auto_step", 0) if existing else 0,  # حفظ مرحله قبلی در ویرایش
+                "auto_step": existing.get("auto_step", 0) if existing else 0,
             }
             self._dirty = True
 
@@ -343,22 +366,16 @@ class CloudStorage:
             users[n_key]["ref_step2_done"] = False
             users[n_key]["ref_step3_done"] = False
             
-            # فقط Step 1 به دعوت‌کننده
             users[r_key]["points"] = users[r_key].get("points", 0) + REF_BONUS_STEP1
             users[r_key]["total_points"] = users[r_key].get("total_points", 0) + REF_BONUS_STEP1
             users[r_key]["invites"] = users[r_key].get("invites", 0) + 1
             
-            # امتیاز کامل به دعوت‌شونده
             users[n_key]["points"] = users[n_key].get("points", 0) + REF_POINTS_INVITEE
             users[n_key]["total_points"] = users[n_key].get("total_points", 0) + REF_POINTS_INVITEE
             self._dirty = True
             return True
 
     def check_referral_steps(self, uid: int, step: str) -> Optional[int]:
-        """
-        بررسی و تکمیل مرحله رفرال.
-        اگر امتیاز اضافه شد، uid دعوت‌کننده را برمی‌گرداند، وگرنه None.
-        """
         key = str(uid)
         with self._lock:
             u = self._data["users"].get(key)
@@ -404,7 +421,6 @@ class CloudStorage:
             self._dirty = True
 
     def set_user_points(self, uid_str: str, points: int):
-        """تنظیم مستقیم امتیاز کاربر (توسط ادمین)."""
         with self._lock:
             if uid_str in self._data["users"]:
                 self._data["users"][uid_str]["points"] = points
@@ -415,7 +431,6 @@ class CloudStorage:
             return False
 
     def add_user_points(self, uid_str: str, delta: int):
-        """افزودن/کاهش امتیاز کاربر (توسط ادمین)."""
         with self._lock:
             if uid_str in self._data["users"]:
                 cur = self._data["users"][uid_str].get("points", 0)
@@ -436,10 +451,8 @@ class CloudStorage:
 
     # ---------- leaderboard ----------
     def get_weekly_leaderboard(self, top: int = 10) -> list:
-        """لیدربرد ترکیبی از کاربران واقعی + فیک، مرتب‌شده بر اساس امتیاز."""
         with self._lock:
             combined = []
-            # کاربران واقعی
             for uid_str, u in self._data["users"].items():
                 if u.get("points", 0) > 0:
                     combined.append({
@@ -449,7 +462,6 @@ class CloudStorage:
                         "points": u.get("points", 0),
                         "is_fake": False,
                     })
-            # کاربران فیک
             for fid, fu in self._data.get("fake_users", {}).items():
                 if fu.get("points", 0) > 0:
                     combined.append({
@@ -476,7 +488,6 @@ class CloudStorage:
                 u["points"] = 0
             for fu in self._data.get("fake_users", {}).values():
                 fu["points"] = 0
-                # ریست کردن مرحله خودکار فیک‌ها برای شروع مجدد در هفته جدید
                 fu["auto_step"] = 0
             self._data["last_lb_reset"] = date_key
             self._dirty = True
@@ -573,7 +584,6 @@ class CloudStorage:
             record["winners"] = winners
             record["status"] = "resolved"
             record["participants_count"] = len(rnd.get("predictions", {}))
-            # حذف فیلدهای غیرضروری برای کاهش حجم دیتابیس
             record.pop("predictions", None)
             record.pop("last_edit_ts", None)
             self._data.setdefault("rounds_history", []).insert(0, record)
@@ -590,12 +600,10 @@ class CloudStorage:
 
     # ---------- auto fake referral ----------
     def get_auto_fake_ids(self) -> list:
-        """دریافت لیست آیدی فیک‌هایی که رشد خودکار دارند."""
         with self._lock:
             return list(self._data.get("auto_fake_ids", []))
 
     def toggle_auto_fake_id(self, fake_id: str) -> bool:
-        """افزودن یا حذف یک فیک از لیست رشد خودکار."""
         with self._lock:
             ids = self._data.setdefault("auto_fake_ids", [])
             if fake_id in ids:
@@ -940,7 +948,7 @@ def build_leaderboard_text(uid: int = 0) -> str:
         )
     
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیست #20 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
+    lines = ["🏆 <b>لیست #30 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
@@ -977,21 +985,19 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "══════════════════════════\n"
-        "📖 <b>بخش اول: راهنمای مسابقات</b>\n"
-        "══════════════════════════\n\n"
+        "📖 <b>بخش اول: راهنمای مسابقات</b>\n\n"
         
         "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
         
-        "⏰ <b>زمان‌بندی برگزاری دورها:</b>\n"
+        "⏰ <b>زمان‌بندی برگزاری دور ها:</b>\n"
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
         "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
         "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. منتظر پست دور های مسابقه توسط ربات در کانال باش\n"
-        "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
+        "۱. در ساعات مشخص شده ربات یک پست در قالب نظرسنجی در کانال منتظر میکند\n"
+        "۲. با دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> روند یک ساعت پیش رو طلا رو حدس بزن\n"
         "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
         
         "🏆 <b>جوایز نقدی هر هفته:</b>\n"
@@ -1000,12 +1006,10 @@ def build_help_text(admin: bool) -> str:
         "🥉 نفر سوم: <b>۴۰ دلار</b>\n"
         "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
         
-        "══════════════════════════\n"
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        "══════════════════════════\n\n"
         
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
-        "برای دریافت امتیاز کامل از دعوت دوستانت، مراحل زیر باید طی شود:\n\n"
+        "برای دریافت امتیاز کامل از دعوت دوستان فارکسیتون، مراحل زیر باید طی شود:\n\n"
         "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
         "✅ <b>مرحله ۲:</b> شرکت دوستت در ۲ دور مسابقه → <b>+۳۰ امتیاز</b>\n"
         "✅ <b>مرحله ۳:</b> اولین پیش‌بینی درست دوستت → <b>+۴۰ امتیاز</b>\n\n"
@@ -1013,7 +1017,7 @@ def build_help_text(admin: bool) -> str:
         "💡 <b>نکته مهم:</b>\n"
         "فقط <b>تریدرها و تحلیلگران فعال بازار فارکس</b> را دعوت کن! 📊\n"
         "دوستان عادی که علاقه‌ای به بازارهای مالی ندارند، در مسابقات شرکت نمی‌کنند و امتیاز کامل به تو تعلق نمی‌گیرد.\n\n"
-        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n"
+        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n\n"
         
         "🛡 <b>سیستم ضدتقلب هوشمند:</b>\n"
         "ربات به‌صورت خودکار رفتار کاربران را رصد می‌کند و موارد زیر را <b>تقلب</b> محسوب می‌کند:\n"
@@ -1032,12 +1036,12 @@ def build_help_text(admin: bool) -> str:
         "📌 <b>نکات پایانی:</b>\n"
         "🔹 هر کاربر در هر دور فقط <b>یک رأی</b> می‌تواند بدهد\n"
         "🔹 رأی اول <b>نهایی</b> است و قابل تغییر نیست\n"
-        "🔹 نتیجه هر دور <b>خصوصی</b> به شما اطلاع داده می‌شود\n"
+        "🔹 نتیجه هر دور <b>پیوی ربات</b> پس از اتمام به شما اطلاع داده می‌شود\n"
         "🔹 لیدربرد هر <b>شنبه ساعت ۰۰:۰۰</b> ریست می‌شود\n"
         "🔹 برندگان باید ظرف <b>۴۸ ساعت</b> برای دریافت جایزه اقدام کنند\n\n"
         
         "💎 <b>فرصت طلایی:</b>\n"
-        "هرچه بیشتر در مسابقات شرکت کنی و دوستان واقعی فارکسی دعوت کنی، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
+        "هرچه بیشتر در مسابقات شرکت کنی و حدست درست باشه و دوستان واقعی فارکسی دعوت کنی به مسابقه، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
         
         "🎯 <b>هدف ما:</b>\n"
         "ایجاد یک جامعه‌ی حرفه‌ای از تریدرها که با دانش و تحلیل واقعی و حدس مسابقات ، جوایز نقدی کسب کنند ودر کنار لایو ترید ها به سود دهی مستمر برسند.\n"
@@ -1045,9 +1049,7 @@ def build_help_text(admin: bool) -> str:
     
     if admin:
         txt += (
-            "\n══════════════════════════\n"
             "👑 <b>دستورات ادمین</b>\n"
-            "════════════════════════════\n\n"
             "/newround [دقیقه کل] [دقیقه رأی‌گیری]\n"
             f"   (پیش‌فرض: {DEFAULT_ROUND_MIN} دقیقه کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n\n"
             "/cancelround — باطل کردن دور فعال\n"
