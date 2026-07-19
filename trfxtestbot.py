@@ -1313,6 +1313,20 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         pass
                     
                     # پیام به ادمین‌ها
+                    ref_username = new_user.get("username", "") or ""
+                    new_username = new_user.get("username", "") or ""
+                    
+                    # ساخت لینک پروفایل
+                    if referrer_user.get("username"):
+                        ref_profile = f"https://t.me/{referrer_user['username']}"
+                    else:
+                        ref_profile = f"tg://user?id={ref_uid}"
+                    
+                    if new_user.get("username"):
+                        new_profile = f"https://t.me/{new_user['username']}"
+                    else:
+                        new_profile = f"tg://user?id={uid}"
+                    
                     for admin_id in ADMIN_IDS:
                         try:
                             await ctx.bot.send_message(
@@ -1320,9 +1334,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                 text=(
                                     f"🆕 <b>دعوت موفق جدید</b>\n\n"
                                     f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
-                                    f"🆔 آیدی: <code>{ref_uid}</code>\n\n"
+                                    f"🆔 آیدی: <code>{ref_uid}</code>\n"
+                                    f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
+                                    f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
                                     f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
                                     f"🆔 آیدی: <code>{uid}</code>\n"
+                                    f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
+                                    f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
                                     f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                 )
                             )
@@ -1528,6 +1546,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             pass
                         
                         # پیام به ادمین‌ها
+                        # ساخت لینک پروفایل
+                        if referrer_user.get("username"):
+                            ref_profile = f"https://t.me/{referrer_user['username']}"
+                        else:
+                            ref_profile = f"tg://user?id={ref_uid}"
+                        
+                        if new_user.get("username"):
+                            new_profile = f"https://t.me/{new_user['username']}"
+                        else:
+                            new_profile = f"tg://user?id={uid}"
+                        
                         for admin_id in ADMIN_IDS:
                             try:
                                 await ctx.bot.send_message(
@@ -1535,9 +1564,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                     text=(
                                         f"🆕 <b>دعوت موفق جدید</b>\n\n"
                                         f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
-                                        f"🆔 آیدی: <code>{ref_uid}</code>\n\n"
+                                        f"🆔 آیدی: <code>{ref_uid}</code>\n"
+                                        f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
+                                        f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
                                         f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
                                         f"🆔 آیدی: <code>{uid}</code>\n"
+                                        f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
+                                        f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
                                         f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
                                     )
                                 )
