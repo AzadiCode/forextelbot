@@ -940,11 +940,16 @@ def build_leaderboard_text(uid: int = 0) -> str:
 def build_referral_text(uid: int, bot_username: str) -> str:
     u = cloud.ensure_user(uid)
     link = f"https://t.me/{bot_username}?start=ref_{u['ref']}"
+    total_bonus = REF_BONUS_STEP1 + REF_BONUS_STEP2 + REF_BONUS_STEP3
     return (
-        "🎁 <b>دعوت دوستان</b>\n\n"
-        f"با لینک اختصاصی زیر دوستاتو دعوت کن کافیه بزنی رو لینک تا کپی بشه :\n<code>{link}</code>\n\n"
-        f"✅ به ازای هر دعوت موفق: <b>{REF_POINTS_REFERRER} امتیاز</b> برای تو\n"
+        "🎁 <b>دعوت دوستان و کسب امتیاز</b>\n\n"
+        f"🔗 لینک اختصاصی تو:\n<code>{link}</code>\n\n"
+        f"📋 <b>سیستم پاداش تدریجی ({total_bonus} امتیاز به ازای هر دعوت):</b>\n"
+        f"✅ مرحله ۱: ورود دوستت → <b>+{REF_BONUS_STEP1} امتیاز</b> (فوری)\n"
+        f"✅ مرحله ۲: اولین شرکت دوستت در مسابقه → <b>+{REF_BONUS_STEP2} امتیاز</b>\n"
+        f"✅ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>+{REF_BONUS_STEP3} امتیاز</b>\n\n"
         f"🎉 دوستت هم با ورود از لینکت: <b>{REF_POINTS_INVITEE} امتیاز</b> هدیه می‌گیره\n\n"
+        f"💡 <b>نکته مهم:</b> فقط <b>تریدرهای فعال بازار فارکس</b> را دعوت کن تا امتیاز کامل ({total_bonus} امتیاز) را دریافت کنی!\n\n"
         f"👥 تعداد دعوت‌های موفق تو: <b>{u.get('invites', 0)}</b>"
     )
 
@@ -1483,16 +1488,37 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if pending_ref:
                 ref_uid = cloud.find_uid_by_ref(pending_ref)
                 if ref_uid:
-                    # تابع apply_referral خودش چک می‌کند که کاربر از قبل زیرمجموعه نباشد
                     ok = cloud.apply_referral(uid, ref_uid)
                     if ok:
+                        # دریافت اطلاعات کاربران
+                        new_user = cloud.get_user(uid)
+                        referrer_user = cloud.get_user(ref_uid)
+                        new_user_name = new_user.get("full_name", "") or new_user.get("username", "") or f"کاربر {uid}"
+                        referrer_name = referrer_user.get("full_name", "") or referrer_user.get("username", "") or f"کاربر {ref_uid}"
+                        
+                        # پیام به دعوت‌کننده (مرحله ۱)
                         try:
                             await ctx.bot.send_message(
                                 chat_id=ref_uid, parse_mode=ParseMode.HTML,
-                                text=("🎉 <b>خبر خوب!</b> یک نفر با لینک دعوت اختصاصی تو وارد ربات شد.\n"
-                                      f"⭐️ +{REF_POINTS_REFERRER} امتیاز به حسابت اضافه شد."))
+                                text=(
+                                    f"🎉 <b>یک دعوت موفق ثبت شد!</b>\n\n"
+                                    f"👤 کاربر جدید: <b>{new_user_name}</b>\n"
+                                    f"⭐️ <b>+{REF_BONUS_STEP1} امتیاز</b> (مرحله ۱ از ۳) به حسابت اضافه شد.\n\n"
+                                    f"📋 <b>سیستم پاداش تدریجی:</b>\n"
+                                    f"✅ مرحله ۱: ورود دوستت → <b>{REF_BONUS_STEP1} امتیاز</b> (دریافت شد)\n"
+                                    f"⏳ مرحله ۲: اولین شرکت دوستت در مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
+                                    f"⏳ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>{REF_BONUS_STEP3} امتیاز</b>\n\n"
+                                    f"💡 <b>نکته مهم:</b>\n"
+                                    f"برای دریافت امتیاز کامل، دوستت باید به‌عنوان یک شخص حقیقی و فعال در "
+                                    f"حوزه بازارهای مالی در مسابقات شرکت کند و پیش‌بینی‌های واقعی داشته باشد.\n"
+                                    f"⚠️ امتیازهای کسب‌شده از روش‌های غیرمجاز (ممبر فیک، ربات و...) در پایان "
+                                    f"هفته توسط سیستم ضدتقلب شناسایی و کسر خواهند شد."
+                                )
+                            )
                         except Exception:
                             pass
+                        
+                        # پیام به دعوت‌شونده
                         try:
                             await ctx.bot.send_message(
                                 chat_id=uid, parse_mode=ParseMode.HTML,
@@ -1500,6 +1526,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                       f"⭐️ +{REF_POINTS_INVITEE} امتیاز رایگان بهت تعلق گرفت."))
                         except Exception:
                             pass
+                        
+                        # پیام به ادمین‌ها
+                        for admin_id in ADMIN_IDS:
+                            try:
+                                await ctx.bot.send_message(
+                                    chat_id=admin_id, parse_mode=ParseMode.HTML,
+                                    text=(
+                                        f"🆕 <b>دعوت موفق جدید</b>\n\n"
+                                        f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                        f"🆔 آیدی: <code>{ref_uid}</code>\n\n"
+                                        f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                        f"🆔 آیدی: <code>{uid}</code>\n"
+                                        f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
+                                    )
+                                )
+                            except Exception:
+                                pass
                 
                 # پاک کردن state موقت
                 ctx.user_data.pop("pending_referral", None)
