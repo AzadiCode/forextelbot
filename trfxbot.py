@@ -54,9 +54,12 @@ CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
 
-POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 130))
+POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 60))
+REF_BONUS_STEP1      = int(os.environ.get("REF_BONUS_STEP1", 20))  # ورود اولیه
+REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین شرکت در دور
+REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
@@ -294,12 +297,14 @@ class CloudStorage:
     def set_fake_user(self, fake_id: str, full_name: str, points: int):
         """افزودن یا ویرایش کاربر فیک."""
         with self._lock:
+            existing = self._data["fake_users"].get(fake_id)
             self._data["fake_users"][fake_id] = {
                 "full_name": full_name,
                 "username": "",
                 "points": points,
                 "total_points": points,
                 "is_fake": True,
+                "auto_step": existing.get("auto_step", 0) if existing else 0,  # حفظ مرحله قبلی در ویرایش
             }
             self._dirty = True
 
@@ -334,13 +339,52 @@ class CloudStorage:
             if users[n_key].get("referred_by"):
                 return False
             users[n_key]["referred_by"] = r_key
-            users[r_key]["points"] = users[r_key].get("points", 0) + REF_POINTS_REFERRER
-            users[r_key]["total_points"] = users[r_key].get("total_points", 0) + REF_POINTS_REFERRER
+            users[n_key]["ref_step1_done"] = True
+            users[n_key]["ref_step2_done"] = False
+            users[n_key]["ref_step3_done"] = False
+            
+            # فقط Step 1 به دعوت‌کننده
+            users[r_key]["points"] = users[r_key].get("points", 0) + REF_BONUS_STEP1
+            users[r_key]["total_points"] = users[r_key].get("total_points", 0) + REF_BONUS_STEP1
             users[r_key]["invites"] = users[r_key].get("invites", 0) + 1
+            
+            # امتیاز کامل به دعوت‌شونده
             users[n_key]["points"] = users[n_key].get("points", 0) + REF_POINTS_INVITEE
             users[n_key]["total_points"] = users[n_key].get("total_points", 0) + REF_POINTS_INVITEE
             self._dirty = True
             return True
+
+    def check_referral_steps(self, uid: int, step: str) -> Optional[int]:
+        """
+        بررسی و تکمیل مرحله رفرال.
+        اگر امتیاز اضافه شد، uid دعوت‌کننده را برمی‌گرداند، وگرنه None.
+        """
+        key = str(uid)
+        with self._lock:
+            u = self._data["users"].get(key)
+            if not u or not u.get("referred_by"):
+                return None
+            
+            ref_uid_str = u["referred_by"]
+            ref_user = self._data["users"].get(ref_uid_str)
+            if not ref_user:
+                return None
+            
+            if step == "step2" and not u.get("ref_step2_done"):
+                u["ref_step2_done"] = True
+                ref_user["points"] = ref_user.get("points", 0) + REF_BONUS_STEP2
+                ref_user["total_points"] = ref_user.get("total_points", 0) + REF_BONUS_STEP2
+                self._dirty = True
+                return int(ref_uid_str)
+            
+            elif step == "step3" and not u.get("ref_step3_done"):
+                u["ref_step3_done"] = True
+                ref_user["points"] = ref_user.get("points", 0) + REF_BONUS_STEP3
+                ref_user["total_points"] = ref_user.get("total_points", 0) + REF_BONUS_STEP3
+                self._dirty = True
+                return int(ref_uid_str)
+            
+            return None
 
     def count_referrals(self, uid_str: str) -> int:
         with self._lock:
@@ -432,6 +476,8 @@ class CloudStorage:
                 u["points"] = 0
             for fu in self._data.get("fake_users", {}).values():
                 fu["points"] = 0
+                # ریست کردن مرحله خودکار فیک‌ها برای شروع مجدد در هفته جدید
+                fu["auto_step"] = 0
             self._data["last_lb_reset"] = date_key
             self._dirty = True
 
@@ -630,7 +676,7 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
          InlineKeyboardButton("🏆 لیدربرد هفتگی زنده", callback_data="menu:leaderboard")],
         [InlineKeyboardButton("🎁 پاداش و کسب امتیاز بیشتر ", callback_data="menu:invite")],
-        [InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
+        [InlineKeyboardButton("ℹ️ قوانین و راهنما ", callback_data="menu:help")],
     ]
     if uid and is_admin(uid):
         rows.append([InlineKeyboardButton("👑 پنل ادمین", callback_data="admin:panel:0")])
@@ -853,7 +899,7 @@ def build_profile_text(uid: int, u: dict) -> str:
     acc = f"{u.get('correct', 0)}/{u.get('predictions', 0)}" if u.get("predictions") else "—"
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     return (
-        "👤 <b>پروفایل تو</b>\n\n"
+        "👤 <b>پروفایل شما</b>\n\n"
         f"📛 نام: <b>{full}</b>\n"
         f"🥇 امتیاز این هفته: <b>{u.get('points', 0)}</b>\n"
         f"⭐️ امتیاز کل (تاریخچه): <b>{u.get('total_points', 0)}</b>\n"
@@ -898,46 +944,100 @@ def build_leaderboard_text(uid: int = 0) -> str:
 def build_referral_text(uid: int, bot_username: str) -> str:
     u = cloud.ensure_user(uid)
     link = f"https://t.me/{bot_username}?start=ref_{u['ref']}"
+    total_bonus = REF_BONUS_STEP1 + REF_BONUS_STEP2 + REF_BONUS_STEP3
     return (
-        "🎁 <b>دعوت دوستان</b>\n\n"
-        f"با لینک اختصاصی زیر دوستاتو دعوت کن کافیه بزنی رو لینک تا کپی بشه :\n<code>{link}</code>\n\n"
-        f"✅ به ازای هر دعوت موفق: <b>{REF_POINTS_REFERRER} امتیاز</b> برای تو\n"
+        "🎁 <b>دعوت دوستان و کسب امتیاز</b>\n\n"
+        f"🔗 لینک اختصاصی شما:\n<code>{link}</code>\n\n"
+        f"📋 <b>سیستم پاداش تدریجی ({total_bonus} امتیاز به ازای هر دعوت):</b>\n"
+        f"✅ مرحله ۱: ورود دوستت → <b>+{REF_BONUS_STEP1} امتیاز</b> (فوری)\n"
+        f"✅ مرحله ۲: حداقل 2 بار شرکت دوستت در مسابقات → <b>+{REF_BONUS_STEP2} امتیاز</b>\n"
+        f"✅ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>+{REF_BONUS_STEP3} امتیاز</b>\n\n"
         f"🎉 دوستت هم با ورود از لینکت: <b>{REF_POINTS_INVITEE} امتیاز</b> هدیه می‌گیره\n\n"
+        f"💡 <b>نکته مهم:</b> فقط <b>تریدرهای فعال بازار فارکس</b> را دعوت کن تا امتیاز کامل ({total_bonus} امتیاز) را دریافت کنی!\n\n"
         f"👥 تعداد دعوت‌های موفق تو: <b>{u.get('invites', 0)}</b>"
     )
 
 
 def build_help_text(admin: bool) -> str:
     txt = (
-        "ℹ️ <b>راهنمای کامل تورنومنت</b>\n\n"
-        "🥇 هر دور، یک قیمت شروع برای انس جهانی طلا (XAU/USD) در کانال اعلام می‌شه. "
-        f"تو فقط <b>{VOTE_WINDOW_MINUTES} دقیقه‌ی اول</b> فرصت داری با زدن دکمه‌ی «⬆️ بالا» یا "
-        "«⬇️ پایین» پیش‌بینی کنی.\n\n"
-        "⏳ شمارش معکوس زنده روی پست کانال بروزرسانی می‌شه — وقتی تمام شد، رأی‌گیری بسته می‌شه.\n\n"
-        "🔒 هر کاربر فقط یک‌بار در هر دور می‌تونه رأی بده.\n\n"
-        f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b> — نتیجه خصوصی اطلاع‌رسانی می‌شه.\n\n"
-        "🎁 <b>دعوت دوستان:</b> لینک اختصاصی از /invite — هم تو هم دوستت امتیاز بیشتری می‌گیرید و شانس برنده شدنتون بیشتر میشه.\n\n"
-        "🏆 <b>تورنومنت هفتگی و جوایز نقدی:</b>\n"
-        "  • 🥇 نفر اول: <b>۸۰ دلار</b>\n"
-        "  • 🥈 نفر دوم: <b>۶۰ دلار</b>\n"
-        "  • 🥉 نفر سوم: <b>۴۰ دلار</b>\n"
-        "  • 🎲 نفرات ۴ تا ۱۰: قرعه‌کشی <b>۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
-        "📋 <b>دستورات:</b>\n"
-        "/start — شروع و ثبت‌نام\n"
-        "/profile — مشاهده امتیاز و رتبه‌ات\n"
-        "/leaderboard — لیدربرد و شمارش معکوس تورنومنت\n"
-        "/invite — لینک دعوت دوستان\n"
-        "/help — همین راهنما"
+        "══════════════════════════\n"
+        "📖 <b>بخش اول: راهنمای مسابقات</b>\n"
+        "══════════════════════════\n\n"
+        
+        "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
+        
+        "⏰ <b>زمان‌بندی برگزاری دورها:</b>\n"
+        "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
+        "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
+        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
+        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
+        
+        "🎯 <b>نحوه شرکت:</b>\n"
+        "۱. منتظر پست دور های مسابقه توسط ربات در کانال باش\n"
+        "۲. دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> را بزن\n"
+        "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
+        
+        "🏆 <b>جوایز نقدی هر هفته:</b>\n"
+        "🥇 نفر اول: <b>۸۰ دلار</b>\n"
+        "🥈 نفر دوم: <b>۶۰ دلار</b>\n"
+        "🥉 نفر سوم: <b>۴۰ دلار</b>\n"
+        "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
+        
+        "══════════════════════════\n"
+        "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
+        "══════════════════════════\n\n"
+        
+        "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
+        "برای دریافت امتیاز کامل از دعوت دوستانت، مراحل زیر باید طی شود:\n\n"
+        "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
+        "✅ <b>مرحله ۲:</b> شرکت دوستت در ۲ دور مسابقه → <b>+۳۰ امتیاز</b>\n"
+        "✅ <b>مرحله ۳:</b> اولین پیش‌بینی درست دوستت → <b>+۴۰ امتیاز</b>\n\n"
+        
+        "💡 <b>نکته مهم:</b>\n"
+        "فقط <b>تریدرها و تحلیلگران فعال بازار فارکس</b> را دعوت کن! 📊\n"
+        "دوستان عادی که علاقه‌ای به بازارهای مالی ندارند، در مسابقات شرکت نمی‌کنند و امتیاز کامل به تو تعلق نمی‌گیرد.\n\n"
+        "این سیستم تماما چیده شده فقط افراد حقیقی که در بازار های مالی فعالیت میکنن رو به عنوان شرکت در مسابقات دعوت نمایید و در کنارش امتیازی هم به عنوان پاداش دریافت کنید توجه کنید که اگر غیر از این مثل دور های قبل سراغ افراد و یا تیم هایی برید که فقط با طی کردن و دور زدن این مراحل بدنبال امتیاز باشید سیستم ضد تخلف ربات دیر یا زود تشخیص خواهد داد !  \n"
+        
+        "🛡 <b>سیستم ضدتقلب هوشمند:</b>\n"
+        "ربات به‌صورت خودکار رفتار کاربران را رصد می‌کند و موارد زیر را <b>تقلب</b> محسوب می‌کند:\n"
+        "⛔ دعوت اکانت‌های فیک یا ربات\n"
+        "⛔ استفاده از اکانت‌های متعدد با IP مشترک\n"
+        "⛔ دعوت کاربرانی که در هیچ مسابقه‌ای شرکت نمی‌کنند\n"
+        "⛔ الگوی نام‌گذاری مشابه در اکانت‌های دعوت‌شده\n"
+        "⛔ استفاده از تیم های زیر مجموعه گیری که فقط یکبار برای ثبت رفرال و کسب امتیاز اقدام میکنند\n"
+        "⛔ فعال نبودن رفرال ها در چنل و لفت دادن پس از کسب امتیاز یا بعد از اتمام تورنومنت\n"
+        "⛔ فعالیت همزمان زیرمجموعه‌ها در ساعات غیرمعمول\n\n"
+        
+        "⚠️ <b>جرایم متخلفان:</b>\n"
+        "🔸 <b>تخلف برای بار اول:</b> امتیازهای کسب‌شده از روش غیرمجاز <b>حذف</b> می‌شود\n"
+        "🔸 <b>تخلف برای بار دوم:</b> کاربر برای همیشه از تورنومنت <b>حذف</b> می‌شود 🚫\n\n"
+        
+        "📌 <b>نکات پایانی:</b>\n"
+        "🔹 هر کاربر در هر دور فقط <b>یک رأی</b> می‌تواند بدهد\n"
+        "🔹 رأی اول <b>نهایی</b> است و قابل تغییر نیست\n"
+        "🔹 نتیجه هر دور <b>خصوصی</b> به شما اطلاع داده می‌شود\n"
+        "🔹 لیدربرد هر <b>شنبه ساعت ۰۰:۰۰</b> ریست می‌شود\n"
+        "🔹 برندگان باید ظرف <b>۴۸ ساعت</b> برای دریافت جایزه اقدام کنند\n\n"
+        
+        "💎 <b>فرصت طلایی:</b>\n"
+        "هرچه بیشتر در مسابقات شرکت کنی و دوستان واقعی فارکسی دعوت کنی، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
+        
+        "🎯 <b>هدف ما:</b>\n"
+        "ایجاد یک جامعه‌ی حرفه‌ای از تریدرها که با دانش و تحلیل واقعی و حدس مسابقات ، جوایز نقدی کسب کنند ودر کنار لایو ترید ها به سود دهی مستمر برسند.\n"
     )
+    
     if admin:
         txt += (
-            "\n\n👑 <b>دستورات ادمین</b>\n"
-            "/newround [دقیقه کل] [دقیقه رأی‌گیری] — باز کردن دور جدید "
-            f"(پیش‌فرض {DEFAULT_ROUND_MIN} دقیقه‌ی کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n"
+            "\n══════════════════════════\n"
+            "👑 <b>دستورات ادمین</b>\n"
+            "════════════════════════════\n\n"
+            "/newround [دقیقه کل] [دقیقه رأی‌گیری]\n"
+            f"   (پیش‌فرض: {DEFAULT_ROUND_MIN} دقیقه کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n\n"
             "/cancelround — باطل کردن دور فعال\n"
             "/status — وضعیت دور فعال\n"
-            "/adminpanel — پنل مدیریت کاربران"
+            "/adminpanel — پنل مدیریت کاربران\n"
         )
+    
     return txt
 
 
@@ -1042,6 +1142,24 @@ async def _resolve_round(app: Application, rnd: dict):
         if direction != "flat" and pred["dir"] == direction:
             winners.append(uid_str)
             cloud.award_correct_prediction(int(uid_str))
+            
+            # بررسی اینکه آیا اولین برد کاربر است و دعوت‌شده است
+            u = cloud.get_user(int(uid_str))
+            if u and u.get("correct", 0) == 1:  # چون刚刚 increment شده
+                ref_uid = cloud.check_referral_steps(int(uid_str), "step3")
+                if ref_uid:
+                    try:
+                        await app.bot.send_message(
+                            chat_id=ref_uid, parse_mode=ParseMode.HTML,
+                            text=(
+                                f"🏆 <b>مرحله ۳ تکمیل شد!</b>\n\n"
+                                f"دوستت اولین پیش‌بینی درستش رو داشت.\n"
+                                f"⭐️ <b>+{REF_BONUS_STEP3} امتیاز</b> به حسابت اضافه شد.\n\n"
+                                f"✅ پاداش کامل دعوت تکمیل شد!"
+                            )
+                        )
+                    except Exception:
+                        pass
     winners_set = set(winners)
 
     cloud.finish_round(rnd["id"], price_now, direction, winners)
@@ -1164,13 +1282,35 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if ref_uid:
                 ok = cloud.apply_referral(uid, ref_uid)
                 if ok:
+                    # دریافت اطلاعات کاربران
+                    new_user = cloud.get_user(uid)
+                    referrer_user = cloud.get_user(ref_uid)
+                    new_user_name = new_user.get("full_name", "") or new_user.get("username", "") or f"کاربر {uid}"
+                    referrer_name = referrer_user.get("full_name", "") or referrer_user.get("username", "") or f"کاربر {ref_uid}"
+                    
+                    # پیام به دعوت‌کننده
                     try:
                         await ctx.bot.send_message(
                             chat_id=ref_uid, parse_mode=ParseMode.HTML,
-                            text=("🎉 <b>خبر خوب!</b> یک نفر با لینک دعوت اختصاصی تو وارد ربات شد.\n"
-                                  f"⭐️ +{REF_POINTS_REFERRER} امتیاز به حسابت اضافه شد."))
+                            text=(
+                                f"🎉 <b>یک دعوت موفق ثبت شد!</b>\n\n"
+                                f"👤 کاربر جدید: <b>{new_user_name}</b>\n"
+                                f"⭐️ <b>+{REF_BONUS_STEP1} امتیاز</b> (مرحله ۱ از ۳) به حسابت اضافه شد.\n\n"
+                                f"📋 <b>سیستم پاداش تدریجی:</b>\n"
+                                f"✅ مرحله ۱: ورود دوستت → <b>{REF_BONUS_STEP1} امتیاز</b> (دریافت شد)\n"
+                                f"⏳ مرحله ۲: شرکت دوستت در ۲ دور مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
+                                f"⏳ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>{REF_BONUS_STEP3} امتیاز</b>\n\n"
+                                f"💡 <b>نکته مهم:</b>\n"
+                                f"برای دریافت امتیاز کامل، دوستت باید به‌عنوان یک شخص حقیقی و فعال در "
+                                f"حوزه بازارهای مالی در مسابقات شرکت کند و پیش‌بینی‌های واقعی داشته باشد.\n"
+                                f"⚠️ امتیازهای کسب‌شده از روش‌های غیرمجاز (ممبر فیک، ربات و...) در پایان "
+                                f"هفته توسط سیستم ضدتقلب شناسایی و کسر خواهند شد."
+                            )
+                        )
                     except Exception:
                         pass
+                    
+                    # پیام به دعوت‌شونده
                     try:
                         await ctx.bot.send_message(
                             chat_id=uid, parse_mode=ParseMode.HTML,
@@ -1178,6 +1318,41 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                   f"⭐️ +{REF_POINTS_INVITEE} امتیاز رایگان بهت تعلق گرفت."))
                     except Exception:
                         pass
+                    
+                    # پیام به ادمین‌ها
+                    ref_username = new_user.get("username", "") or ""
+                    new_username = new_user.get("username", "") or ""
+                    
+                    # ساخت لینک پروفایل
+                    if referrer_user.get("username"):
+                        ref_profile = f"https://t.me/{referrer_user['username']}"
+                    else:
+                        ref_profile = f"tg://user?id={ref_uid}"
+                    
+                    if new_user.get("username"):
+                        new_profile = f"https://t.me/{new_user['username']}"
+                    else:
+                        new_profile = f"tg://user?id={uid}"
+                    
+                    for admin_id in ADMIN_IDS:
+                        try:
+                            await ctx.bot.send_message(
+                                chat_id=admin_id, parse_mode=ParseMode.HTML,
+                                text=(
+                                    f"🆕 <b>دعوت موفق جدید</b>\n\n"
+                                    f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                    f"🆔 آیدی: <code>{ref_uid}</code>\n"
+                                    f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
+                                    f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
+                                    f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                    f"🆔 آیدی: <code>{uid}</code>\n"
+                                    f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
+                                    f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                    f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
+                                )
+                            )
+                        except Exception:
+                            pass
 
     await update.effective_message.reply_text(
         build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
@@ -1338,16 +1513,37 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if pending_ref:
                 ref_uid = cloud.find_uid_by_ref(pending_ref)
                 if ref_uid:
-                    # تابع apply_referral خودش چک می‌کند که کاربر از قبل زیرمجموعه نباشد
                     ok = cloud.apply_referral(uid, ref_uid)
                     if ok:
+                        # دریافت اطلاعات کاربران
+                        new_user = cloud.get_user(uid)
+                        referrer_user = cloud.get_user(ref_uid)
+                        new_user_name = new_user.get("full_name", "") or new_user.get("username", "") or f"کاربر {uid}"
+                        referrer_name = referrer_user.get("full_name", "") or referrer_user.get("username", "") or f"کاربر {ref_uid}"
+                        
+                        # پیام به دعوت‌کننده (مرحله ۱)
                         try:
                             await ctx.bot.send_message(
                                 chat_id=ref_uid, parse_mode=ParseMode.HTML,
-                                text=("🎉 <b>خبر خوب!</b> یک نفر با لینک دعوت اختصاصی تو وارد ربات شد.\n"
-                                      f"⭐️ +{REF_POINTS_REFERRER} امتیاز به حسابت اضافه شد."))
+                                text=(
+                                    f"🎉 <b>یک دعوت موفق ثبت شد!</b>\n\n"
+                                    f"👤 کاربر جدید: <b>{new_user_name}</b>\n"
+                                    f"⭐️ <b>+{REF_BONUS_STEP1} امتیاز</b> (مرحله ۱ از ۳) به حسابت اضافه شد.\n\n"
+                                    f"📋 <b>سیستم پاداش تدریجی:</b>\n"
+                                    f"✅ مرحله ۱: ورود دوستت → <b>{REF_BONUS_STEP1} امتیاز</b> (دریافت شد)\n"
+                                    f"⏳ مرحله ۲: شرکت دوستت در ۲ دور مسابقه → <b>{REF_BONUS_STEP2} امتیاز</b>\n"
+                                    f"⏳ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>{REF_BONUS_STEP3} امتیاز</b>\n\n"
+                                    f"💡 <b>نکته مهم:</b>\n"
+                                    f"برای دریافت امتیاز کامل، دوستت باید به‌عنوان یک شخص حقیقی و فعال در "
+                                    f"حوزه بازارهای مالی در مسابقات شرکت کند و پیش‌بینی‌های واقعی داشته باشد.\n"
+                                    f"⚠️ امتیازهای کسب‌شده از روش‌های غیرمجاز (ممبر فیک، ربات و...) در پایان "
+                                    f"هفته توسط سیستم ضدتقلب شناسایی و کسر خواهند شد."
+                                )
+                            )
                         except Exception:
                             pass
+                        
+                        # پیام به دعوت‌شونده
                         try:
                             await ctx.bot.send_message(
                                 chat_id=uid, parse_mode=ParseMode.HTML,
@@ -1355,6 +1551,38 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                       f"⭐️ +{REF_POINTS_INVITEE} امتیاز رایگان بهت تعلق گرفت."))
                         except Exception:
                             pass
+                        
+                        # پیام به ادمین‌ها
+                        # ساخت لینک پروفایل
+                        if referrer_user.get("username"):
+                            ref_profile = f"https://t.me/{referrer_user['username']}"
+                        else:
+                            ref_profile = f"tg://user?id={ref_uid}"
+                        
+                        if new_user.get("username"):
+                            new_profile = f"https://t.me/{new_user['username']}"
+                        else:
+                            new_profile = f"tg://user?id={uid}"
+                        
+                        for admin_id in ADMIN_IDS:
+                            try:
+                                await ctx.bot.send_message(
+                                    chat_id=admin_id, parse_mode=ParseMode.HTML,
+                                    text=(
+                                        f"🆕 <b>دعوت موفق جدید</b>\n\n"
+                                        f"👤 <b>دعوت‌کننده:</b> {referrer_name}\n"
+                                        f"🆔 آیدی: <code>{ref_uid}</code>\n"
+                                        f"📛 یوزرنیم: {'@' + referrer_user['username'] if referrer_user.get('username') else '—'}\n"
+                                        f"🔗 <a href=\"{ref_profile}\">مشاهده پروفایل</a>\n\n"
+                                        f"👤 <b>دعوت‌شده:</b> {new_user_name}\n"
+                                        f"🆔 آیدی: <code>{uid}</code>\n"
+                                        f"📛 یوزرنیم: {'@' + new_user['username'] if new_user.get('username') else '—'}\n"
+                                        f"🔗 <a href=\"{new_profile}\">مشاهده پروفایل</a>\n\n"
+                                        f"📅 زمان: {now_ir().strftime('%H:%M:%S')}"
+                                    )
+                                )
+                            except Exception:
+                                pass
                 
                 # پاک کردن state موقت
                 ctx.user_data.pop("pending_referral", None)
@@ -1378,6 +1606,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if result == "ok":
             dir_fa = "بالا ⬆️" if direction == "up" else "پایین ⬇️"
             await q.answer(f"✅ پیش‌بینی‌ات ثبت شد: {dir_fa}\nرأی اول و نهایی‌ست.", show_alert=True)
+            
+            # بررسی اینکه آیا کاربر قبلاً در ۱ دور شرکت کرده و الان در دور دوم است
+            u = cloud.get_user(uid)
+            if u and u.get("predictions", 0) == 1:  # یعنی یک دور را کامل شرکت کرده
+                ref_uid = cloud.check_referral_steps(uid, "step2")
+                if ref_uid:
+                    try:
+                        await ctx.bot.send_message(
+                            chat_id=ref_uid, parse_mode=ParseMode.HTML,
+                            text=(
+                                f"🎯 <b>مرحله ۲ تکمیل شد!</b>\n\n"
+                                f"دوستت در دومین دور مسابقه شرکت کرد.\n"
+                                f"⭐️ <b>+{REF_BONUS_STEP2} امتیاز</b> به حسابت اضافه شد."
+                            )
+                        )
+                    except Exception:
+                        pass
         elif result == "already_voted":
             await q.answer("⚠️ قبلاً رأی دادی — امکان تغییر نیست.", show_alert=True)
         elif result == "closed":
@@ -1786,10 +2031,11 @@ async def weekly_reset_watcher(app: Application):
 
 
 async def fake_referral_watcher(app: Application):
-    """رشد خودکار امتیاز فیک‌های انتخاب‌شده"""
+    """رشد خودکار و تدریجی فیک‌های انتخاب‌شده (دقیقاً مشابه سیستم ۳ مرحله‌ای)"""
     while True:
         try:
-            await asyncio.sleep(random.randint(80, 100))  # ۴۵ دقیقه تا ۳ ساعت
+            # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
+            await asyncio.sleep(random.randint(30, 60))
             
             if not fake_referral_enabled:
                 continue
@@ -1798,18 +2044,49 @@ async def fake_referral_watcher(app: Application):
             if not auto_ids:
                 continue
             
-            fake_id = random.choice(auto_ids)
+            # فیلتر کردن فیک‌هایی که هنوز مراحل‌شان کامل نشده
+            eligible_fakes = []
+            with cloud._lock:
+                for fid in auto_ids:
+                    fu = cloud._data.get("fake_users", {}).get(fid)
+                    if fu and fu.get("auto_step", 0) < 3:
+                        eligible_fakes.append((fid, fu))
+            
+            if not eligible_fakes:
+                # همه فیک‌ها مراحل‌شان تمام شده، منتظر ریست هفتگی می‌مانیم
+                continue
+            
+            # انتخاب رندوم یکی از فیک‌های واجد شرایط
+            fid, fu = random.choice(eligible_fakes)
             
             with cloud._lock:
-                fu = cloud._data.get("fake_users", {}).get(fake_id)
-                if fu:
-                    bonus = REF_POINTS_REFERRER
-                    fu["points"] = fu.get("points", 0) + bonus
-                    fu["total_points"] = fu.get("total_points", 0) + bonus
-                    fu["invites"] = fu.get("invites", 0) + 1
-                    cloud._dirty = True
-                    log.info(f"🤖 +{bonus} امتیاز به فیک: {fu.get('full_name', fake_id)}")
-            
+                # دوباره چک می‌کنیم چون ممکن است در فاصله قفل تغییر کرده باشد
+                fu = cloud._data.get("fake_users", {}).get(fid)
+                if not fu:
+                    continue
+                
+                current_step = fu.get("auto_step", 0)
+                next_step = current_step + 1
+                
+                # تعیین امتیاز بر اساس مرحله (دقیقاً مثل کاربران واقعی)
+                if next_step == 1:
+                    bonus = REF_BONUS_STEP1  # 20
+                elif next_step == 2:
+                    bonus = REF_BONUS_STEP2  # 30
+                elif next_step == 3:
+                    bonus = REF_BONUS_STEP3  # 40
+                else:
+                    continue
+                
+                fu["points"] = fu.get("points", 0) + bonus
+                fu["total_points"] = fu.get("total_points", 0) + bonus
+                fu["invites"] = fu.get("invites", 0) + 1
+                fu["auto_step"] = next_step
+                cloud._dirty = True
+                
+                step_names = {1: "ورود", 2: "شرکت در ۲ دور", 3: "پیش‌بینی درست"}
+                log.info(f"🤖 مرحله {next_step} ({step_names[next_step]}): +{bonus} امتیاز به فیک: {fu.get('full_name', fid)}")
+        
         except asyncio.CancelledError:
             break
         except Exception as e:
