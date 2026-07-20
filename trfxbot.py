@@ -62,7 +62,7 @@ REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین 
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 30))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
@@ -1070,11 +1070,19 @@ async def _edit_round_message(app: Application, rnd: dict, phase: str,
                                end_price=None, direction=None):
     text = build_round_text(rnd, phase, end_price, direction)
     markup = kb_round_voting(rnd["id"]) if phase == "voting" else kb_round_teaser()
+    
+    # جلوگیری از ویرایش اگر متن تغییر نکرده
+    last_text = rnd.get("_last_edit_text", "")
+    if text == last_text:
+        return
+    
     try:
         await app.bot.edit_message_text(
             chat_id=rnd["chat_id"], message_id=rnd["message_id"],
             text=text, parse_mode=ParseMode.HTML, reply_markup=markup,
         )
+        # ذخیره آخرین متن ویرایش شده
+        rnd["_last_edit_text"] = text
     except BadRequest as e:
         if "not modified" not in str(e).lower():
             log.warning(f"edit round message failed: {e}")
@@ -1439,13 +1447,31 @@ async def cmd_newround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ قیمت طلا در دسترس نیست، دوباره تلاش کن.")
         return
 
-    placeholder = await ctx.bot.send_message(chat_id=CHANNEL_ID, text="⏳ در حال باز کردن دور جدید...")
-    rnd = cloud.create_round(price, minutes, CHANNEL_ID, placeholder.message_id, vote_minutes)
-    await _edit_round_message(ctx.application, rnd, "voting")
-    await update.effective_message.reply_text(
-        f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
-        f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
-    cloud.save(force=True)
+    # ارسال پیام اولیه با محتوای کامل (نه placeholder)
+    rnd = cloud.create_round(price, minutes, CHANNEL_ID, 0, vote_minutes)
+    text = build_round_text(rnd, "voting")
+    markup = kb_round_voting(rnd["id"])
+    
+    try:
+        msg = await ctx.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup,
+        )
+        # به‌روزرسانی message_id در دیتابیس
+        with cloud._lock:
+            cloud._data["active_round"]["message_id"] = msg.message_id
+            cloud._data["active_round"]["_last_edit_text"] = text
+            cloud._dirty = True
+        
+        await update.effective_message.reply_text(
+            f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
+            f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
+        cloud.save(force=True)
+    except Exception as e:
+        cloud.cancel_active_round()
+        await update.effective_message.reply_text(f"❌ خطا در ارسال پیام به کانال: {e}")
 
 
 async def cmd_cancelround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
