@@ -719,6 +719,7 @@ def kb_admin_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
         [InlineKeyboardButton(f"🔄 رشد خودکار فیک‌ها: {status}", callback_data="admin:fake_auto:toggle")],
         [InlineKeyboardButton("📋 مدیریت لیست فیک‌ها", callback_data="admin:fake_auto:list")],
+        [InlineKeyboardButton("🎯 افزایش تصادفی امتیاز فیک‌ها", callback_data="admin:fake_auto:boost_prompt")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -1734,6 +1735,27 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         return
 
+    if data == "admin:fake_auto:boost_prompt":
+        auto_ids = cloud.get_auto_fake_ids()
+        if not auto_ids:
+            await q.answer("⚠️ هنوز هیچ فیکی در لیست انتخاب نشده!", show_alert=True)
+            return
+        
+        ctx.user_data["awaiting"] = "fake_boost_amount"
+        await q.answer()
+        await q.edit_message_text(
+            f"🎯 <b>افزایش تصادفی امتیاز فیک‌ها</b>\n\n"
+            f"🤖 تعداد فیک‌های انتخاب‌شده: <b>{len(auto_ids)}</b>\n\n"
+            f"📊 <b>نحوه کار:</b>\n"
+            f"• ۶۰ تا ۸۰٪ از فیک‌های انتخاب‌شده به‌صورت تصادفی انتخاب می‌شوند\n"
+            f"• به هر یک مقدار امتیازی که وارد می‌کنید اضافه می‌شود\n\n"
+            f"💰 <b>مقدار امتیاز را وارد کنید:</b>\n"
+            f"(مثال: <code>150</code> برای اضافه کردن ۱۵۰ امتیاز)\n\n"
+            f"❌ برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
         uid_str = data[len("admin:setpts:"):]
@@ -1907,6 +1929,59 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # افزایش تصادفی امتیاز فیک‌ها
+    if awaiting == "fake_boost_amount":
+        try:
+            boost_amount = int(text_in)
+            if boost_amount <= 0:
+                await update.message.reply_text("⚠️ مقدار باید بزرگتر از صفر باشد.")
+                return
+        except ValueError:
+            await update.message.reply_text("⚠️ لطفاً یک عدد صحیح وارد کنید (مثال: 150)")
+            return
+        
+        ctx.user_data.pop("awaiting", None)
+        
+        auto_ids = cloud.get_auto_fake_ids()
+        if not auto_ids:
+            await update.message.reply_text("❌ لیست فیک‌های انتخاب‌شده خالی است.", reply_markup=kb_admin_main())
+            return
+        
+        # انتخاب تصادفی ۶۰ تا ۸۰٪ از فیک‌ها
+        percentage = random.uniform(0.60, 0.80)
+        count_to_boost = max(1, int(len(auto_ids) * percentage))
+        selected_fakes = random.sample(auto_ids, min(count_to_boost, len(auto_ids)))
+        
+        # اعمال امتیاز
+        boosted_names = []
+        with cloud._lock:
+            for fid in selected_fakes:
+                fu = cloud._data.get("fake_users", {}).get(fid)
+                if fu:
+                    fu["points"] = fu.get("points", 0) + boost_amount
+                    fu["total_points"] = fu.get("total_points", 0) + boost_amount
+                    boosted_names.append(fu.get("full_name", fid))
+            cloud._dirty = True
+        
+        cloud.save(force=True)
+        
+        # نمایش نتیجه
+        names_list = "\n".join([f"• {name}" for name in boosted_names])
+        await update.message.reply_text(
+            f"✅ <b>افزایش امتیاز با موفقیت انجام شد!</b>\n\n"
+            f"💰 مقدار اضافه شده: <b>{boost_amount} امتیاز</b>\n"
+            f"🎯 تعداد فیک‌های انتخاب‌شده: <b>{len(selected_fakes)} از {len(auto_ids)}</b>\n"
+            f"📊 درصد رخداد: <b>{round(len(selected_fakes)/len(auto_ids)*100)}%</b>\n\n"
+            f"👥 <b>فیک‌های به‌روزشده:</b>\n{names_list}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        
+        # لاگ برای ادمین
+        log.info(f"🎯 Boost: +{boost_amount} به {len(selected_fakes)} فیک از {len(auto_ids)}")
+        return
+
+
     # مرحله‌ی ۱ افزودن فیک — نام
     if awaiting == "fake_add_name":
         ctx.user_data["fake_add_name"] = text_in
@@ -2062,7 +2137,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(7200, 10800))
+            await asyncio.sleep(random.randint(1800, 2400))
             
             if not fake_referral_enabled:
                 continue
