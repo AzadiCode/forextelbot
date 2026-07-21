@@ -1746,11 +1746,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             f"🎯 <b>افزایش تصادفی امتیاز فیک‌ها</b>\n\n"
             f"🤖 تعداد فیک‌های انتخاب‌شده: <b>{len(auto_ids)}</b>\n\n"
-            f"📊 <b>نحوه کار:</b>\n"
-            f"• ۶۰ تا ۸۰٪ از فیک‌های انتخاب‌شده به‌صورت تصادفی انتخاب می‌شوند\n"
-            f"• به هر یک مقدار امتیازی که وارد می‌کنید اضافه می‌شود\n\n"
-            f"💰 <b>مقدار امتیاز را وارد کنید:</b>\n"
-            f"(مثال: <code>150</code> برای اضافه کردن ۱۵۰ امتیاز)\n\n"
+            f"📊 <b>فرمت ورودی:</b>\n"
+            f"<code>مقدار امتیاز تعداد فیک</code>\n\n"
+            f"💡 <b>مثال‌ها:</b>\n"
+            f"• <code>200 5</code> → ۲۰۰ امتیاز به ۵ فیک رندوم\n"
+            f"• <code>100 3</code> → ۱۰۰ امتیاز به ۳ فیک رندوم\n"
+            f"• <code>500 8</code> → ۵۰۰ امتیاز به ۸ فیک رندوم\n\n"
             f"❌ برای لغو <code>/cancel</code> بزنید.",
             parse_mode=ParseMode.HTML,
         )
@@ -1931,13 +1932,31 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # افزایش تصادفی امتیاز فیک‌ها
     if awaiting == "fake_boost_amount":
+        # فرمت ورودی: "مقدار تعداد" مثلاً "200 5"
+        parts = text_in.strip().split()
+        if len(parts) != 2:
+            await update.message.reply_text(
+                "⚠️ <b>فرمت نادرست!</b>\n\n"
+                "لطفاً به این شکل وارد کنید:\n"
+                "<code>مقدار امتیاز تعداد فیک</code>\n\n"
+                "مثال: <code>200 5</code>\n"
+                "(۲۰۰ امتیاز به ۵ فیک رندوم)",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
         try:
-            boost_amount = int(text_in)
-            if boost_amount <= 0:
-                await update.message.reply_text("⚠️ مقدار باید بزرگتر از صفر باشد.")
+            boost_amount = int(parts[0])
+            boost_count = int(parts[1])
+            if boost_amount <= 0 or boost_count <= 0:
+                await update.message.reply_text("⚠️ هر دو مقدار باید بزرگتر از صفر باشند.")
                 return
         except ValueError:
-            await update.message.reply_text("⚠️ لطفاً یک عدد صحیح وارد کنید (مثال: 150)")
+            await update.message.reply_text(
+                "⚠️ لطفاً فقط اعداد صحیح وارد کنید.\n"
+                "مثال: <code>200 5</code>",
+                parse_mode=ParseMode.HTML,
+            )
             return
         
         ctx.user_data.pop("awaiting", None)
@@ -1947,10 +1966,17 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ لیست فیک‌های انتخاب‌شده خالی است.", reply_markup=kb_admin_main())
             return
         
-        # انتخاب تصادفی ۶۰ تا ۸۰٪ از فیک‌ها
-        percentage = random.uniform(0.60, 0.80)
-        count_to_boost = max(1, int(len(auto_ids) * percentage))
-        selected_fakes = random.sample(auto_ids, min(count_to_boost, len(auto_ids)))
+        # بررسی اینکه تعداد درخواستی بیشتر از فیک‌های موجود نباشد
+        actual_count = min(boost_count, len(auto_ids))
+        if boost_count > len(auto_ids):
+            await update.message.reply_text(
+                f"⚠️ شما {boost_count} فیک درخواست کردید ولی فقط {len(auto_ids)} فیک در لیست دارید.\n"
+                f"به همه‌ی {actual_count} فیک اضافه می‌شود.",
+                parse_mode=ParseMode.HTML,
+            )
+        
+        # انتخاب تصادفی فیک‌ها
+        selected_fakes = random.sample(auto_ids, actual_count)
         
         # اعمال امتیاز
         boosted_names = []
@@ -1970,15 +1996,13 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ <b>افزایش امتیاز با موفقیت انجام شد!</b>\n\n"
             f"💰 مقدار اضافه شده: <b>{boost_amount} امتیاز</b>\n"
-            f"🎯 تعداد فیک‌های انتخاب‌شده: <b>{len(selected_fakes)} از {len(auto_ids)}</b>\n"
-            f"📊 درصد رخداد: <b>{round(len(selected_fakes)/len(auto_ids)*100)}%</b>\n\n"
+            f"🎯 تعداد فیک‌های به‌روزشده: <b>{actual_count} از {len(auto_ids)}</b>\n\n"
             f"👥 <b>فیک‌های به‌روزشده:</b>\n{names_list}",
             parse_mode=ParseMode.HTML,
             reply_markup=kb_admin_main(),
         )
         
-        # لاگ برای ادمین
-        log.info(f"🎯 Boost: +{boost_amount} به {len(selected_fakes)} فیک از {len(auto_ids)}")
+        log.info(f"🎯 Boost: +{boost_amount} به {actual_count} فیک از {len(auto_ids)}")
         return
 
 
