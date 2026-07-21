@@ -1283,9 +1283,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if arg == "profile":
             # چک عضویت برای دیپ‌لینک پروفایل
             if not await check_membership(ctx.bot, uid):
-                await update.effective_message.reply_text(
-                    build_join_required_text(), parse_mode=ParseMode.HTML,
-                    reply_markup=kb_join_required())
+                # همیشه در PV کاربر ارسال شود (نه در کانال)
+                await ctx.bot.send_message(
+                    chat_id=uid,
+                    text=build_join_required_text(),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb_join_required(),
+                )
                 return
             u = cloud.ensure_user(uid, username, full_name)
             await update.effective_message.reply_text(
@@ -1298,9 +1302,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if not await check_membership(ctx.bot, uid):
                 # ذخیره کد رفرال برای پردازش بعد از عضویت
                 ctx.user_data["pending_referral"] = ref_code
-                await update.effective_message.reply_text(
-                    build_referral_join_text(), parse_mode=ParseMode.HTML,
-                    reply_markup=kb_join_required())
+                # همیشه در PV کاربر ارسال شود (نه در کانال)
+                await ctx.bot.send_message(
+                    chat_id=uid,
+                    text=build_referral_join_text(),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb_join_required(),
+                )
                 return
             
             ref_uid = cloud.find_uid_by_ref(ref_code)
@@ -1530,11 +1538,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data != "check_join":
         if not await check_membership(q.get_bot(), uid):
             await q.answer()
-            await q.edit_message_text(
-                build_join_required_text(),
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_join_required(),
-            )
+            # اگر callback از کانال آمده، پیام را در PV ارسال کن (نه در کانال!)
+            try:
+                if q.message.chat.type == "channel":
+                    await q.get_bot().send_message(
+                        chat_id=uid,
+                        text=build_join_required_text(),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb_join_required(),
+                    )
+                else:
+                    await q.edit_message_text(
+                        build_join_required_text(),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb_join_required(),
+                    )
+            except Exception as e:
+                log.warning(f"ارسال پیام عضویت اجباری با خطا مواجه شد: {e}")
             return
 
     # ── check_join (کاربر ادعا می‌کند عضو شده) ──────────────────────
