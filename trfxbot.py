@@ -159,7 +159,7 @@ GOLD_SOURCES = [
 ]
 
 _price_cache: Optional[tuple] = None
-PRICE_CACHE_TTL = 60
+PRICE_CACHE_TTL = 10
 
 
 def get_gold_price(force: bool = False) -> Optional[float]:
