@@ -62,7 +62,7 @@ REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین 
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 9))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 60))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
@@ -159,7 +159,7 @@ GOLD_SOURCES = [
 ]
 
 _price_cache: Optional[tuple] = None
-PRICE_CACHE_TTL = 10
+PRICE_CACHE_TTL = 60
 
 
 def get_gold_price(force: bool = False) -> Optional[float]:
@@ -182,9 +182,6 @@ def get_gold_price(force: bool = False) -> Optional[float]:
     return None
 
 
-# ══════════════════════════════════════════════════════════════════════
-# CLOUD STORAGE
-# ══════════════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════════════
 # CLOUD STORAGE (MongoDB Atlas - جایگزین JSONBin)
 # ══════════════════════════════════════════════════════════════════════
@@ -722,6 +719,7 @@ def kb_admin_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
         [InlineKeyboardButton(f"🔄 رشد خودکار فیک‌ها: {status}", callback_data="admin:fake_auto:toggle")],
         [InlineKeyboardButton("📋 مدیریت لیست فیک‌ها", callback_data="admin:fake_auto:list")],
+        [InlineKeyboardButton("🎯 افزایش تصادفی امتیاز فیک‌ها", callback_data="admin:fake_auto:boost_prompt")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -1073,11 +1071,19 @@ async def _edit_round_message(app: Application, rnd: dict, phase: str,
                                end_price=None, direction=None):
     text = build_round_text(rnd, phase, end_price, direction)
     markup = kb_round_voting(rnd["id"]) if phase == "voting" else kb_round_teaser()
+    
+    # جلوگیری از ویرایش اگر متن تغییر نکرده
+    last_text = rnd.get("_last_edit_text", "")
+    if text == last_text:
+        return
+    
     try:
         await app.bot.edit_message_text(
             chat_id=rnd["chat_id"], message_id=rnd["message_id"],
             text=text, parse_mode=ParseMode.HTML, reply_markup=markup,
         )
+        # ذخیره آخرین متن ویرایش شده
+        rnd["_last_edit_text"] = text
     except BadRequest as e:
         if "not modified" not in str(e).lower():
             log.warning(f"edit round message failed: {e}")
@@ -1277,9 +1283,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if arg == "profile":
             # چک عضویت برای دیپ‌لینک پروفایل
             if not await check_membership(ctx.bot, uid):
-                await update.effective_message.reply_text(
-                    build_join_required_text(), parse_mode=ParseMode.HTML,
-                    reply_markup=kb_join_required())
+                # همیشه در PV کاربر ارسال شود (نه در کانال)
+                await ctx.bot.send_message(
+                    chat_id=uid,
+                    text=build_join_required_text(),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb_join_required(),
+                )
                 return
             u = cloud.ensure_user(uid, username, full_name)
             await update.effective_message.reply_text(
@@ -1292,9 +1302,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if not await check_membership(ctx.bot, uid):
                 # ذخیره کد رفرال برای پردازش بعد از عضویت
                 ctx.user_data["pending_referral"] = ref_code
-                await update.effective_message.reply_text(
-                    build_referral_join_text(), parse_mode=ParseMode.HTML,
-                    reply_markup=kb_join_required())
+                # همیشه در PV کاربر ارسال شود (نه در کانال)
+                await ctx.bot.send_message(
+                    chat_id=uid,
+                    text=build_referral_join_text(),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb_join_required(),
+                )
                 return
             
             ref_uid = cloud.find_uid_by_ref(ref_code)
@@ -1442,13 +1456,31 @@ async def cmd_newround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("❌ قیمت طلا در دسترس نیست، دوباره تلاش کن.")
         return
 
-    placeholder = await ctx.bot.send_message(chat_id=CHANNEL_ID, text="⏳ در حال باز کردن دور جدید...")
-    rnd = cloud.create_round(price, minutes, CHANNEL_ID, placeholder.message_id, vote_minutes)
-    await _edit_round_message(ctx.application, rnd, "voting")
-    await update.effective_message.reply_text(
-        f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
-        f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
-    cloud.save(force=True)
+    # ارسال پیام اولیه با محتوای کامل (نه placeholder)
+    rnd = cloud.create_round(price, minutes, CHANNEL_ID, 0, vote_minutes)
+    text = build_round_text(rnd, "voting")
+    markup = kb_round_voting(rnd["id"])
+    
+    try:
+        msg = await ctx.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup,
+        )
+        # به‌روزرسانی message_id در دیتابیس
+        with cloud._lock:
+            cloud._data["active_round"]["message_id"] = msg.message_id
+            cloud._data["active_round"]["_last_edit_text"] = text
+            cloud._dirty = True
+        
+        await update.effective_message.reply_text(
+            f"✅ دور #{rnd['id']} با قیمت شروع {_fmt_price(price)} برای {minutes} دقیقه در کانال باز شد "
+            f"(بازه‌ی رأی‌گیری: {rnd['vote_minutes']} دقیقه‌ی اول).")
+        cloud.save(force=True)
+    except Exception as e:
+        cloud.cancel_active_round()
+        await update.effective_message.reply_text(f"❌ خطا در ارسال پیام به کانال: {e}")
 
 
 async def cmd_cancelround(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1506,11 +1538,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data != "check_join":
         if not await check_membership(q.get_bot(), uid):
             await q.answer()
-            await q.edit_message_text(
-                build_join_required_text(),
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_join_required(),
-            )
+            # اگر callback از کانال آمده، پیام را در PV ارسال کن (نه در کانال!)
+            try:
+                if q.message.chat.type == "channel":
+                    await q.get_bot().send_message(
+                        chat_id=uid,
+                        text=build_join_required_text(),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb_join_required(),
+                    )
+                else:
+                    await q.edit_message_text(
+                        build_join_required_text(),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb_join_required(),
+                    )
+            except Exception as e:
+                log.warning(f"ارسال پیام عضویت اجباری با خطا مواجه شد: {e}")
             return
 
     # ── check_join (کاربر ادعا می‌کند عضو شده) ──────────────────────
@@ -1711,6 +1755,28 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
         return
 
+    if data == "admin:fake_auto:boost_prompt":
+        auto_ids = cloud.get_auto_fake_ids()
+        if not auto_ids:
+            await q.answer("⚠️ هنوز هیچ فیکی در لیست انتخاب نشده!", show_alert=True)
+            return
+        
+        ctx.user_data["awaiting"] = "fake_boost_amount"
+        await q.answer()
+        await q.edit_message_text(
+            f"🎯 <b>افزایش تصادفی امتیاز فیک‌ها</b>\n\n"
+            f"🤖 تعداد فیک‌های انتخاب‌شده: <b>{len(auto_ids)}</b>\n\n"
+            f"📊 <b>فرمت ورودی:</b>\n"
+            f"<code>مقدار امتیاز تعداد فیک</code>\n\n"
+            f"💡 <b>مثال‌ها:</b>\n"
+            f"• <code>200 5</code> → ۲۰۰ امتیاز به ۵ فیک رندوم\n"
+            f"• <code>100 3</code> → ۱۰۰ امتیاز به ۳ فیک رندوم\n"
+            f"• <code>500 8</code> → ۵۰۰ امتیاز به ۸ فیک رندوم\n\n"
+            f"❌ برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
         uid_str = data[len("admin:setpts:"):]
@@ -1884,6 +1950,82 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # افزایش تصادفی امتیاز فیک‌ها
+    if awaiting == "fake_boost_amount":
+        # فرمت ورودی: "مقدار تعداد" مثلاً "200 5"
+        parts = text_in.strip().split()
+        if len(parts) != 2:
+            await update.message.reply_text(
+                "⚠️ <b>فرمت نادرست!</b>\n\n"
+                "لطفاً به این شکل وارد کنید:\n"
+                "<code>مقدار امتیاز تعداد فیک</code>\n\n"
+                "مثال: <code>200 5</code>\n"
+                "(۲۰۰ امتیاز به ۵ فیک رندوم)",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        try:
+            boost_amount = int(parts[0])
+            boost_count = int(parts[1])
+            if boost_amount <= 0 or boost_count <= 0:
+                await update.message.reply_text("⚠️ هر دو مقدار باید بزرگتر از صفر باشند.")
+                return
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ لطفاً فقط اعداد صحیح وارد کنید.\n"
+                "مثال: <code>200 5</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        ctx.user_data.pop("awaiting", None)
+        
+        auto_ids = cloud.get_auto_fake_ids()
+        if not auto_ids:
+            await update.message.reply_text("❌ لیست فیک‌های انتخاب‌شده خالی است.", reply_markup=kb_admin_main())
+            return
+        
+        # بررسی اینکه تعداد درخواستی بیشتر از فیک‌های موجود نباشد
+        actual_count = min(boost_count, len(auto_ids))
+        if boost_count > len(auto_ids):
+            await update.message.reply_text(
+                f"⚠️ شما {boost_count} فیک درخواست کردید ولی فقط {len(auto_ids)} فیک در لیست دارید.\n"
+                f"به همه‌ی {actual_count} فیک اضافه می‌شود.",
+                parse_mode=ParseMode.HTML,
+            )
+        
+        # انتخاب تصادفی فیک‌ها
+        selected_fakes = random.sample(auto_ids, actual_count)
+        
+        # اعمال امتیاز
+        boosted_names = []
+        with cloud._lock:
+            for fid in selected_fakes:
+                fu = cloud._data.get("fake_users", {}).get(fid)
+                if fu:
+                    fu["points"] = fu.get("points", 0) + boost_amount
+                    fu["total_points"] = fu.get("total_points", 0) + boost_amount
+                    boosted_names.append(fu.get("full_name", fid))
+            cloud._dirty = True
+        
+        cloud.save(force=True)
+        
+        # نمایش نتیجه
+        names_list = "\n".join([f"• {name}" for name in boosted_names])
+        await update.message.reply_text(
+            f"✅ <b>افزایش امتیاز با موفقیت انجام شد!</b>\n\n"
+            f"💰 مقدار اضافه شده: <b>{boost_amount} امتیاز</b>\n"
+            f"🎯 تعداد فیک‌های به‌روزشده: <b>{actual_count} از {len(auto_ids)}</b>\n\n"
+            f"👥 <b>فیک‌های به‌روزشده:</b>\n{names_list}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        
+        log.info(f"🎯 Boost: +{boost_amount} به {actual_count} فیک از {len(auto_ids)}")
+        return
+
+
     # مرحله‌ی ۱ افزودن فیک — نام
     if awaiting == "fake_add_name":
         ctx.user_data["fake_add_name"] = text_in
@@ -2039,7 +2181,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(7200, 10800))
+            await asyncio.sleep(random.randint(1200, 1800))
             
             if not fake_referral_enabled:
                 continue
@@ -2116,7 +2258,6 @@ async def on_startup(app: Application):
         BOT_USERNAME = me.username or ""
     except Exception as e:
         log.warning(f"could not fetch bot username at startup: {e}")
-    threading.Thread(target=_run_flask, daemon=True).start()
     asyncio.create_task(round_watcher(app))
     asyncio.create_task(weekly_reset_watcher(app))
     asyncio.create_task(fake_referral_watcher(app))
@@ -2128,21 +2269,6 @@ async def on_shutdown(app: Application):
     cloud.save(force=True)
     log.info("shutdown")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# FLASK KEEP-ALIVE
-# ══════════════════════════════════════════════════════════════════════
-flask_app = Flask(__name__)
-
-
-@flask_app.route("/")
-def root():
-    n_users = len(cloud._data.get("users", {}))
-    return f"Gold Prediction Bot v2 | users={n_users} | {now_ir().strftime('%Y-%m-%d %H:%M:%S')}"
-
-
-def _run_flask():
-    flask_app.run(host="0.0.0.0", port=PORT)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -2179,7 +2305,27 @@ def main():
     signal.signal(signal.SIGINT, _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
+    # ── Webhook setup ──────────────────────────────────────────────
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if webhook_url:
+        # استفاده از توکن به عنوان url_path برای امنیت (فقط تلگرام می‌تواند درخواست بزند)
+        webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+        log.info(f"🌐 Starting webhook at: {webhook_url[:50]}...")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=BOT_TOKEN,
+            webhook_url=webhook_url,
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
+    else:
+        # اگر RENDER_EXTERNAL_URL نبود، به polling برمی‌گردیم (برای تست محلی)
+        log.warning("⚠️ RENDER_EXTERNAL_URL not set, falling back to polling")
+        app.run_polling(
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
 
 
 if __name__ == "__main__":
