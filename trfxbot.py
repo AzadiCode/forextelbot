@@ -1,59 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Gold Prediction Tournament Bot — نسخه‌ی ۲ (ارتقا یافته)
-════════════════════════════════════════════════════════════════════
-تورنومنت هفتگی پیش‌بینی قیمت انس جهانی طلا (XAU/USD)
-"""
-import os
-import sys
-import time
-import json
-import signal
-import atexit
-import logging
-import hashlib
-import asyncio
-import threading
-import random
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-import requests
-from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Chat
-from telegram.constants import ParseMode
-from telegram.error import BadRequest, Forbidden
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes, filters, MessageHandler,
-)
-
-# ══════════════════════════════════════════════════════════════════════
-# LOGGING
-# ══════════════════════════════════════════════════════════════════════
-logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    level=logging.INFO, stream=sys.stdout,
-)
-log = logging.getLogger("GoldPredictionBot")
-
-# ══════════════════════════════════════════════════════════════════════
-# CONFIG (همه از Environment Variable خوانده می‌شوند)
-# ══════════════════════════════════════════════════════════════════════
-BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
-PORT        = int(os.environ.get("PORT", 5000))
-JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
-JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
-
-_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", ""))
-ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
-
-CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
-# کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
-
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 20))
@@ -62,7 +6,7 @@ REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین 
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 30))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 60))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
@@ -159,7 +103,7 @@ GOLD_SOURCES = [
 ]
 
 _price_cache: Optional[tuple] = None
-PRICE_CACHE_TTL = 10
+PRICE_CACHE_TTL = 60
 
 
 def get_gold_price(force: bool = False) -> Optional[float]:
@@ -2181,7 +2125,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(1800, 2400))
+            await asyncio.sleep(random.randint(1200, 1800))
             
             if not fake_referral_enabled:
                 continue
@@ -2258,7 +2202,6 @@ async def on_startup(app: Application):
         BOT_USERNAME = me.username or ""
     except Exception as e:
         log.warning(f"could not fetch bot username at startup: {e}")
-    threading.Thread(target=_run_flask, daemon=True).start()
     asyncio.create_task(round_watcher(app))
     asyncio.create_task(weekly_reset_watcher(app))
     asyncio.create_task(fake_referral_watcher(app))
@@ -2270,21 +2213,6 @@ async def on_shutdown(app: Application):
     cloud.save(force=True)
     log.info("shutdown")
 
-
-# ══════════════════════════════════════════════════════════════════════
-# FLASK KEEP-ALIVE
-# ══════════════════════════════════════════════════════════════════════
-flask_app = Flask(__name__)
-
-
-@flask_app.route("/")
-def root():
-    n_users = len(cloud._data.get("users", {}))
-    return f"Gold Prediction Bot v2 | users={n_users} | {now_ir().strftime('%Y-%m-%d %H:%M:%S')}"
-
-
-def _run_flask():
-    flask_app.run(host="0.0.0.0", port=PORT)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -2321,7 +2249,27 @@ def main():
     signal.signal(signal.SIGINT, _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
+    # ── Webhook setup ──────────────────────────────────────────────
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if webhook_url:
+        # استفاده از توکن به عنوان url_path برای امنیت (فقط تلگرام می‌تواند درخواست بزند)
+        webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+        log.info(f"🌐 Starting webhook at: {webhook_url[:50]}...")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=BOT_TOKEN,
+            webhook_url=webhook_url,
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
+    else:
+        # اگر RENDER_EXTERNAL_URL نبود، به polling برمی‌گردیم (برای تست محلی)
+        log.warning("⚠️ RENDER_EXTERNAL_URL not set, falling back to polling")
+        app.run_polling(
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
 
 
 if __name__ == "__main__":
