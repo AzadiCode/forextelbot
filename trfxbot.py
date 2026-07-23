@@ -1,3 +1,59 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Gold Prediction Tournament Bot — نسخه‌ی ۲ (ارتقا یافته)
+════════════════════════════════════════════════════════════════════
+تورنومنت هفتگی پیش‌بینی قیمت انس جهانی طلا (XAU/USD)
+"""
+import os
+import sys
+import time
+import json
+import signal
+import atexit
+import logging
+import hashlib
+import asyncio
+import threading
+import random
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import requests
+from flask import Flask
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Chat
+from telegram.constants import ParseMode
+from telegram.error import BadRequest, Forbidden
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, filters, MessageHandler,
+)
+
+# ══════════════════════════════════════════════════════════════════════
+# LOGGING
+# ══════════════════════════════════════════════════════════════════════
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    level=logging.INFO, stream=sys.stdout,
+)
+log = logging.getLogger("GoldPredictionBot")
+
+# ══════════════════════════════════════════════════════════════════════
+# CONFIG (همه از Environment Variable خوانده می‌شوند)
+# ══════════════════════════════════════════════════════════════════════
+BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
+PORT        = int(os.environ.get("PORT", 5000))
+JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
+JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
+
+_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", ""))
+ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
+
+CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
+# کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
+
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 20))
