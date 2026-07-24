@@ -612,9 +612,77 @@ class CloudStorage:
                 self._dirty = True
                 return True
 
+    # ---------- auto score settings ----------
+    def get_auto_score_settings(self) -> dict:
+        """دریافت تنظیمات سیستم امتیاز خودکار"""
+        with self._lock:
+            return self._data.get("auto_score_settings", {
+                "min_percentage": 30,  # حداقل درصد فیک‌ها
+                "max_percentage": 70,  # حداکثر درصد فیک‌ها
+                "base_points": 200,     # امتیاز پایه (پیش‌بینی درست)
+            })
+    
+    def update_auto_score_settings(self, settings: dict) -> bool:
+        """به‌روزرسانی تنظیمات سیستم امتیاز خودکار"""
+        with self._lock:
+            self._data["auto_score_settings"] = settings
+            self._dirty = True
+            return True
+    
+    def award_auto_score_to_fakes(self, base_points: int = 200) -> list:
+        """
+        اعطای امتیاز خودکار به فیک‌های انتخاب‌شده بعد از پایان دور
+        امتیاز = base_points (200) + ترکیبی رندوم از مراحل رفرال (20, 30, 40)
+        """
+        auto_ids = self.get_auto_fake_ids()
+        if not auto_ids:
+            return []
+        
+        # دریافت تنظیمات
+        settings = self.get_auto_score_settings()
+        min_pct = settings.get("min_percentage", 30)
+        max_pct = settings.get("max_percentage", 70)
+        
+        # انتخاب درصد رندوم بین min و max
+        percentage = random.uniform(min_pct, max_pct) / 100
+        count_to_award = max(1, int(len(auto_ids) * percentage))
+        selected_fakes = random.sample(auto_ids, min(count_to_award, len(auto_ids)))
+        
+        # لیست امتیازهای رفرال که ممکن است اضافه شوند
+        referral_bonuses = [0, 30, 0, 40]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
+        
+        awarded = []
+        with self._lock:
+            for fid in selected_fakes:
+                fu = self._data.get("fake_users", {}).get(fid)
+                if fu:
+                    # انتخاب رندوم از امتیازهای رفرال (می‌تواند 0، 1، 2 یا 3 تا باشد)
+                    num_bonuses = random.choices([0, 1, 2, 3], weights=[40, 30, 20, 10])[0]
+                    selected_bonuses = random.sample(referral_bonuses[1:], num_bonuses) if num_bonuses > 0 else []
+                    
+                    # محاسبه امتیاز کل
+                    bonus_total = sum(selected_bonuses)
+                    total_points = base_points + bonus_total
+                    
+                    # اضافه کردن امتیاز
+                    fu["points"] = fu.get("points", 0) + total_points
+                    fu["total_points"] = fu.get("total_points", 0) + total_points
+                    fu["correct"] = fu.get("correct", 0) + 1  # افزایش تعداد پیش‌بینی‌های درست
+                    
+                    awarded.append({
+                        "name": fu.get("full_name", fid),
+                        "points": total_points,
+                        "breakdown": f"{base_points}+{bonus_total}",
+                    })
+            
+            self._dirty = True
+        
+        return awarded
+
 
 cloud = CloudStorage()
 fake_referral_enabled = False  # وضعیت سیستم رشد خودکار فیک‌ها
+auto_score_enabled = False     # وضعیت سیستم امتیازدهی خودکار بعد از هر دور
 
 # ══════════════════════════════════════════════════════════════════════
 # MEMBERSHIP CHECK  (عضویت اجباری)
@@ -710,16 +778,19 @@ def kb_back() -> InlineKeyboardMarkup:
 # ADMIN PANEL KEYBOARDS & TEXTS
 # ══════════════════════════════════════════════════════════════════════
 def kb_admin_main() -> InlineKeyboardMarkup:
-    status = "🟢 فعال" if fake_referral_enabled else "🔴 غیرفعال"
+    status_fake = "🟢 فعال" if fake_referral_enabled else "🔴 غیرفعال"
+    status_score = "🟢 فعال" if auto_score_enabled else "🔴 غیرفعال"
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
         [InlineKeyboardButton("➕ افزودن کاربر فیک", callback_data="admin:fake:add_prompt")],
         [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
         [InlineKeyboardButton("📩 ارسال به کاربر خاص", callback_data="admin:senduser:uid_prompt")],
-        [InlineKeyboardButton(f"🔄 رشد خودکار فیک‌ها: {status}", callback_data="admin:fake_auto:toggle")],
+        [InlineKeyboardButton(f"🔄 رشد تدریجی فیک‌ها: {status_fake}", callback_data="admin:fake_auto:toggle")],
         [InlineKeyboardButton("📋 مدیریت لیست فیک‌ها", callback_data="admin:fake_auto:list")],
-        [InlineKeyboardButton("🎯 افزایش تصادفی امتیاز فیک‌ها", callback_data="admin:fake_auto:boost_prompt")],
+        [InlineKeyboardButton("🎯 افزایش دستی امتیاز فیک‌ها", callback_data="admin:fake_auto:boost_prompt")],
+        [InlineKeyboardButton(f"🏆 امتیاز خودکار بعد دور: {status_score}", callback_data="admin:auto_score:toggle")],
+        [InlineKeyboardButton("⚙️ تنظیمات امتیاز خودکار", callback_data="admin:auto_score:settings")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -1047,12 +1118,17 @@ def build_help_text(admin: bool) -> str:
     
     if admin:
         txt += (
+            "\n═══════════════════════════════\n"
             "👑 <b>دستورات ادمین</b>\n"
+            "═══════════════════════════════\n\n"
             "/newround [دقیقه کل] [دقیقه رأی‌گیری]\n"
             f"   (پیش‌فرض: {DEFAULT_ROUND_MIN} دقیقه کل، {VOTE_WINDOW_MINUTES} دقیقه رأی‌گیری)\n\n"
             "/cancelround — باطل کردن دور فعال\n"
             "/status — وضعیت دور فعال\n"
-            "/adminpanel — پنل مدیریت کاربران\n"
+            "/adminpanel — پنل مدیریت کاربران\n\n"
+            "🤖 <b>سیستم‌های خودکار:</b>\n"
+            "• رشد تدریجی فیک‌ها (قابل تنظیم در پنل)\n"
+            "• امتیاز خودکار بعد از هر دور (قابل تنظیم در پنل)\n"
         )
     
     return txt
@@ -1203,6 +1279,34 @@ async def _resolve_round(app: Application, rnd: dict):
         f"شرکت‌کننده: {up + down} (⬆️{up} / ⬇️{down})\n"
         f"برندگان ({len(winners)}): {winners_list}{more}"
     ))
+    
+    # 🆕 سیستم امتیاز خودکار به فیک‌ها
+    # فقط وقتی direction "up" یا "down" است (یعنی برندگان واقعی وجود دارند)
+    # اگر direction "flat" باشد (دور باطل)، فیک‌ها هم امتیاز نمی‌گیرند
+    if auto_score_enabled and direction != "flat":
+        settings = cloud.get_auto_score_settings()
+        base_points = settings.get("base_points", 200)
+        awarded = cloud.award_auto_score_to_fakes(base_points)
+        
+        if awarded:
+            awarded_list = "\n".join([
+                f"• {a['name']}: <b>+{a['points']}</b> ({a['breakdown']})"
+                for a in awarded
+            ])
+            await _send_to_admins(app, (
+                f"🏆 <b>امتیاز خودکار به فیک‌ها</b>\n\n"
+                f"🤖 تعداد فیک‌های به‌روزشده: <b>{len(awarded)}</b>\n\n"
+                f"📊 <b>جزئیات:</b>\n{awarded_list}"
+            ))
+            log.info(f"🏆 Auto score: +{base_points} به {len(awarded)} فیک")
+    elif auto_score_enabled and direction == "flat":
+        await _send_to_admins(app, (
+            f"⏭️ <b>امتیاز خودکار به فیک‌ها اجرا نشد</b>\n\n"
+            f"دلیل: دور باطل شد (قیمت تغییر نکرد)\n"
+            f"هیچ کاربری امتیاز نگرفت، پس فیک‌ها هم امتیاز نمی‌گیرند."
+        ))
+        log.info("⏭️ Auto score: skipped (flat round)")
+    
     cloud.save(force=True)
 
 
@@ -1777,6 +1881,44 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ── سیستم امتیاز خودکار ────────────────────────────────────────
+    if data == "admin:auto_score:toggle":
+        global auto_score_enabled
+        auto_score_enabled = not auto_score_enabled
+        status = "🟢 فعال شد" if auto_score_enabled else "🔴 غیرفعال شد"
+        await q.answer(f"امتیاز خودکار بعد از دور {status}", show_alert=True)
+        await q.edit_message_text(
+            build_admin_panel_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        return
+    
+    if data == "admin:auto_score:settings":
+        settings = cloud.get_auto_score_settings()
+        await q.answer()
+        await q.edit_message_text(
+            f"⚙️ <b>تنظیمات سیستم امتیاز خودکار</b>\n\n"
+            f"📊 <b>تنظیمات فعلی:</b>\n"
+            f"• حداقل درصد فیک‌ها: <b>{settings.get('min_percentage', 30)}%</b>\n"
+            f"• حداکثر درصد فیک‌ها: <b>{settings.get('max_percentage', 70)}%</b>\n"
+            f"• امتیاز پایه (پیش‌بینی درست): <b>{settings.get('base_points', 200)}</b>\n\n"
+            f"💡 <b>نحوه کار:</b>\n"
+            f"بعد از پایان هر دور، سیستم به صورت رندوم بین <b>{settings.get('min_percentage', 30)}%</b> "
+            f"تا <b>{settings.get('max_percentage', 70)}%</b> از فیک‌های انتخاب‌شده را انتخاب می‌کند "
+            f"و به هر کدام امتیاز پایه (<b>{settings.get('base_points', 200)}</b>) + ترکیبی رندوم از "
+            f"امتیازهای رفرال (۲۰، ۳۰، ۴۰) اضافه می‌کند.\n\n"
+            f"📝 <b>برای تغییر تنظیمات:</b>\n"
+            f"به این شکل وارد کنید: <code>min max base</code>\n"
+            f"مثال: <code>40 80 200</code>\n"
+            f"(حداقل ۴۰٪، حداکثر ۸۰٪، امتیاز پایه ۲۰۰)\n\n"
+            f"❌ برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        ctx.user_data["awaiting"] = "auto_score_settings"
+        return
+
+
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
         uid_str = data[len("admin:setpts:"):]
@@ -2024,6 +2166,69 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         
         log.info(f"🎯 Boost: +{boost_amount} به {actual_count} فیک از {len(auto_ids)}")
         return
+
+    # تنظیمات سیستم امتیاز خودکار
+    if awaiting == "auto_score_settings":
+        parts = text_in.strip().split()
+        if len(parts) != 3:
+            await update.message.reply_text(
+                "⚠️ <b>فرمت نادرست!</b>\n\n"
+                "لطفاً به این شکل وارد کنید:\n"
+                "<code>min max base</code>\n\n"
+                "مثال: <code>40 80 200</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        try:
+            min_pct = int(parts[0])
+            max_pct = int(parts[1])
+            base_points = int(parts[2])
+            
+            if not (0 < min_pct <= max_pct <= 100):
+                await update.message.reply_text(
+                    "⚠️ مقادیر درصد باید بین ۰ تا ۱۰۰ باشند و min ≤ max باشد.",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+            
+            if base_points <= 0:
+                await update.message.reply_text("⚠️ امتیاز پایه باید بزرگتر از صفر باشد.")
+                return
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ لطفاً فقط اعداد صحیح وارد کنید.\n"
+                "مثال: <code>40 80 200</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        ctx.user_data.pop("awaiting", None)
+        
+        # به‌روزرسانی تنظیمات
+        settings = {
+            "min_percentage": min_pct,
+            "max_percentage": max_pct,
+            "base_points": base_points,
+        }
+        cloud.update_auto_score_settings(settings)
+        cloud.save(force=True)
+        
+        await update.message.reply_text(
+            f"✅ <b>تنظیمات با موفقیت به‌روز شد!</b>\n\n"
+            f"📊 <b>تنظیمات جدید:</b>\n"
+            f"• حداقل درصد فیک‌ها: <b>{min_pct}%</b>\n"
+            f"• حداکثر درصد فیک‌ها: <b>{max_pct}%</b>\n"
+            f"• امتیاز پایه: <b>{base_points}</b>\n\n"
+            f"💡 حالا بعد از هر دور، سیستم به صورت خودکار به فیک‌ها امتیاز می‌دهد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        
+        log.info(f"⚙️ تنظیمات امتیاز خودکار به‌روز شد: min={min_pct}%, max={max_pct}%, base={base_points}")
+        return
+
+
 
 
     # مرحله‌ی ۱ افزودن فیک — نام
