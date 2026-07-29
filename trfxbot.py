@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
-from flask import Flask
+from flask import Flask, request  # request را اضافه کنید
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Chat
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden
@@ -2365,10 +2365,23 @@ async def weekly_reset_watcher(app: Application):
                 continue
             snapshot = cloud.get_weekly_leaderboard(top=TOP_REPORT_COUNT)
             if snapshot:
-                lines = ["🏁 <b>پایان هفته‌ی تورنومنت — گزارش برای هماهنگی جوایز</b>\n"]
-                for row in snapshot:
-                    tag = "🏅 پراپ" if row["rank"] <= PROP_PRIZE_RANKS else "💵 نقدی"
-                    lines.append(f"{row['rank']}. {row['full_name']} — {row['points']} امتیاز ({tag})")
+                lines = ["🏁 <b>پایان هفته‌ی تورنومنت — گزارش برندگان</b>\n"]
+                
+                # رتبه‌های 1، 2، 3 با مدال ویژه
+                medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+                for row in snapshot[:3]:
+                    medal = medals.get(row["rank"], f"{row['rank']}.")
+                    lines.append(f"{medal} <b>{row['full_name']}</b> — {row['points']} امتیاز")
+                
+                # رتبه‌های 4 تا 10 ساده
+                for row in snapshot[3:10]:
+                    lines.append(f"{row['rank']}. {row['full_name']} — {row['points']} امتیاز")
+                
+                # توضیحات سیستم ضد تقلب
+                lines.append("\n⚠️ <b>توجه:</b> این لیست اولیه تا لحضه اخر اتمام تایم میباشد. سیستم ضد تقلب در حال بررسی دقیق امتیازهای کسب‌شده است.")
+                lines.append("⏳ به دلیل محدودیت‌های ریت لیمیت تلگرام، بررسی نهایی و اعلام برندگان قطعی ممکن است <b>چندین ساعت</b> طول بکشد.")
+                lines.append("🔍 پس از اتمام بررسی، برندگان نهایی اعلام خواهند شد.")
+                
                 await _send_to_admins(app, "\n".join(lines))
             else:
                 await _send_to_admins(app, "🏁 پایان هفته‌ی تورنومنت — این هفته کسی امتیازی کسب نکرد.")
@@ -2480,14 +2493,19 @@ async def on_shutdown(app: Application):
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 def main():
+    global app  # دسترسی از Flask handlers
+    
     if not BOT_TOKEN:
         log.critical("BOT_TOKEN تنظیم نشده!")
         sys.exit(1)
 
     cloud.load()
+    
+    # ساخت Application (هنوز اجرا نمی‌کنیم)
     app = (Application.builder().token(BOT_TOKEN)
            .post_init(on_startup).post_shutdown(on_shutdown).build())
 
+    # ثبت handlerها
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("profile", cmd_profile))
@@ -2499,10 +2517,10 @@ def main():
     app.add_handler(CommandHandler("cancelround", cmd_cancelround))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CallbackQueryHandler(on_callback))
-    # هندلر متنی فقط برای پیام‌های خصوصی (برای مکالمه‌ی ادمین)
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, on_message))
     app.add_error_handler(on_error)
 
+    # ── Signal Handlers ──────────────────────────────────────────
     def _sig(s, f):
         cloud.save(force=True)
         sys.exit(0)
@@ -2510,22 +2528,79 @@ def main():
     signal.signal(signal.SIGINT, _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    # ── Webhook setup ──────────────────────────────────────────────
+    # ── Webhook vs Polling ──────────────────────────────────────
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+    
     if webhook_url:
-        # استفاده از توکن به عنوان url_path برای امنیت (فقط تلگرام می‌تواند درخواست بزند)
-        webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
-        log.info(f"🌐 Starting webhook at: {webhook_url[:50]}...")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=BOT_TOKEN,
-            webhook_url=webhook_url,
-            allowed_updates=["message", "callback_query"],
-            drop_pending_updates=True,
-        )
+        log.info("🌐 Running with Flask Webhook server")
+        
+        # ──── ساخت حلقه‌ی asyncio اختصاصی برای processing ────
+        main_loop = asyncio.new_event_loop()
+        
+        def run_event_loop(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+        
+        # اجرای حلقه در thread جداگانه
+        loop_thread = threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True)
+        loop_thread.start()
+        
+        # ──── ساخت Flask App ────
+        flask_app = Flask(__name__)
+        
+        # ✅ Endpoint برای UptimeRobot (پاسخ به GET /)
+        @flask_app.route("/")
+        def index():
+            return "🤖 Bot is alive and running!", 200
+        
+        # ✅ Health check endpoint (اختیاری)
+        @flask_app.route("/health")
+        def health():
+            return {"status": "ok", "bot": BOT_USERNAME}, 200
+        
+        # ✅ Endpoint اصلی تلگرام (POST /{BOT_TOKEN})
+        @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+        def telegram_webhook():
+            try:
+                json_data = request.get_json(force=True)
+                update = Update.de_json(json_data, app.bot)
+                # ارسال update به حلقه‌ی asyncio برای پردازش
+                asyncio.run_coroutine_threadsafe(
+                    app.process_update(update), 
+                    main_loop
+                )
+            except Exception as e:
+                log.error(f"Webhook processing error: {e}")
+            return "OK", 200
+        
+        # ──── ست کردن Webhook در تلگرام ────
+        async def setup_webhook():
+            full_webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+            await app.bot.set_webhook(
+                url=full_webhook_url,
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True,
+            )
+            log.info(f"✅ Webhook set to: {full_webhook_url[:60]}...")
+            return full_webhook_url
+        
+        # اجرای setup_webhook در حلقه‌ی asyncio
+        future = asyncio.run_coroutine_threadsafe(setup_webhook(), main_loop)
+        future.result(timeout=30)  # صبر برای تکمیل
+        
+        # ──── راه‌اندازی Bot (initialize) ────
+        async def initialize_bot():
+            await app.initialize()
+            await app.start()
+        
+        asyncio.run_coroutine_threadsafe(initialize_bot(), main_loop).result(timeout=30)
+        
+        # ──── اجرای Flask در thread اصلی ────
+        log.info(f"🚀 Starting Flask on port {PORT}")
+        flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+    
     else:
-        # اگر RENDER_EXTERNAL_URL نبود، به polling برمی‌گردیم (برای تست محلی)
+        # ── Fallback به Polling (برای تست محلی) ──
         log.warning("⚠️ RENDER_EXTERNAL_URL not set, falling back to polling")
         app.run_polling(
             allowed_updates=["message", "callback_query"],
