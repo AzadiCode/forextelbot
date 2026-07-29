@@ -62,7 +62,7 @@ REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین 
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 60))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 30))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
@@ -2592,7 +2592,8 @@ def main():
         async def initialize_bot():
             await app.initialize()
             await app.start()
-        
+            await on_startup(app)  # ✅ این خط را اضافه کنید!
+
         asyncio.run_coroutine_threadsafe(initialize_bot(), main_loop).result(timeout=30)
         
         # ──── اجرای Flask در thread اصلی ────
