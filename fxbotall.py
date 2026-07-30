@@ -56,11 +56,11 @@ log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_T
 # ══════════════════════════════════════════════════════════════════════
 # 🎲 Reactions و تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["❤️", "🔥", "❤️", "👍","❤️", "👏", "❤️", "💯", "❤️", "🙏","❤️", "🏆","❤️"]
+REACTIONS = ["❤️", "❤️", "❤️", "🔥", "❤️", "❤️", "❤️", "❤️", "👍", "❤️", "❤️", "❤️", "👏", "❤️", "❤️", "❤️", "💯", "❤️", "❤️", "❤️", "🙏", "❤️", "❤️", "❤️", "❤️", "🏆", "❤️", "❤️","❤️"]
 
 # تنظیمات اولیه
-INITIAL_DELAY_MIN = 3       # حداقل تاخیر اولیه قبل از شروع Reaction ها
-INITIAL_DELAY_MAX = 8       # حداکثر تاخیر اولیه
+INITIAL_DELAY_MIN = 10       # حداقل تاخیر اولیه قبل از شروع Reaction ها
+INITIAL_DELAY_MAX = 20       # حداکثر تاخیر اولیه
 MAX_RETRIES = 3
 
 # ══════════════════════════════════════════════════════════════════════
@@ -68,21 +68,21 @@ MAX_RETRIES = 3
 # ══════════════════════════════════════════════════════════════════════
 # فاز اول: سریع (Reaction های 1-3)
 PHASE1_END = 3              # تا Reaction سوم
-PHASE1_GROWTH_MIN = 2.0     # ضریب رشد حداقل
-PHASE1_GROWTH_MAX = 2.5     # ضریب رشد حداکثر
+PHASE1_GROWTH_MIN = 2.2     # ضریب رشد حداقل
+PHASE1_GROWTH_MAX = 2.7     # ضریب رشد حداکثر
 
 # فاز دوم: متوسط (Reaction های 4-6)
 PHASE2_END = 6
-PHASE2_GROWTH_MIN = 1.5
-PHASE2_GROWTH_MAX = 2.0
+PHASE2_GROWTH_MIN = 1.7
+PHASE2_GROWTH_MAX = 2.3
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 12
-PHASE3_GROWTH_MIN = 1.2
-PHASE3_GROWTH_MAX = 1.5
+PHASE3_GROWTH_MIN = 1.3
+PHASE3_GROWTH_MAX = 1.6
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
-PHASE4_GROWTH_MIN = 1.05
+PHASE4_GROWTH_MIN = 1.1
 PHASE4_GROWTH_MAX = 1.2
 
 # نویز رندوم برای طبیعی‌تر شدن (±20%)
@@ -90,8 +90,8 @@ NOISE_MIN = 0.8
 NOISE_MAX = 1.25
 
 # اولین Reaction (سریع)
-FIRST_REACTION_MIN = 3
-FIRST_REACTION_MAX = 7
+FIRST_REACTION_MIN = 7
+FIRST_REACTION_MAX = 15
 
 _bot_cache = {}
 _stats = {
