@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Random Reaction Bot v4 - Fixed & Debugged
+Random Reaction Bot v5 - Butterfly Curve Natural Reactions
 ════════════════════════════════════════════════════════════════════
+سیستم Reaction با منحنی تصاعدی طبیعی (سریع → متوسط → کند)
 """
 
 import os
@@ -55,13 +56,42 @@ log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_T
 # ══════════════════════════════════════════════════════════════════════
 # 🎲 Reactions و تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["❤️", "🔥", "👍","❤️", "👏", "💯", "❤️", "🙏","❤️", "🏆"]
+REACTIONS = ["❤️", "🔥", "❤️", "👍","❤️", "👏", "❤️", "💯", "❤️", "🙏","❤️", "🏆","❤️"]
 
-MIN_DELAY = 8
-MAX_DELAY = 45
-INITIAL_DELAY_MIN = 3
-INITIAL_DELAY_MAX = 15
+# تنظیمات اولیه
+INITIAL_DELAY_MIN = 3       # حداقل تاخیر اولیه قبل از شروع Reaction ها
+INITIAL_DELAY_MAX = 8       # حداکثر تاخیر اولیه
 MAX_RETRIES = 3
+
+# ══════════════════════════════════════════════════════════════════════
+# 🦋 تنظیمات منحنی تصاعدی (Butterfly Curve)
+# ══════════════════════════════════════════════════════════════════════
+# فاز اول: سریع (Reaction های 1-3)
+PHASE1_END = 3              # تا Reaction سوم
+PHASE1_GROWTH_MIN = 2.0     # ضریب رشد حداقل
+PHASE1_GROWTH_MAX = 2.5     # ضریب رشد حداکثر
+
+# فاز دوم: متوسط (Reaction های 4-6)
+PHASE2_END = 6
+PHASE2_GROWTH_MIN = 1.5
+PHASE2_GROWTH_MAX = 2.0
+
+# فاز سوم: کند (Reaction های 7-12)
+PHASE3_END = 12
+PHASE3_GROWTH_MIN = 1.2
+PHASE3_GROWTH_MAX = 1.5
+
+# فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
+PHASE4_GROWTH_MIN = 1.05
+PHASE4_GROWTH_MAX = 1.2
+
+# نویز رندوم برای طبیعی‌تر شدن (±20%)
+NOISE_MIN = 0.8
+NOISE_MAX = 1.25
+
+# اولین Reaction (سریع)
+FIRST_REACTION_MIN = 3
+FIRST_REACTION_MAX = 7
 
 _bot_cache = {}
 _stats = {
@@ -76,6 +106,64 @@ def get_bot(token):
     if token not in _bot_cache:
         _bot_cache[token] = Bot(token)
     return _bot_cache[token]
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🦋 محاسبه زمان‌های Reaction با منحنی تصاعدی
+# ══════════════════════════════════════════════════════════════════════
+def calculate_butterfly_delays(total_bots):
+    """
+    محاسبه زمان‌های Reaction با منحنی butterfly/exponential
+    
+    منحنی رشد:
+    - فاز 1 (Reaction 1-3): سریع (ضریب 2.3-3.0)
+    - فاز 2 (Reaction 4-6): متوسط (ضریب 1.8-2.3)
+    - فاز 3 (Reaction 7-12): کند (ضریب 1.3-1.7)
+    - فاز 4 (Reaction 13+): خیلی کند (ضریب 1.1-1.35)
+    
+    مثال برای 10 ربات:
+    Reaction 1: ~5 ثانیه
+    Reaction 2: ~13 ثانیه
+    Reaction 3: ~35 ثانیه
+    Reaction 4: ~70 ثانیه
+    Reaction 5: ~150 ثانیه
+    Reaction 6: ~270 ثانیه
+    Reaction 7: ~400 ثانیه
+    Reaction 8: ~580 ثانیه
+    Reaction 9: ~800 ثانیه
+    Reaction 10: ~1050 ثانیه
+    """
+    delays = []
+    
+    # اولین Reaction: سریع (3-7 ثانیه)
+    current_delay = random.uniform(FIRST_REACTION_MIN, FIRST_REACTION_MAX)
+    
+    for i in range(total_bots):
+        # اضافه کردن noise رندوم برای طبیعی‌تر شدن
+        noise = random.uniform(NOISE_MIN, NOISE_MAX)
+        delay_with_noise = current_delay * noise
+        
+        # حداقل 2 ثانیه
+        final_delay = max(2, delay_with_noise)
+        delays.append(final_delay)
+        
+        # محاسبه ضریب رشد برای Reaction بعدی
+        if i < PHASE1_END - 1:
+            # فاز اول: سریع
+            growth = random.uniform(PHASE1_GROWTH_MIN, PHASE1_GROWTH_MAX)
+        elif i < PHASE2_END - 1:
+            # فاز دوم: متوسط
+            growth = random.uniform(PHASE2_GROWTH_MIN, PHASE2_GROWTH_MAX)
+        elif i < PHASE3_END - 1:
+            # فاز سوم: کند
+            growth = random.uniform(PHASE3_GROWTH_MIN, PHASE3_GROWTH_MAX)
+        else:
+            # فاز چهارم: خیلی کند (proportional)
+            growth = random.uniform(PHASE4_GROWTH_MIN, PHASE4_GROWTH_MAX)
+        
+        current_delay *= growth
+    
+    return delays
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -123,28 +211,49 @@ async def try_reaction(bot, chat_id, message_id, reaction, bot_index):
 
 
 async def send_all_reactions(chat_id, message_id):
-    log.info(f"🚀 شروع Reaction روی پیام {message_id} با {len(BOT_TOKENS)} ربات")
+    """ارسال Reaction با منحنی butterfly طبیعی"""
+    total_bots = len(BOT_TOKENS)
+    log.info(f"🚀 شروع Reaction روی پیام {message_id} با {total_bots} ربات (منحنی butterfly)")
     
-    bot_indices = list(range(len(BOT_TOKENS)))
+    # محاسبه زمان‌های Reaction با منحنی تصاعدی
+    delays = calculate_butterfly_delays(total_bots)
+    
+    # رندوم کردن ترتیب ربات‌ها (برای طبیعی‌تر بودن)
+    bot_indices = list(range(total_bots))
     random.shuffle(bot_indices)
     
     success = 0
     failed = 0
     
-    for i in bot_indices:
+    # نمایش برنامه زمانی
+    total_time = sum(delays)
+    log.info(f"⏱ زمان کل تخمینی: {total_time:.0f} ثانیه ({total_time/60:.1f} دقیقه)")
+    log.info(f"📊 برنامه زمانی (اولین 10 Reaction):")
+    for i in range(min(10, total_bots)):
+        log.info(f"   Reaction {i+1}: {delays[i]:.1f}s")
+    
+    # اجرای Reaction ها با تاخیرهای محاسبه شده
+    for i, bot_idx in enumerate(bot_indices):
         reaction = random.choice(REACTIONS)
-        bot = get_bot(BOT_TOKENS[i])
+        bot = get_bot(BOT_TOKENS[bot_idx])
         
-        if await try_reaction(bot, chat_id, message_id, reaction, i+1):
+        # تاخیر بر اساس منحنی butterfly
+        delay = delays[i]
+        
+        if await try_reaction(bot, chat_id, message_id, reaction, bot_idx+1):
             success += 1
-            log.info(f"✅ Bot {i+1} → {reaction}")
+            log.info(f"✅ Reaction {i+1}/{total_bots} → Bot {bot_idx+1} ({reaction}) [بعد از {delay:.1f}s]")
         else:
             failed += 1
+            log.warning(f"❌ Reaction {i+1}/{total_bots} → Bot {bot_idx+1} ناموفق [بعد از {delay:.1f}s]")
         
-        delay = random.uniform(MIN_DELAY, MAX_DELAY)
-        await asyncio.sleep(delay)
+        # صبر تا Reaction بعدی (اگر آخرین Reaction نیست)
+        if i < total_bots - 1:
+            next_delay = delays[i + 1]
+            log.debug(f"⏱ صبر {next_delay:.1f}s تا Reaction بعدی...")
+            await asyncio.sleep(next_delay)
     
-    log.info(f"📊 پایان: ✅ {success} موفق | ❌ {failed} ناموفق")
+    log.info(f"🎯 پایان: ✅ {success} موفق | ❌ {failed} ناموفق | مجموع: {total_bots}")
     _stats["forwards_processed"] += 1
     return success, failed
 
@@ -153,13 +262,10 @@ async def send_all_reactions(chat_id, message_id):
 # 🔍 تشخیص فوروارد (سازگار با PTB v22)
 # ══════════════════════════════════════════════════════════════════════
 def is_forwarded_message(message):
-    """چک می‌کند که آیا پیام فوروارد شده است"""
     if not message:
         return False
-    # PTB v22+ (جدید)
     if hasattr(message, 'forward_origin') and message.forward_origin:
         return True
-    # نسخه‌های قدیمی (fallback)
     if hasattr(message, 'forward_from_chat') and message.forward_from_chat:
         return True
     if hasattr(message, 'forward_from') and message.forward_from:
@@ -168,20 +274,16 @@ def is_forwarded_message(message):
 
 
 def get_forward_info(message):
-    """استخراج chat_id و message_id از پیام فوروارد شده"""
     original_chat_id = None
     original_message_id = None
     
-    # روش جدید PTB v22+
     if hasattr(message, 'forward_origin') and message.forward_origin:
         origin = message.forward_origin
-        # origin می‌تواند MessageOriginChannel, MessageOriginUser, یا MessageOriginHiddenUser باشد
         if hasattr(origin, 'chat') and origin.chat:
             original_chat_id = origin.chat.id
         if hasattr(origin, 'message_id'):
             original_message_id = origin.message_id
     
-    # روش قدیمی (fallback)
     if not original_chat_id and hasattr(message, 'forward_from_chat') and message.forward_from_chat:
         original_chat_id = message.forward_from_chat.id
         original_message_id = getattr(message, 'forward_from_message_id', None)
@@ -197,13 +299,19 @@ async def cmd_start(update: Update, context):
     await update.message.reply_text(
         f"👋 <b>سلام! ربات Reaction فعال است</b>\n\n"
         f"🤖 تعداد ربات‌های متصل: <b>{len(BOT_TOKENS)}</b>\n\n"
+        f"🦋 <b>سیستم Reaction طبیعی (Butterfly Curve):</b>\n"
+        f"• فاز ۱ (سریع): Reaction های 1-3\n"
+        f"• فاز ۲ (متوسط): Reaction های 4-6\n"
+        f"• فاز ۳ (کند): Reaction های 7-12\n"
+        f"• فاز ۴ (خیلی کند): Reaction های 13+\n\n"
         f"📌 <b>نحوه استفاده:</b>\n"
         f"1️⃣ یک پست از کانال را انتخاب کنید\n"
         f"2️⃣ روی آن کلیک راست و Forward را بزنید\n"
         f"3️⃣ به این ربات ارسال کنید\n\n"
         f"⏱ <b>تنظیمات:</b>\n"
         f"• تاخیر اولیه: {INITIAL_DELAY_MIN}-{INITIAL_DELAY_MAX} ثانیه\n"
-        f"• فاصله بین Reaction: {MIN_DELAY}-{MAX_DELAY} ثانیه\n\n"
+        f"• اولین Reaction: {FIRST_REACTION_MIN}-{FIRST_REACTION_MAX} ثانیه\n"
+        f"• ضریب رشد تصاعدی: طبیعی\n\n"
         f"📈 <b>آمار:</b>\n"
         f"• آپدیت‌های دریافتی: {_stats['updates_received']}\n"
         f"• فوروارد پردازش شده: {_stats['forwards_processed']}\n"
@@ -241,7 +349,6 @@ async def forward_reaction_handler(update: Update, context):
     log.info(f"📥 پیام دریافت شد از: {message.chat.id}, نوع: {message.chat.type}")
     log.info(f"📄 متن: {(message.text or message.caption or '📎 فایل')[:80]}")
     
-    # چک کردن فوروارد
     if not is_forwarded_message(message):
         log.info("⏭️ پیام فوروارد نشده است")
         try:
@@ -255,7 +362,6 @@ async def forward_reaction_handler(update: Update, context):
             log.error(f"❌ خطا در ارسال پاسخ: {e}")
         return
     
-    # استخراج اطلاعات پست اصلی
     original_chat_id, original_message_id = get_forward_info(message)
     
     if not original_chat_id or not original_message_id:
@@ -275,11 +381,20 @@ async def forward_reaction_handler(update: Update, context):
     text_preview = (message.text or message.caption or "📎 فایل")[:50]
     log.info(f"📢 [فوروارد] از کانال {original_chat_id}, پیام {original_message_id}: {text_preview}...")
     
+    # محاسبه زمان کل تخمینی
+    delays = calculate_butterfly_delays(len(BOT_TOKENS))
+    total_time = sum(delays)
+    
     try:
         await message.reply_text(
             f"✅ <b>پست دریافت شد!</b>\n\n"
-            f"🤖 شروع Reaction با <b>{len(BOT_TOKENS)}</b> ربات...\n"
-            f"⏱ زمان تقریبی: <b>{len(BOT_TOKENS) * ((MIN_DELAY + MAX_DELAY) / 2):.0f}</b> ثانیه",
+            f"🦋 شروع Reaction با <b>{len(BOT_TOKENS)}</b> ربات...\n"
+            f"⏱ زمان کل تخمینی: <b>{total_time:.0f}</b> ثانیه ({total_time/60:.1f} دقیقه)\n\n"
+            f"📊 <b>برنامه زمانی:</b>\n"
+            f"• Reaction 1: ~{delays[0]:.0f} ثانیه\n"
+            f"• Reaction 3: ~{delays[2]:.0f} ثانیه\n"
+            f"• Reaction 6: ~{delays[5]:.0f} ثانیه\n"
+            f"• Reaction 10: ~{delays[min(9, len(delays)-1)]:.0f} ثانیه",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -298,7 +413,8 @@ async def forward_reaction_handler(update: Update, context):
             f"🎯 <b>پایان عملیات!</b>\n\n"
             f"✅ موفق: <b>{success}</b>\n"
             f"❌ ناموفق: <b>{failed}</b>\n"
-            f"📊 مجموع: <b>{len(BOT_TOKENS)}</b>",
+            f"📊 مجموع: <b>{len(BOT_TOKENS)}</b>\n"
+            f"⏱ زمان کل: <b>{total_time:.0f}</b> ثانیه",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -314,7 +430,7 @@ _application_ref = None
 
 @flask_app.route('/')
 def home():
-    return f"""🤖 Random Reaction Bot is Alive!
+    return f"""🤖 Random Reaction Bot v5 (Butterfly Curve)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Bots: {len(BOT_TOKENS)}
 ⚙️ Mode: Webhook
@@ -337,7 +453,6 @@ def health():
 
 @flask_app.route('/webhook-info')
 def webhook_info():
-    """چک کردن وضعیت webhook از تلگرام"""
     import requests as req
     if not BOT_TOKENS:
         return {"error": "No tokens"}, 500
@@ -350,7 +465,6 @@ def webhook_info():
 
 @flask_app.route('/delete-webhook')
 def delete_webhook():
-    """حذف webhook برای ریست"""
     import requests as req
     if not BOT_TOKENS:
         return {"error": "No tokens"}, 500
@@ -371,17 +485,21 @@ def main():
         log.error("❌ هیچ توکنی تنظیم نشده!")
         return
     
-    log.info(f"🚀 شروع ربات با {len(BOT_TOKENS)} توکن")
+    log.info(f"🚀 شروع ربات با {len(BOT_TOKENS)} توکن (Butterfly Curve)")
+    
+    # نمایش نمونه برنامه زمانی
+    sample_delays = calculate_butterfly_delays(min(10, len(BOT_TOKENS)))
+    log.info("📊 نمونه برنامه زمانی (اولین 10 Reaction):")
+    for i, delay in enumerate(sample_delays):
+        log.info(f"   Reaction {i+1}: {delay:.1f} ثانیه")
     
     main_token = BOT_TOKENS[0]
     application = Application.builder().token(main_token).build()
     _application_ref = application
     
-    # Command Handlers
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("status", cmd_status))
     
-    # Message Handler - هر پیام متنی یا کپشن
     application.add_handler(
         MessageHandler(
             (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
@@ -389,7 +507,6 @@ def main():
         )
     )
     
-    # Error handler
     async def error_handler(update, context):
         log.error(f"❌ Exception: {context.error}", exc_info=context.error)
     application.add_error_handler(error_handler)
@@ -408,12 +525,11 @@ def main():
         loop_thread = threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True)
         loop_thread.start()
         
-        # Webhook endpoint
         @flask_app.route(f"/{main_token}", methods=["POST"])
         def telegram_webhook():
             try:
                 json_data = request.get_json(force=True)
-                log.info(f"📥 Webhook: {json.dumps(json_data, ensure_ascii=False)[:300]}")
+                log.info(f"📥 Webhook received")
                 update = Update.de_json(json_data, application.bot)
                 asyncio.run_coroutine_threadsafe(
                     application.process_update(update),
@@ -424,7 +540,6 @@ def main():
             return "OK", 200
         
         async def setup_webhook():
-            # حذف webhook قدیمی
             log.info("🗑 Deleting old webhook...")
             await application.bot.delete_webhook(drop_pending_updates=True)
             await asyncio.sleep(2)
@@ -434,16 +549,11 @@ def main():
                 url=full_url,
                 allowed_updates=["message", "edited_message", "channel_post", "callback_query"],
                 drop_pending_updates=True,
-                secret_token=None,
             )
             log.info(f"✅ Webhook set: {full_url}")
             
-            # چک کردن وضعیت
             info = await application.bot.get_webhook_info()
-            log.info(f"📊 Webhook info:")
-            log.info(f"   URL: {info.url}")
-            log.info(f"   Pending: {info.pending_update_count}")
-            log.info(f"   Last Error: {info.last_error_message}")
+            log.info(f"📊 Webhook info: URL={info.url}, Pending={info.pending_update_count}")
         
         async def initialize():
             await application.initialize()
