@@ -32,6 +32,14 @@ BOT_TOKENS = [
     # 🤖 ربات‌های واکنش‌دهنده (فقط عضو کانال باشند)
     "8977670673:AAHmUCp4I9K-LZbui0DS17zvTyaYt4CSwfw",   # TOKEN_2
     "7276868854:AAEYeHXcvwjN35sq_CcBWewGVmQuXqQcgm8",   # TOKEN_3
+    "8501873739:AAEVgQQ2vKiZhCtViE-NfzRe7RtCA813MCM",   # TOKEN_4
+    "8617939621:AAG0P6rl6WCX4nWnD0X3mnmZ-ii9cx_u3qw",   # TOKEN_5
+    "8938641269:AAFHeeKMr1zWKIXacn8FiNcx6fhz2DepYF0",   # TOKEN_6
+    "8812461262:AAGb_9XP38sQUpcKe5JJmSz0vp_6lArrguI",   # TOKEN_7
+    "8614754345:AAFnMGqqzty-vR7SEmjN4NY0U-EhI0rhYlo",   # TOKEN_8
+    "8899642552:AAGChO_p_UPtHbOftUoBZzBLm-lFs5dxIqo",   # TOKEN_9
+
+
 
 ]
 for i in range(1, 201):
@@ -47,7 +55,7 @@ log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_T
 # ══════════════════════════════════════════════════════════════════════
 # 🎲 Reactions و تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["❤️", "🔥", "🥰", "👍", "👏", "💯", "🙏", "😍", "🏆"]
+REACTIONS = ["❤️", "🔥", "👍","❤️", "👏", "💯", "❤️", "🙏","❤️", "🏆"]
 
 MIN_DELAY = 8
 MAX_DELAY = 45
