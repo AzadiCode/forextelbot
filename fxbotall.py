@@ -39,7 +39,10 @@ BOT_TOKENS = [
     "8812461262:AAGb_9XP38sQUpcKe5JJmSz0vp_6lArrguI",   # TOKEN_7
     "8614754345:AAFnMGqqzty-vR7SEmjN4NY0U-EhI0rhYlo",   # TOKEN_8
     "8899642552:AAGChO_p_UPtHbOftUoBZzBLm-lFs5dxIqo",   # TOKEN_9
-
+    "8880007544:AAGE-w6fZrnsT2oeIlXKyZWX0dKZHcJUqtA",
+    "8812675366:AAGc3mEFghotDEmCI1F5FmDsDqg7bhAnLJM",
+    "8256189527:AAHkrXQ_2-YQpf8VxLzqcVSZ4er3hXnDNGw",
+    "8686837562:AAHUx-YR3IBDBbfF2KcyXNl2rViuFzN9MSg",
 
 
 ]
@@ -59,8 +62,8 @@ log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_T
 REACTIONS = ["❤️", "❤️", "❤️", "🔥", "❤️", "❤️", "❤️", "❤️", "👍", "❤️", "❤️", "❤️", "👏", "❤️", "❤️", "❤️", "💯", "❤️", "❤️", "❤️", "🙏", "❤️", "❤️", "❤️", "❤️", "🏆", "❤️", "❤️","❤️"]
 
 # تنظیمات اولیه
-INITIAL_DELAY_MIN = 10       # حداقل تاخیر اولیه قبل از شروع Reaction ها
-INITIAL_DELAY_MAX = 20       # حداکثر تاخیر اولیه
+INITIAL_DELAY_MIN = 15       # حداقل تاخیر اولیه قبل از شروع Reaction ها
+INITIAL_DELAY_MAX = 25       # حداکثر تاخیر اولیه
 MAX_RETRIES = 3
 
 # ══════════════════════════════════════════════════════════════════════
@@ -68,13 +71,13 @@ MAX_RETRIES = 3
 # ══════════════════════════════════════════════════════════════════════
 # فاز اول: سریع (Reaction های 1-3)
 PHASE1_END = 3              # تا Reaction سوم
-PHASE1_GROWTH_MIN = 2.2     # ضریب رشد حداقل
-PHASE1_GROWTH_MAX = 2.7     # ضریب رشد حداکثر
+PHASE1_GROWTH_MIN = 2.4     # ضریب رشد حداقل
+PHASE1_GROWTH_MAX = 2.9     # ضریب رشد حداکثر
 
 # فاز دوم: متوسط (Reaction های 4-6)
 PHASE2_END = 6
-PHASE2_GROWTH_MIN = 1.7
-PHASE2_GROWTH_MAX = 2.3
+PHASE2_GROWTH_MIN = 1.8
+PHASE2_GROWTH_MAX = 2.4
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 12
@@ -90,8 +93,8 @@ NOISE_MIN = 0.8
 NOISE_MAX = 1.25
 
 # اولین Reaction (سریع)
-FIRST_REACTION_MIN = 7
-FIRST_REACTION_MAX = 15
+FIRST_REACTION_MIN = 10
+FIRST_REACTION_MAX = 20
 
 _bot_cache = {}
 _stats = {
