@@ -58,8 +58,8 @@ POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
 REF_POINTS_INVITEE   = int(os.environ.get("REF_POINTS_INVITEE", 20))
 REF_BONUS_STEP1      = int(os.environ.get("REF_BONUS_STEP1", 20))  # ورود اولیه
-REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین شرکت در دور
-REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
+REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 20))  # اولین شرکت در دور
+REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 20))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
 LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 30))
@@ -2399,7 +2399,7 @@ async def fake_referral_watcher(app: Application):
     while True:
         try:
             # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(1200, 1800))
+            await asyncio.sleep(random.randint(400, 600))
             
             if not fake_referral_enabled:
                 continue
