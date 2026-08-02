@@ -62,7 +62,7 @@ REF_BONUS_STEP2      = int(os.environ.get("REF_BONUS_STEP2", 30))  # اولین 
 REF_BONUS_STEP3      = int(os.environ.get("REF_BONUS_STEP3", 40))  # اولین پیش‌بینی درست
 DEFAULT_ROUND_MIN    = int(os.environ.get("DEFAULT_ROUND_MINUTES", 60))
 VOTE_WINDOW_MINUTES  = int(os.environ.get("VOTE_WINDOW_MINUTES", 10))
-LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 60))
+LIVE_UPDATE_SEC      = int(os.environ.get("LIVE_UPDATE_SEC", 30))
 WATCHER_TICK_SEC     = 5
 TOP_REPORT_COUNT     = 30
 PROP_PRIZE_RANKS     = 3
@@ -324,7 +324,6 @@ class CloudStorage:
                 "points": points,
                 "total_points": points,
                 "is_fake": True,
-                "auto_step": existing.get("auto_step", 0) if existing else 0,
             }
             self._dirty = True
 
@@ -332,6 +331,13 @@ class CloudStorage:
         with self._lock:
             if fake_id in self._data["fake_users"]:
                 del self._data["fake_users"][fake_id]
+                
+                # ✅ FIX: حذف خودکار فیک از لیست فیک‌های انتخاب‌شده (auto_fake_ids) در صورت وجود
+                auto_ids = self._data.setdefault("auto_fake_ids", [])
+                if fake_id in auto_ids:
+                    auto_ids.remove(fake_id)
+                    log.info(f"🗑 فیک '{fake_id}' از لیست فیک‌های انتخاب‌شده هم حذف شد.")
+                
                 self._dirty = True
                 return True
             return False
@@ -649,7 +655,7 @@ class CloudStorage:
         selected_fakes = random.sample(auto_ids, min(count_to_award, len(auto_ids)))
         
         # لیست امتیازهای رفرال که ممکن است اضافه شوند
-        referral_bonuses = [0, 20, 30, 40]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
+        referral_bonuses = [0, 30, 0, 40]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
         
         awarded = []
         with self._lock:
@@ -758,8 +764,8 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
 
 def kb_round_voting(round_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬆️ بالا", callback_data=f"vote:{round_id}:up"),
-         InlineKeyboardButton("⬇️ پایین", callback_data=f"vote:{round_id}:down")],
+        [InlineKeyboardButton("⬇️ صعودی", callback_data=f"vote:{round_id}:up"),
+         InlineKeyboardButton("⬇️ نزولی", callback_data=f"vote:{round_id}:down")],
         [InlineKeyboardButton("📍 پروفایل من در ربات", url=_profile_deeplink_url())],
     ])
 
@@ -1061,12 +1067,12 @@ def build_help_text(admin: bool) -> str:
         "⏰ <b>زمان‌بندی برگزاری دور ها:</b>\n"
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
-        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
-        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
+        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تا تمام شود و نتیجه مشخص شود\n"
+        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> فرصت ثبت پیشبینی داری!! ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. در ساعات مشخص شده ربات یک پست در قالب نظرسنجی در کانال منتظر میکند\n"
-        "۲. با دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> روند یک ساعت پیش رو طلا رو حدس بزن\n"
+        "۱. در ساعات مشخص شده ربات یک پیشبینی زنده در کانال منتشر میکند\n"
+        "۲. با دکمه <b>⬇️ صعودی</b> یا <b>⬇️ نزولی</b> روند یک ساعتآینده طلا رو حدس بزن\n"
         "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
         
         "🏆 <b>جوایز نقدی هر هفته:</b>\n"
@@ -1076,7 +1082,7 @@ def build_help_text(admin: bool) -> str:
         "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
         
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        
+        "<blockquote expandable>"
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
         "برای دریافت امتیاز کامل از دعوت دوستان فارکسیتون، مراحل زیر باید طی شود:\n\n"
         "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
@@ -1108,7 +1114,7 @@ def build_help_text(admin: bool) -> str:
         "🔹 نتیجه هر دور <b>پیوی ربات</b> پس از اتمام به شما اطلاع داده می‌شود\n"
         "🔹 لیدربرد هر <b>شنبه ساعت ۰۰:۰۰</b> ریست می‌شود\n"
         "🔹 برندگان باید ظرف <b>۴۸ ساعت</b> برای دریافت جایزه اقدام کنند\n\n"
-        
+        "</blockquote>"
         "💎 <b>فرصت طلایی:</b>\n"
         "هرچه بیشتر در مسابقات شرکت کنی و حدست درست باشه و دوستان واقعی فارکسی دعوت کنی به مسابقه، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
         
@@ -2365,10 +2371,23 @@ async def weekly_reset_watcher(app: Application):
                 continue
             snapshot = cloud.get_weekly_leaderboard(top=TOP_REPORT_COUNT)
             if snapshot:
-                lines = ["🏁 <b>پایان هفته‌ی تورنومنت — گزارش برای هماهنگی جوایز</b>\n"]
-                for row in snapshot:
-                    tag = "🏅 پراپ" if row["rank"] <= PROP_PRIZE_RANKS else "💵 نقدی"
-                    lines.append(f"{row['rank']}. {row['full_name']} — {row['points']} امتیاز ({tag})")
+                lines = ["🏁 <b>پایان هفته‌ی تورنومنت — گزارش برندگان</b>\n"]
+                
+                # رتبه‌های 1، 2، 3 با مدال ویژه
+                medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+                for row in snapshot[:3]:
+                    medal = medals.get(row["rank"], f"{row['rank']}.")
+                    lines.append(f"{medal} <b>{row['full_name']}</b> — {row['points']} امتیاز")
+                
+                # رتبه‌های 4 تا 10 ساده
+                for row in snapshot[3:10]:
+                    lines.append(f"{row['rank']}. {row['full_name']} — {row['points']} امتیاز")
+                
+                # توضیحات سیستم ضد تقلب
+                lines.append("\n⚠️ <b>توجه:</b> این لیست اولیه تا لحضه اخر اتمام تایم میباشد. سیستم ضد تقلب در حال بررسی دقیق امتیازهای کسب‌شده است.")
+                lines.append("⏳ به دلیل محدودیت‌های ریت لیمیت تلگرام، بررسی نهایی و اعلام برندگان قطعی ممکن است <b>چندین ساعت</b> طول بکشد.")
+                lines.append("🔍 پس از اتمام بررسی، برندگان نهایی اعلام خواهند شد.")
+                
                 await _send_to_admins(app, "\n".join(lines))
             else:
                 await _send_to_admins(app, "🏁 پایان هفته‌ی تورنومنت — این هفته کسی امتیازی کسب نکرد.")
@@ -2382,11 +2401,12 @@ async def weekly_reset_watcher(app: Application):
 
 
 async def fake_referral_watcher(app: Application):
-    """رشد خودکار و تدریجی فیک‌های انتخاب‌شده (دقیقاً مشابه سیستم ۳ مرحله‌ای)"""
+    """رشد طبیعی و هوشمند فیک‌های انتخاب‌شده با Weighted Random"""
     while True:
         try:
-            # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(1200, 1800))
+            # تایم رندوم بین ۸ تا ۱۵ دقیقه (طبیعی‌تر)
+            sleep_time = random.randint(480, 900)
+            await asyncio.sleep(sleep_time)
             
             if not fake_referral_enabled:
                 continue
@@ -2395,48 +2415,82 @@ async def fake_referral_watcher(app: Application):
             if not auto_ids:
                 continue
             
-            # فیلتر کردن فیک‌هایی که هنوز مراحل‌شان کامل نشده
-            eligible_fakes = []
+            # گرفتن لیست فیک‌های معتبر با امتیازهاشون
+            valid_fakes = []
             with cloud._lock:
                 for fid in auto_ids:
                     fu = cloud._data.get("fake_users", {}).get(fid)
-                    if fu and fu.get("auto_step", 0) < 3:
-                        eligible_fakes.append((fid, fu))
+                    if fu:
+                        valid_fakes.append({
+                            "fid": fid,
+                            "full_name": fu.get("full_name", fid),
+                            "points": fu.get("points", 0),
+                        })
             
-            if not eligible_fakes:
-                # همه فیک‌ها مراحل‌شان تمام شده، منتظر ریست هفتگی می‌مانیم
+            if not valid_fakes:
                 continue
             
-            # انتخاب رندوم یکی از فیک‌های واجد شرایط
-            fid, fu = random.choice(eligible_fakes)
+            # ═══════════════════════════════════════════════════════
+            # الگوریتم Weighted Random: شانس بیشتر برای فیک‌های برتر
+            # ═══════════════════════════════════════════════════════
+            # Weight = ۱۰۰ (پایه) + امتیاز فعلی
+            # مثال: فیک با ۵۰۰ امتیاز → وزن ۶۰۰
+            #       فیک با ۲۰۰ امتیاز → وزن ۳۰۰
+            # شانس فیک اول ۲ برابر فیک دوم هست!
+            base_weight = 100
+            weights = [base_weight + fake["points"] for fake in valid_fakes]
+            total_weight = sum(weights)
+            probabilities = [w / total_weight for w in weights]
             
+            # انتخاب ۱ تا ۳ فیک به صورت رندوم (طبیعی‌تر)
+            # ۵۰٪ شانس ۱ فیک، ۳۵٪ شانس ۲ فیک، ۱۵٪ شانس ۳ فیک
+            num_to_award = random.choices([1, 2, 3], weights=[50, 35, 15])[0]
+            num_to_award = min(num_to_award, len(valid_fakes))
+            
+            # انتخاب فیک‌ها با weighted random (بدون تکرار)
+            selected = []
+            available_fakes = valid_fakes.copy()
+            available_probs = probabilities.copy()
+            
+            for _ in range(num_to_award):
+                if not available_fakes:
+                    break
+                
+                # نرمال‌سازی احتمالات
+                total_prob = sum(available_probs)
+                normalized_probs = [p / total_prob for p in available_probs]
+                
+                # انتخاب یک فیک با weighted random
+                selected_idx = random.choices(range(len(available_fakes)), weights=normalized_probs)[0]
+                selected.append(available_fakes[selected_idx])
+                
+                # حذف فیک انتخاب‌شده از لیست (برای جلوگیری از تکرار)
+                available_fakes.pop(selected_idx)
+                available_probs.pop(selected_idx)
+            
+            # ═══════════════════════════════════════════════════════
+            # اعطای ۲۰ امتیاز به فیک‌های انتخاب‌شده
+            # ═══════════════════════════════════════════════════════
+            awarded = []
             with cloud._lock:
-                # دوباره چک می‌کنیم چون ممکن است در فاصله قفل تغییر کرده باشد
-                fu = cloud._data.get("fake_users", {}).get(fid)
-                if not fu:
-                    continue
-                
-                current_step = fu.get("auto_step", 0)
-                next_step = current_step + 1
-                
-                # تعیین امتیاز بر اساس مرحله (دقیقاً مثل کاربران واقعی)
-                if next_step == 1:
-                    bonus = REF_BONUS_STEP1  # 20
-                elif next_step == 2:
-                    bonus = REF_BONUS_STEP2  # 30
-                elif next_step == 3:
-                    bonus = REF_BONUS_STEP3  # 40
-                else:
-                    continue
-                
-                fu["points"] = fu.get("points", 0) + bonus
-                fu["total_points"] = fu.get("total_points", 0) + bonus
-                fu["invites"] = fu.get("invites", 0) + 1
-                fu["auto_step"] = next_step
+                for fake in selected:
+                    fu = cloud._data.get("fake_users", {}).get(fake["fid"])
+                    if fu:
+                        fu["points"] = fu.get("points", 0) + REF_BONUS_STEP1  # ۲۰ امتیاز
+                        fu["total_points"] = fu.get("total_points", 0) + REF_BONUS_STEP1
+                        fu["invites"] = fu.get("invites", 0) + 1
+                        awarded.append({
+                            "name": fake["full_name"],
+                            "old_points": fake["points"],
+                            "new_points": fake["points"] + REF_BONUS_STEP1,
+                        })
                 cloud._dirty = True
-                
-                step_names = {1: "ورود", 2: "شرکت در ۲ دور", 3: "پیش‌بینی درست"}
-                log.info(f"🤖 مرحله {next_step} ({step_names[next_step]}): +{bonus} امتیاز به فیک: {fu.get('full_name', fid)}")
+            
+            if awarded:
+                log.info(
+                    f"🤖 رشد طبیعی: +{REF_BONUS_STEP1} امتیاز به {len(awarded)} فیک "
+                    f"({', '.join([a['name'] for a in awarded])})"
+                )
         
         except asyncio.CancelledError:
             break
@@ -2480,14 +2534,19 @@ async def on_shutdown(app: Application):
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
 def main():
+    global app  # دسترسی از Flask handlers
+    
     if not BOT_TOKEN:
         log.critical("BOT_TOKEN تنظیم نشده!")
         sys.exit(1)
 
     cloud.load()
+    
+    # ساخت Application (هنوز اجرا نمی‌کنیم)
     app = (Application.builder().token(BOT_TOKEN)
            .post_init(on_startup).post_shutdown(on_shutdown).build())
 
+    # ثبت handlerها
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("profile", cmd_profile))
@@ -2499,10 +2558,10 @@ def main():
     app.add_handler(CommandHandler("cancelround", cmd_cancelround))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CallbackQueryHandler(on_callback))
-    # هندلر متنی فقط برای پیام‌های خصوصی (برای مکالمه‌ی ادمین)
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, on_message))
     app.add_error_handler(on_error)
 
+    # ── Signal Handlers ──────────────────────────────────────────
     def _sig(s, f):
         cloud.save(force=True)
         sys.exit(0)
@@ -2510,22 +2569,80 @@ def main():
     signal.signal(signal.SIGINT, _sig)
     atexit.register(lambda: cloud.save(force=True))
 
-    # ── Webhook setup ──────────────────────────────────────────────
+    # ── Webhook vs Polling ──────────────────────────────────────
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+    
     if webhook_url:
-        # استفاده از توکن به عنوان url_path برای امنیت (فقط تلگرام می‌تواند درخواست بزند)
-        webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
-        log.info(f"🌐 Starting webhook at: {webhook_url[:50]}...")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=BOT_TOKEN,
-            webhook_url=webhook_url,
-            allowed_updates=["message", "callback_query"],
-            drop_pending_updates=True,
-        )
+        log.info("🌐 Running with Flask Webhook server")
+        
+        # ──── ساخت حلقه‌ی asyncio اختصاصی برای processing ────
+        main_loop = asyncio.new_event_loop()
+        
+        def run_event_loop(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+        
+        # اجرای حلقه در thread جداگانه
+        loop_thread = threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True)
+        loop_thread.start()
+        
+        # ──── ساخت Flask App ────
+        flask_app = Flask(__name__)
+        
+        # ✅ Endpoint برای UptimeRobot (پاسخ به GET /)
+        @flask_app.route("/")
+        def index():
+            return "🤖 Bot is alive and running!", 200
+        
+        # ✅ Health check endpoint (اختیاری)
+        @flask_app.route("/health")
+        def health():
+            return {"status": "ok", "bot": BOT_USERNAME}, 200
+        
+        # ✅ Endpoint اصلی تلگرام (POST /{BOT_TOKEN})
+        @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+        def telegram_webhook():
+            try:
+                json_data = request.get_json(force=True)
+                update = Update.de_json(json_data, app.bot)
+                # ارسال update به حلقه‌ی asyncio برای پردازش
+                asyncio.run_coroutine_threadsafe(
+                    app.process_update(update), 
+                    main_loop
+                )
+            except Exception as e:
+                log.error(f"Webhook processing error: {e}")
+            return "OK", 200
+        
+        # ──── ست کردن Webhook در تلگرام ────
+        async def setup_webhook():
+            full_webhook_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+            await app.bot.set_webhook(
+                url=full_webhook_url,
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True,
+            )
+            log.info(f"✅ Webhook set to: {full_webhook_url[:60]}...")
+            return full_webhook_url
+        
+        # اجرای setup_webhook در حلقه‌ی asyncio
+        future = asyncio.run_coroutine_threadsafe(setup_webhook(), main_loop)
+        future.result(timeout=30)  # صبر برای تکمیل
+        
+        # ──── راه‌اندازی Bot (initialize) ────
+        async def initialize_bot():
+            await app.initialize()
+            await app.start()
+            await on_startup(app)  # ✅ این خط را اضافه کنید!
+
+        asyncio.run_coroutine_threadsafe(initialize_bot(), main_loop).result(timeout=30)
+        
+        # ──── اجرای Flask در thread اصلی ────
+        log.info(f"🚀 Starting Flask on port {PORT}")
+        flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+    
     else:
-        # اگر RENDER_EXTERNAL_URL نبود، به polling برمی‌گردیم (برای تست محلی)
+        # ── Fallback به Polling (برای تست محلی) ──
         log.warning("⚠️ RENDER_EXTERNAL_URL not set, falling back to polling")
         app.run_polling(
             allowed_updates=["message", "callback_query"],
