@@ -42,7 +42,7 @@ log = logging.getLogger("GoldPredictionBot")
 # ══════════════════════════════════════════════════════════════════════
 # CONFIG (همه از Environment Variable خوانده می‌شوند)
 # ══════════════════════════════════════════════════════════════════════
-BOT_TOKEN   = os.environ.get("BOT_TOKEN", "8289561828:AAFe15j3ebMGDXrfwpLLb5JH3LkuVhUra0A")
+BOT_TOKEN   = os.environ.get("BOT_TOKEN", "8972429048:AAE57wdflfIRxyiWLjBMol10WZYK_IqfSds")
 PORT        = int(os.environ.get("PORT", 5000))
 JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
 JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
