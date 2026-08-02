@@ -1016,47 +1016,34 @@ def build_leaderboard_text(uid: int = 0) -> str:
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
     countdown_line = f"⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
-    
+
     if not lb:
         return (
             "🏆 <b>لیدربرد این هفته</b>\n"
-            "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥\n\n"
-            f"{countdown_line}"
+            "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
+            f"\n\n{countdown_line}"
         )
-    
+
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    
-    # ── عنوان ──
-    lines = ["🏆 <b>لیست ۳۰ نفر اول تورنومنت این هفته</b>\n"]
-    
-    # ── ۳ نفر اول (همیشه نمایش داده بشن) ──
-    top3 = lb[:3]
-    for row in top3:
+
+    # ── ساخت خطوط رتبه‌بندی (داخل blockquote قرار می‌گیرن) ──
+    rank_lines = []
+    for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
         marker = "🔹 " if uid and row["uid"] == str(uid) else ""
-        lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
-    
-    # ── نفرات ۴ تا ۳۰ داخل بلاک‌کوت جمع‌شونده ──
-    rest = lb[3:]
-    if rest:
-        lines.append("")
-        lines.append("<blockquote expandable>")
-        lines.append("📋 <b>ادامه رتبه‌بندی:</b>\n")
-        for row in rest:
-            name = row["full_name"]
-            marker = "🔹 " if uid and row["uid"] == str(uid) else ""
-            lines.append(f"{row['rank']}. {marker}{name} — <b>{row['points']}</b> امتیاز")
-        lines.append("</blockquote>")
-    
-    # ── تایمر و جوایز ──
-    lines.append(f"\n{countdown_line}")
-    lines.append(
-        "\n🏆 <b>جوایز نقدی پایان هفته:</b>\n"
+        rank_lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
+
+    # ── ترکیب نهایی ──
+    text = (
+        "🏆 <b>لیست #30 نفر اول شرکت‌کنندگان تورنمنت این هفته</b>\n\n"
+        f"<blockquote expandable>{chr(10).join(rank_lines)}</blockquote>\n\n"
+        f"{countdown_line}\n\n"
+        "🏆 <b>جوایز نقدی پایان هفته:</b>\n"
         "🥇 نفر اول: <b>۸۰$</b> | 🥈 دوم: <b>۶۰$</b> | 🥉 سوم: <b>۴۰$</b>\n"
         "🎲 نفرات ۴ تا ۱۰: قرعه‌کشی <b>۳۰ دلاری</b> بین ۱ الی ۲ نفر"
     )
-    return "\n".join(lines)
+    return text
 
 
 def build_referral_text(uid: int, bot_username: str) -> str:
