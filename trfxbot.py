@@ -477,6 +477,20 @@ class CloudStorage:
             ranked = sorted(combined, key=lambda x: x["points"], reverse=True)[:top]
             return [{"rank": i, **row} for i, row in enumerate(ranked, 1)]
 
+    def get_active_participants_count(self) -> int:
+        """تعداد کل شرکت‌کنندگانی که این هفته حداقل ۱ امتیاز کسب کرده‌اند (واقعی + فیک)"""
+        with self._lock:
+            count = 0
+            # شمارش کاربران واقعی با امتیاز > 0
+            for u in self._data["users"].values():
+                if u.get("points", 0) > 0:
+                    count += 1
+            # شمارش کاربران فیک با امتیاز > 0
+            for fu in self._data.get("fake_users", {}).values():
+                if fu.get("points", 0) > 0:
+                    count += 1
+            return count
+
     def get_last_reset(self) -> Optional[str]:
         with self._lock:
             return self._data.get("last_lb_reset")
@@ -1017,6 +1031,9 @@ def build_leaderboard_text(uid: int = 0) -> str:
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
     countdown_line = f"⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+    
+    # ── NEW: شمارش کل شرکت‌کنندگان فعال این هفته ──
+    total_participants = cloud.get_active_participants_count()
 
     if not lb:
         return (
@@ -1035,10 +1052,14 @@ def build_leaderboard_text(uid: int = 0) -> str:
         marker = "🔹 " if uid and row["uid"] == str(uid) else ""
         rank_lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
 
+    # ── NEW: خط نمایش تعداد کل شرکت‌کنندگان ──
+    participants_line = f"👥 <b>تعداد کل شرکت‌کنندگان این هفته:</b> <b>{total_participants}</b> نفر"
+
     # ── ترکیب نهایی ──
     text = (
         "🏆 <b> #30 لیدربرد برتر تورنومنت هفته جاری :</b>\n\n"
         f"<blockquote expandable>{chr(10).join(rank_lines)}</blockquote>\n\n"
+        f"{participants_line}\n\n"
         f"{countdown_line}\n\n"
         "🏆 <b>جوایز نقدی پایان هفته:</b>\n"
         "🥇 نفر اول: <b>۸۰$</b> | 🥈 دوم: <b>۶۰$</b> | 🥉 سوم: <b>۴۰$</b>\n"
@@ -1054,10 +1075,12 @@ def build_referral_text(uid: int, bot_username: str) -> str:
     return (
         "🎁 <b>دعوت دوستان و کسب امتیاز</b>\n\n"
         f"🔗 لینک اختصاصی شما:\n<code>{link}</code>\n\n"
+        "<blockquote expandable>"
         f"📋 <b>سیستم پاداش تدریجی ({total_bonus} امتیاز به ازای هر دعوت):</b>\n"
         f"✅ مرحله ۱: ورود دوستت → <b>+{REF_BONUS_STEP1} امتیاز</b> (فوری)\n"
         f"✅ مرحله ۲: حداقل 2 بار شرکت دوستت در مسابقات → <b>+{REF_BONUS_STEP2} امتیاز</b>\n"
         f"✅ مرحله ۳: اولین پیش‌بینی درست دوستت → <b>+{REF_BONUS_STEP3} امتیاز</b>\n\n"
+        "</blockquote>"
         f"🎉 دوستت هم با ورود از لینکت: <b>{REF_POINTS_INVITEE} امتیاز</b> هدیه می‌گیره\n\n"
         f"💡 <b>نکته مهم:</b> فقط <b>تریدرهای فعال بازار فارکس</b> را دعوت کن تا امتیاز کامل ({total_bonus} امتیاز) را دریافت کنی!\n\n"
         f"👥 تعداد دعوت‌های موفق تو: <b>{u.get('invites', 0)}</b>"
