@@ -324,7 +324,6 @@ class CloudStorage:
                 "points": points,
                 "total_points": points,
                 "is_fake": True,
-                "auto_step": existing.get("auto_step", 0) if existing else 0,
             }
             self._dirty = True
 
@@ -2402,11 +2401,12 @@ async def weekly_reset_watcher(app: Application):
 
 
 async def fake_referral_watcher(app: Application):
-    """رشد خودکار و تدریجی فیک‌های انتخاب‌شده (دقیقاً مشابه سیستم ۳ مرحله‌ای)"""
+    """رشد طبیعی و هوشمند فیک‌های انتخاب‌شده با Weighted Random"""
     while True:
         try:
-            # فاصله رندوم بین ۴۵ دقیقه تا ۱ ساعت (برای طبیعی‌تر شدن)
-            await asyncio.sleep(random.randint(500, 700))
+            # تایم رندوم بین ۸ تا ۱۵ دقیقه (طبیعی‌تر)
+            sleep_time = random.randint(480, 900)
+            await asyncio.sleep(sleep_time)
             
             if not fake_referral_enabled:
                 continue
@@ -2415,48 +2415,82 @@ async def fake_referral_watcher(app: Application):
             if not auto_ids:
                 continue
             
-            # فیلتر کردن فیک‌هایی که هنوز مراحل‌شان کامل نشده
-            eligible_fakes = []
+            # گرفتن لیست فیک‌های معتبر با امتیازهاشون
+            valid_fakes = []
             with cloud._lock:
                 for fid in auto_ids:
                     fu = cloud._data.get("fake_users", {}).get(fid)
-                    if fu and fu.get("auto_step", 0) < 3:
-                        eligible_fakes.append((fid, fu))
+                    if fu:
+                        valid_fakes.append({
+                            "fid": fid,
+                            "full_name": fu.get("full_name", fid),
+                            "points": fu.get("points", 0),
+                        })
             
-            if not eligible_fakes:
-                # همه فیک‌ها مراحل‌شان تمام شده، منتظر ریست هفتگی می‌مانیم
+            if not valid_fakes:
                 continue
             
-            # انتخاب رندوم یکی از فیک‌های واجد شرایط
-            fid, fu = random.choice(eligible_fakes)
+            # ═══════════════════════════════════════════════════════
+            # الگوریتم Weighted Random: شانس بیشتر برای فیک‌های برتر
+            # ═══════════════════════════════════════════════════════
+            # Weight = ۱۰۰ (پایه) + امتیاز فعلی
+            # مثال: فیک با ۵۰۰ امتیاز → وزن ۶۰۰
+            #       فیک با ۲۰۰ امتیاز → وزن ۳۰۰
+            # شانس فیک اول ۲ برابر فیک دوم هست!
+            base_weight = 100
+            weights = [base_weight + fake["points"] for fake in valid_fakes]
+            total_weight = sum(weights)
+            probabilities = [w / total_weight for w in weights]
             
+            # انتخاب ۱ تا ۳ فیک به صورت رندوم (طبیعی‌تر)
+            # ۵۰٪ شانس ۱ فیک، ۳۵٪ شانس ۲ فیک، ۱۵٪ شانس ۳ فیک
+            num_to_award = random.choices([1, 2, 3], weights=[50, 35, 15])[0]
+            num_to_award = min(num_to_award, len(valid_fakes))
+            
+            # انتخاب فیک‌ها با weighted random (بدون تکرار)
+            selected = []
+            available_fakes = valid_fakes.copy()
+            available_probs = probabilities.copy()
+            
+            for _ in range(num_to_award):
+                if not available_fakes:
+                    break
+                
+                # نرمال‌سازی احتمالات
+                total_prob = sum(available_probs)
+                normalized_probs = [p / total_prob for p in available_probs]
+                
+                # انتخاب یک فیک با weighted random
+                selected_idx = random.choices(range(len(available_fakes)), weights=normalized_probs)[0]
+                selected.append(available_fakes[selected_idx])
+                
+                # حذف فیک انتخاب‌شده از لیست (برای جلوگیری از تکرار)
+                available_fakes.pop(selected_idx)
+                available_probs.pop(selected_idx)
+            
+            # ═══════════════════════════════════════════════════════
+            # اعطای ۲۰ امتیاز به فیک‌های انتخاب‌شده
+            # ═══════════════════════════════════════════════════════
+            awarded = []
             with cloud._lock:
-                # دوباره چک می‌کنیم چون ممکن است در فاصله قفل تغییر کرده باشد
-                fu = cloud._data.get("fake_users", {}).get(fid)
-                if not fu:
-                    continue
-                
-                current_step = fu.get("auto_step", 0)
-                next_step = current_step + 1
-                
-                # تعیین امتیاز بر اساس مرحله (دقیقاً مثل کاربران واقعی)
-                if next_step == 1:
-                    bonus = REF_BONUS_STEP1  # 20
-                elif next_step == 2:
-                    bonus = REF_BONUS_STEP1  # 30
-                elif next_step == 3:
-                    bonus = REF_BONUS_STEP1  # 40
-                else:
-                    continue
-                
-                fu["points"] = fu.get("points", 0) + bonus
-                fu["total_points"] = fu.get("total_points", 0) + bonus
-                fu["invites"] = fu.get("invites", 0) + 1
-                fu["auto_step"] = next_step
+                for fake in selected:
+                    fu = cloud._data.get("fake_users", {}).get(fake["fid"])
+                    if fu:
+                        fu["points"] = fu.get("points", 0) + REF_BONUS_STEP1  # ۲۰ امتیاز
+                        fu["total_points"] = fu.get("total_points", 0) + REF_BONUS_STEP1
+                        fu["invites"] = fu.get("invites", 0) + 1
+                        awarded.append({
+                            "name": fake["full_name"],
+                            "old_points": fake["points"],
+                            "new_points": fake["points"] + REF_BONUS_STEP1,
+                        })
                 cloud._dirty = True
-                
-                step_names = {1: "ورود", 2: "شرکت در ۲ دور", 3: "پیش‌بینی درست"}
-                log.info(f"🤖 مرحله {next_step} ({step_names[next_step]}): +{bonus} امتیاز به فیک: {fu.get('full_name', fid)}")
+            
+            if awarded:
+                log.info(
+                    f"🤖 رشد طبیعی: +{REF_BONUS_STEP1} امتیاز به {len(awarded)} فیک "
+                    f"({', '.join([a['name'] for a in awarded])})"
+                )
         
         except asyncio.CancelledError:
             break
@@ -2507,25 +2541,7 @@ def main():
         sys.exit(1)
 
     cloud.load()
-
-    # ✅ ════════════ پاکسازی یکبار مصرف فیک‌های مرده ════════════
-    # این کد ID های فیک‌هایی که قبلاً حذف شده‌اند را از لیست auto_fake_ids پاک می‌کند
-    # این عملیات کاملاً ایمن است و به هیچ داده‌ی سالمی آسیب نمی‌زند
-    with cloud._lock:
-        valid_fakes = set(cloud._data.get("fake_users", {}).keys())
-        auto_ids = cloud._data.setdefault("auto_fake_ids", [])
-        original_count = len(auto_ids)
-        cloud._data["auto_fake_ids"] = [fid for fid in auto_ids if fid in valid_fakes]
-        removed_count = original_count - len(cloud._data["auto_fake_ids"])
-        if removed_count > 0:
-            cloud._dirty = True
-            log.info(f"🧹 پاکسازی: {removed_count} فیک مرده از لیست انتخاب‌شده حذف شد.")
-        else:
-            log.info("🧹 پاکسازی: لیست auto_fake_ids تمیز است، نیازی به حذف نبود.")
-    if removed_count > 0:
-        cloud.save(force=True)
-    # ✅ ════════════ پایان پاکسازی ════════════
-
+    
     # ساخت Application (هنوز اجرا نمی‌کنیم)
     app = (Application.builder().token(BOT_TOKEN)
            .post_init(on_startup).post_shutdown(on_shutdown).build())
