@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
-from flask import Flask
+from flask import Flask, request  # request را اضافه کنید
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Chat
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden
