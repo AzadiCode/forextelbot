@@ -332,6 +332,13 @@ class CloudStorage:
         with self._lock:
             if fake_id in self._data["fake_users"]:
                 del self._data["fake_users"][fake_id]
+                
+                # ✅ FIX: حذف خودکار فیک از لیست فیک‌های انتخاب‌شده (auto_fake_ids) در صورت وجود
+                auto_ids = self._data.setdefault("auto_fake_ids", [])
+                if fake_id in auto_ids:
+                    auto_ids.remove(fake_id)
+                    log.info(f"🗑 فیک '{fake_id}' از لیست فیک‌های انتخاب‌شده هم حذف شد.")
+                
                 self._dirty = True
                 return True
             return False
@@ -2500,7 +2507,25 @@ def main():
         sys.exit(1)
 
     cloud.load()
-    
+
+    # ✅ ════════════ پاکسازی یکبار مصرف فیک‌های مرده ════════════
+    # این کد ID های فیک‌هایی که قبلاً حذف شده‌اند را از لیست auto_fake_ids پاک می‌کند
+    # این عملیات کاملاً ایمن است و به هیچ داده‌ی سالمی آسیب نمی‌زند
+    with cloud._lock:
+        valid_fakes = set(cloud._data.get("fake_users", {}).keys())
+        auto_ids = cloud._data.setdefault("auto_fake_ids", [])
+        original_count = len(auto_ids)
+        cloud._data["auto_fake_ids"] = [fid for fid in auto_ids if fid in valid_fakes]
+        removed_count = original_count - len(cloud._data["auto_fake_ids"])
+        if removed_count > 0:
+            cloud._dirty = True
+            log.info(f"🧹 پاکسازی: {removed_count} فیک مرده از لیست انتخاب‌شده حذف شد.")
+        else:
+            log.info("🧹 پاکسازی: لیست auto_fake_ids تمیز است، نیازی به حذف نبود.")
+    if removed_count > 0:
+        cloud.save(force=True)
+    # ✅ ════════════ پایان پاکسازی ════════════
+
     # ساخت Application (هنوز اجرا نمی‌کنیم)
     app = (Application.builder().token(BOT_TOKEN)
            .post_init(on_startup).post_shutdown(on_shutdown).build())
