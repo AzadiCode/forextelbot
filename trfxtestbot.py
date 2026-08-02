@@ -1036,7 +1036,7 @@ def build_leaderboard_text(uid: int = 0) -> str:
 
     # ── ترکیب نهایی ──
     text = (
-        "🏆 <b>لیست #30 نفر اول شرکت‌کنندگان تورنمنت این هفته</b>\n\n"
+        "🏆 <b> #30 لیدربرد برتر تورنومنت هفته جاری :</b>\n\n"
         f"<blockquote expandable>{chr(10).join(rank_lines)}</blockquote>\n\n"
         f"{countdown_line}\n\n"
         "🏆 <b>جوایز نقدی پایان هفته:</b>\n"
