@@ -1015,26 +1015,42 @@ def build_leaderboard_text(uid: int = 0) -> str:
     lb = cloud.get_weekly_leaderboard(top=TOP_REPORT_COUNT)
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
-    countdown_line = f"\n\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+    countdown_line = f"⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
     
     if not lb:
         return (
             "🏆 <b>لیدربرد این هفته</b>\n"
-            "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
+            "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥\n\n"
             f"{countdown_line}"
         )
     
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیست #30 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
-    for row in lb:
+    
+    # ── عنوان ──
+    lines = ["🏆 <b>لیست ۳۰ نفر اول تورنومنت این هفته</b>\n"]
+    
+    # ── ۳ نفر اول (همیشه نمایش داده بشن) ──
+    top3 = lb[:3]
+    for row in top3:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
-        
-        # اگر این رتبه متعلق به کاربر فعلی است، علامت ویژه اضافه کن
         marker = "🔹 " if uid and row["uid"] == str(uid) else ""
         lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
     
-    lines.append(countdown_line)
+    # ── نفرات ۴ تا ۳۰ داخل بلاک‌کوت جمع‌شونده ──
+    rest = lb[3:]
+    if rest:
+        lines.append("")
+        lines.append("<blockquote expandable>")
+        lines.append("📋 <b>ادامه رتبه‌بندی:</b>\n")
+        for row in rest:
+            name = row["full_name"]
+            marker = "🔹 " if uid and row["uid"] == str(uid) else ""
+            lines.append(f"{row['rank']}. {marker}{name} — <b>{row['points']}</b> امتیاز")
+        lines.append("</blockquote>")
+    
+    # ── تایمر و جوایز ──
+    lines.append(f"\n{countdown_line}")
     lines.append(
         "\n🏆 <b>جوایز نقدی پایان هفته:</b>\n"
         "🥇 نفر اول: <b>۸۰$</b> | 🥈 دوم: <b>۶۰$</b> | 🥉 سوم: <b>۴۰$</b>\n"
