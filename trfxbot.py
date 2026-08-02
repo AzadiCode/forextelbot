@@ -764,8 +764,8 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
 
 def kb_round_voting(round_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬆️ بالا", callback_data=f"vote:{round_id}:up"),
-         InlineKeyboardButton("⬇️ پایین", callback_data=f"vote:{round_id}:down")],
+        [InlineKeyboardButton("⬇️ صعودی", callback_data=f"vote:{round_id}:up"),
+         InlineKeyboardButton("⬇️ نزولی", callback_data=f"vote:{round_id}:down")],
         [InlineKeyboardButton("📍 پروفایل من در ربات", url=_profile_deeplink_url())],
     ])
 
@@ -921,9 +921,11 @@ def _fmt_price(p: float) -> str:
 
 def build_welcome_text() -> str:
     return (
+        "<blockquote expandable>"
         "🥇✨ <b>به بزرگ‌ترین تورنومنت پیش‌بینی قیمت طلا خوش اومدی!</b> ✨🥇\n\n"
         "اینجا هر روز علاوه بر ارعه لایو ترید ها و سیگنال های اسکلپ در کانال ویژه طلا، هر روز طی ساعت مشخصی با پیشبینی 1 ساعت اینده روند طلا ، امتیاز دریافت میکنی که در اخر هر هفته به جوایز واقعی تبدیل میشه !! "
         "قیمت طلا بالا می‌ره یا پایین؟ پیش‌بینی کن، امتیاز بگیر، جایزه ببر!\n\n"
+        "</blockquote>"
         "🔥 <b>توی کانال چی می‌گذره؟</b>\n"
         "  🥇 <b>تورنومنت هفتگی طلا</b> با جوایز نقدی\n"
         "  💰 نفر اول <b>۸۰$</b> | دوم <b>۶۰$</b> | سوم <b>۴۰$</b>\n"
@@ -1013,32 +1015,35 @@ def build_leaderboard_text(uid: int = 0) -> str:
     lb = cloud.get_weekly_leaderboard(top=TOP_REPORT_COUNT)
     reset_dt = next_weekly_reset_dt(now_ir())
     remaining = (reset_dt - now_ir()).total_seconds()
-    countdown_line = f"\n\n⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
-    
+    countdown_line = f"⏰ زمان باقی‌مانده تا پایان تورنومنت هفتگی: <b>{_fmt_timedelta_long(remaining)}</b>"
+
     if not lb:
         return (
             "🏆 <b>لیدربرد این هفته</b>\n"
             "هنوز کسی امتیازی کسب نکرده — اولین نفر باش! 🔥"
-            f"{countdown_line}"
+            f"\n\n{countdown_line}"
         )
-    
+
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines = ["🏆 <b>لیست #30 نفر اول شرکت کنندگان تورنمونت این هفته </b>\n"]
+
+    # ── ساخت خطوط رتبه‌بندی (داخل blockquote قرار می‌گیرن) ──
+    rank_lines = []
     for row in lb:
         tag = medals.get(row["rank"], f"{row['rank']}.")
         name = row["full_name"]
-        
-        # اگر این رتبه متعلق به کاربر فعلی است، علامت ویژه اضافه کن
         marker = "🔹 " if uid and row["uid"] == str(uid) else ""
-        lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
-    
-    lines.append(countdown_line)
-    lines.append(
-        "\n🏆 <b>جوایز نقدی پایان هفته:</b>\n"
+        rank_lines.append(f"{tag} {marker}{name} — <b>{row['points']}</b> امتیاز")
+
+    # ── ترکیب نهایی ──
+    text = (
+        "🏆 <b> #30 لیدربرد برتر تورنومنت هفته جاری :</b>\n\n"
+        f"<blockquote expandable>{chr(10).join(rank_lines)}</blockquote>\n\n"
+        f"{countdown_line}\n\n"
+        "🏆 <b>جوایز نقدی پایان هفته:</b>\n"
         "🥇 نفر اول: <b>۸۰$</b> | 🥈 دوم: <b>۶۰$</b> | 🥉 سوم: <b>۴۰$</b>\n"
         "🎲 نفرات ۴ تا ۱۰: قرعه‌کشی <b>۳۰ دلاری</b> بین ۱ الی ۲ نفر"
     )
-    return "\n".join(lines)
+    return text
 
 
 def build_referral_text(uid: int, bot_username: str) -> str:
@@ -1060,6 +1065,7 @@ def build_referral_text(uid: int, bot_username: str) -> str:
 
 def build_help_text(admin: bool) -> str:
     txt = (
+        "<blockquote expandable>"
         "📖 <b>بخش اول: راهنمای مسابقات</b>\n\n"
         
         "🥇 <b>تورنومنت هفتگی پیش‌بینی انس جهانی طلا (XAU/USD)</b>\n\n"
@@ -1067,12 +1073,12 @@ def build_help_text(admin: bool) -> str:
         "⏰ <b>زمان‌بندی برگزاری دور ها:</b>\n"
         "🔸 <b>دور اول:</b> هر روز ساعت <b>۱۲:۰۰ ظهر</b>\n"
         "🔸 <b>دور دوم:</b> هر روز ساعت <b>۱۸:۰۰ عصر</b>\n"
-        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تات تمام شود و نتیجه مشخص شود\n"
-        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> می‌توانی رأی بدی ⏳\n\n"
+        "🔸 هر دور <b>۶۰ دقیقه</b> طول می‌کشد تا تمام شود و نتیجه مشخص شود\n"
+        "🔸 فقط در <b>۱۰ دقیقه‌ی اول</b> فرصت ثبت پیشبینی داری!! ⏳\n\n"
         
         "🎯 <b>نحوه شرکت:</b>\n"
-        "۱. در ساعات مشخص شده ربات یک پست در قالب نظرسنجی در کانال منتظر میکند\n"
-        "۲. با دکمه <b>⬆️ بالا</b> یا <b>⬇️ پایین</b> روند یک ساعت پیش رو طلا رو حدس بزن\n"
+        "۱. در ساعات مشخص شده ربات یک پیشبینی زنده در کانال منتشر میکند\n"
+        "۲. با دکمه <b>⬇️ صعودی</b> یا <b>⬇️ نزولی</b> روند یک ساعتآینده طلا رو حدس بزن\n"
         "۳. پیش‌بینی درست = <b>+200 امتیاز</b> 💰\n\n"
         
         "🏆 <b>جوایز نقدی هر هفته:</b>\n"
@@ -1080,9 +1086,9 @@ def build_help_text(admin: bool) -> str:
         "🥈 نفر دوم: <b>۶۰ دلار</b>\n"
         "🥉 نفر سوم: <b>۴۰ دلار</b>\n"
         "🎲 نفرات ۴ تا ۱۰: <b>قرعه‌کشی ۳۰ دلاری</b> بین ۱ الی ۲ نفر\n\n"
-        
+        "</blockquote>"
         "⚖️ <b>بخش دوم: قوانین و مقررات</b>\n"
-        
+        "<blockquote expandable>"
         "🎁 <b>سیستم پاداش دعوت (۳ مرحله‌ای):</b>\n"
         "برای دریافت امتیاز کامل از دعوت دوستان فارکسیتون، مراحل زیر باید طی شود:\n\n"
         "✅ <b>مرحله ۱:</b> ورود دوستت → <b>+۲۰ امتیاز</b> (فوری)\n"
@@ -1114,7 +1120,7 @@ def build_help_text(admin: bool) -> str:
         "🔹 نتیجه هر دور <b>پیوی ربات</b> پس از اتمام به شما اطلاع داده می‌شود\n"
         "🔹 لیدربرد هر <b>شنبه ساعت ۰۰:۰۰</b> ریست می‌شود\n"
         "🔹 برندگان باید ظرف <b>۴۸ ساعت</b> برای دریافت جایزه اقدام کنند\n\n"
-        
+        "</blockquote>"
         "💎 <b>فرصت طلایی:</b>\n"
         "هرچه بیشتر در مسابقات شرکت کنی و حدست درست باشه و دوستان واقعی فارکسی دعوت کنی به مسابقه، شانس برنده شدنت در جوایز هفتگی بیشتر می‌شود! 🔥\n\n"
         
