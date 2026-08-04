@@ -71,26 +71,26 @@ MAX_RETRIES = 3
 # ══════════════════════════════════════════════════════════════════════
 # فاز اول: سریع (Reaction های 1-3)
 PHASE1_END = 3              # تا Reaction سوم
-PHASE1_GROWTH_MIN = 2.1     # ضریب رشد حداقل
-PHASE1_GROWTH_MAX = 2.4     # ضریب رشد حداکثر
+PHASE1_GROWTH_MIN = 2.0     # ضریب رشد حداقل
+PHASE1_GROWTH_MAX = 2.2     # ضریب رشد حداکثر
 
 # فاز دوم: متوسط (Reaction های 4-6)
 PHASE2_END = 6
-PHASE2_GROWTH_MIN = 1.5
-PHASE2_GROWTH_MAX = 2.1
+PHASE2_GROWTH_MIN = 1.3
+PHASE2_GROWTH_MAX = 2.0
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 12
-PHASE3_GROWTH_MIN = 1.1
-PHASE3_GROWTH_MAX = 1.4
+PHASE3_GROWTH_MIN = 1.08
+PHASE3_GROWTH_MAX = 1.2
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
-PHASE4_GROWTH_MIN = 1.02
-PHASE4_GROWTH_MAX = 1.05
+PHASE4_GROWTH_MIN = 1.01
+PHASE4_GROWTH_MAX = 1.03
 
 # نویز رندوم برای طبیعی‌تر شدن (±20%)
-NOISE_MIN = 0.8
-NOISE_MAX = 1.25
+NOISE_MIN = 0.6
+NOISE_MAX = 1.1
 
 # اولین Reaction (سریع)
 FIRST_REACTION_MIN = 10
