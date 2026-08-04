@@ -669,7 +669,7 @@ class CloudStorage:
         selected_fakes = random.sample(auto_ids, min(count_to_award, len(auto_ids)))
         
         # لیست امتیازهای رفرال که ممکن است اضافه شوند
-        referral_bonuses = [0, 30, 0, 40]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
+        referral_bonuses = [0, 40, 0, 40, 80]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
         
         awarded = []
         with self._lock:
@@ -778,8 +778,8 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
 
 def kb_round_voting(round_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬇️ صعودی", callback_data=f"vote:{round_id}:up"),
-         InlineKeyboardButton("⬇️ نزولی", callback_data=f"vote:{round_id}:down")],
+        [InlineKeyboardButton("🟢 صعودی", callback_data=f"vote:{round_id}:up"),
+         InlineKeyboardButton("🔴 نزولی", callback_data=f"vote:{round_id}:down")],
         [InlineKeyboardButton("📍 پروفایل من در ربات", url=_profile_deeplink_url())],
     ])
 
@@ -968,14 +968,13 @@ def build_round_text(rnd: dict, phase: str,
         
         return (
             f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
-            f"💰 قیمت شروع در این لحضه : <code>{start_p}</code>\n"
+            f"💰 قیمت در این لحضه شروع : <code>{start_p}</code>\n"
             f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
-            "طلا تا پایان این دور، نسبت به قیمت شروع بالا می‌ره یا پایین؟ "
-            "نظرت رو با یکی از دکمه‌های زیر ثبت کن 👇\n\n"
+            "طلا تا پایان این دور، نسبت به قیمت شروع صعودی میشه یا نزولی؟ "
             "⚠️ <i>هر کاربر فقط یک‌بار می‌تونه رأی بده و بعدش امکان تغییرش نیست.</i>\n"
-            f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b>\n\n"
-            "📍 برای دیدن جزئیات، امتیاز و رتبه‌ات، روی دکمه‌ی «پروفایل من» بزن."
+            f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b>\n"
+            "نظرت رو با یکی از دکمه‌های زیر ثبت کن 👇"
         )
 
     if phase == "voting_closed":
@@ -985,13 +984,13 @@ def build_round_text(rnd: dict, phase: str,
         return (
             f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
             f"💰 قیمت شروع: <code>{start_p}</code>\n"
-            "⛔️ <b>زمان ثبت رأی به پایان رسید — دیگه امکان رأی دادن نیست.</b>\n"
+            "⛔️ <b>زمان ثبت رأی به پایان رسیده — امکان رأی دادن نیست.</b>\n"
             f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
-            "نتیجه‌ی نهایی به‌محض بسته‌شدن دور اعلام می‌شه، منتظر بمون... ⏱\n"
+            "نتیجه‌ی نهایی به‌محض بسته‌شدن دور اعلام می‌شه... ⏱\n"
             "📍 برای دیدن جزئیات و امتیازت، روی دکمه‌ی زیر بزن."
         )
 
-    arrow = {"up": "📈 صعودی", "down": "📉 نزولی", "flat": "➖ بدون تغییر"}[direction]
+    arrow = {"up": "🟢 صعودی", "down": "🔴 نزولی", "flat": "➖ بدون تغییر"}[direction]
     end_p = _fmt_price(end_price)
     if direction == "flat":
         result_line = f"نتیجه: <b>{arrow}</b> — این دور به‌دلیل عدم تغییر قیمت باطل شد و امتیازی اعطا نشد."
