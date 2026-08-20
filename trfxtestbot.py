@@ -2,10 +2,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Azadi VIP Signal Bot — نسخه نهایی و کامل
+Azadi VIP Signal Bot — نسخه ۲.۰ (پچ شده)
 ════════════════════════════════════════════════════════════════════
-سیستم حرفه‌ای فروش سیگنال VIP با پرداخت دوگانه (AZC و پول واقعی)
-موتور فوروارد آنی سیگنال + سیستم اخراج خودکار پس از اتمام اشتراک
+رفع باگ Deadlock در پرداخت + سیستم لینک دعوت منحصربه‌فرد برای کانال خصوصی
 """
 import os
 import sys
@@ -23,7 +22,7 @@ from typing import Optional
 import requests
 from flask import Flask, request
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import (
@@ -48,27 +47,19 @@ PORT = int(os.environ.get("PORT", 5000))
 _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 
-# کانال عمومی (برای Force Join)
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "-1004450309103")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")  # آیدی کانال خصوصی VIP
 
-# کانال VIP (جایی که سیگنال‌ها ارسال می‌شوند)
-VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "@testerrrrrfg")
-VIP_CHANNEL_LINK = os.environ.get("VIP_CHANNEL_LINK", "@testerrrrrfg")
-
-# تنظیمات کوین AZC
 REFERRAL_BONUS_AZC = int(os.environ.get("REFERRAL_BONUS_AZC", 50))
 
-# پلن‌های اشتراک (قیمت AZC)
 PLAN_WEEKLY_AZC = int(os.environ.get("PLAN_WEEKLY_AZC", 150))
 PLAN_MONTHLY_AZC = int(os.environ.get("PLAN_MONTHLY_AZC", 400))
 PLAN_QUARTERLY_AZC = int(os.environ.get("PLAN_QUARTERLY_AZC", 1000))
 
-# پلن‌های اشتراک (قیمت دلاری)
 PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 15))
 PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 40))
 PLAN_QUARTERLY_USD = float(os.environ.get("PLAN_QUARTERLY_USD", 100))
 
-# اطلاعات پرداخت
 PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
     "کارت: 6037-9918-XXXX-XXXX\n"
@@ -103,11 +94,10 @@ def mention_html(uid: int, name: str, username: str = "") -> str:
     return f'<a href="tg://user?id={uid}">{safe_name}</a>'
 
 # ══════════════════════════════════════════════════════════════════════
-# CLOUD STORAGE (MongoDB)
+# CLOUD STORAGE (MongoDB) — نسخه بدون Deadlock
 # ══════════════════════════════════════════════════════════════════════
 try:
     from pymongo import MongoClient
-    from pymongo.errors import PyMongoError
     MONGODB_AVAILABLE = True
 except ImportError:
     MONGODB_AVAILABLE = False
@@ -124,12 +114,9 @@ class CloudStorage:
         self._data = {
             "users": {},
             "pending_payments": {},
-            "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط ادمین ثبت نشده است.\nبرای مشاهده عملکرد کانال، چند روز دیگر مراجعه کنید.",
-            "stats": {
-                "total_signals_sent": 0,
-                "total_revenue_usd": 0,
-                "total_azc_spent": 0,
-            },
+            "invite_links": {},  # ذخیره لینک‌های تولید شده برای هر کاربر
+            "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط ادمین ثبت نشده است.",
+            "stats": {"total_signals_sent": 0, "total_revenue_usd": 0, "total_azc_spent": 0},
             "last_updated": None,
         }
         
@@ -153,7 +140,8 @@ class CloudStorage:
                     for k, v in doc.items(): self._data[k] = v
                     self._data.setdefault("users", {})
                     self._data.setdefault("pending_payments", {})
-                    self._data.setdefault("archive_text", "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای ثبت نشده است.")
+                    self._data.setdefault("invite_links", {})
+                    self._data.setdefault("archive_text", "📊 نتایج هفته جاری\nهنوز نتیجه‌ای ثبت نشده است.")
                     self._data.setdefault("stats", {"total_signals_sent": 0, "total_revenue_usd": 0, "total_azc_spent": 0})
         except Exception as e:
             log.error(f"MongoDB load error: {e}")
@@ -181,7 +169,7 @@ class CloudStorage:
                     "ref": ref_code, "referred_by": None,
                     "azc_balance": 0, "vip_expiry": None, "vip_plan": None,
                     "invites": 0, "signals_received": 0, "is_blocked": False,
-                    "kick_attempted": False,
+                    "kick_attempted": False, "last_link": None,
                 }
                 self._dirty = True
             else:
@@ -240,24 +228,38 @@ class CloudStorage:
                 self._dirty = True; return True
             return False
     
-    def activate_vip(self, uid: int, plan: str, duration_days: int) -> bool:
+    # 🔧 تابع داخلی بدون لاک (برای جلوگیری از Deadlock)
+    def _activate_vip_internal(self, user: dict, plan: str, duration_days: int):
+        """این تابع باید از داخل با self._lock صدا زده شود"""
+        if user.get("vip_expiry"):
+            current = datetime.fromisoformat(user["vip_expiry"])
+            base = current if current > now_ir() else now_ir()
+        else:
+            base = now_ir()
+        
+        new_expiry = base + timedelta(days=duration_days)
+        user["vip_expiry"] = new_expiry.isoformat()
+        user["vip_plan"] = plan
+        user["is_blocked"] = False
+        user["kick_attempted"] = False
+        self._dirty = True
+        return new_expiry
+    
+    def activate_vip(self, uid: int, plan: str, duration_days: int) -> Optional[datetime]:
         key = str(uid)
         with self._lock:
             u = self._data["users"].get(key)
-            if not u: return False
-            
-            if u.get("vip_expiry"):
-                current = datetime.fromisoformat(u["vip_expiry"])
-                base = current if current > now_ir() else now_ir()
-            else:
-                base = now_ir()
-            
-            u["vip_expiry"] = (base + timedelta(days=duration_days)).isoformat()
-            u["vip_plan"] = plan
-            u["is_blocked"] = False
-            u["kick_attempted"] = False
-            self._dirty = True
-            return True
+            if not u: return None
+            new_expiry = self._activate_vip_internal(u, plan, duration_days)
+            return new_expiry
+    
+    def save_invite_link(self, uid: int, link: str):
+        """ذخیره آخرین لینک تولید شده برای کاربر"""
+        key = str(uid)
+        with self._lock:
+            if key in self._data["users"]:
+                self._data["users"][key]["last_link"] = link
+                self._dirty = True
     
     def get_expired_vip_users(self) -> list:
         with self._lock:
@@ -292,24 +294,31 @@ class CloudStorage:
     def get_pending_payment(self, payment_id: str) -> Optional[dict]:
         with self._lock: return self._data["pending_payments"].get(payment_id)
     
-    def approve_payment(self, payment_id: str) -> bool:
+    # 🔧 رفع باگ Deadlock در approve_payment
+    def approve_payment(self, payment_id: str) -> Optional[tuple]:
+        """تایید پرداخت. tuple (uid, plan, new_expiry) را برمی‌گرداند یا None"""
         with self._lock:
             p = self._data["pending_payments"].get(payment_id)
-            if not p or p["status"] != "pending": return False
+            if not p or p["status"] != "pending": return None
             p["status"] = "approved"
+            p["approved_at"] = now_ir().isoformat()
+            
             duration_map = {"weekly": 7, "monthly": 30, "quarterly": 90}
             u = self._data["users"].get(str(p["uid"]))
             if u:
-                self.activate_vip(p["uid"], p["plan"], duration_map.get(p["plan"], 30))
+                new_expiry = self._activate_vip_internal(
+                    u, p["plan"], duration_map.get(p["plan"], 30)
+                )
                 self._data["stats"]["total_revenue_usd"] = self._data["stats"].get("total_revenue_usd", 0) + p["amount_usd"]
-                return True
-            return False
+                return (p["uid"], p["plan"], new_expiry, duration_map.get(p["plan"], 30))
+            return None
     
     def reject_payment(self, payment_id: str) -> bool:
         with self._lock:
             p = self._data["pending_payments"].get(payment_id)
             if not p or p["status"] != "pending": return False
             p["status"] = "rejected"
+            p["rejected_at"] = now_ir().isoformat()
             self._dirty = True
             return True
     
@@ -318,7 +327,7 @@ class CloudStorage:
             return [{"payment_id": k, **v} for k, v in self._data["pending_payments"].items() if v.get("status") == "pending"]
     
     def get_archive_text(self) -> str:
-        with self._lock: return self._data.get("archive_text", "📊 نتایج هفته جاری\n\nهنوز نتیجه‌ای ثبت نشده است.")
+        with self._lock: return self._data.get("archive_text", "📊 نتایج هفته جاری")
     
     def set_archive_text(self, text: str):
         with self._lock: self._data["archive_text"] = text; self._dirty = True
@@ -332,6 +341,48 @@ class CloudStorage:
         with self._lock: return dict(self._data.get("stats", {}))
 
 cloud = CloudStorage()
+
+# ══════════════════════════════════════════════════════════════════════
+# VIP LINK GENERATION (کلید امنیت کانال خصوصی)
+# ══════════════════════════════════════════════════════════════════════
+async def generate_vip_invite_link(bot, uid: int, plan: str, expiry_dt: datetime) -> Optional[str]:
+    """
+    تولید لینک دعوت یکبار مصرف برای کانال VIP.
+    - member_limit=1: فقط یک نفر می‌تواند با آن وارد شود.
+    - expire_date: لینک دقیقاً همزمان با انقضای اشتراک منقضی می‌شود.
+    """
+    if not VIP_CHANNEL_ID:
+        return None
+    
+    try:
+        # لینک تا ۱ روز بعد از انقضای اشتراک معتبر است (تا کاربر فرصت خروج داشته باشد)
+        link_expiry_ts = int((expiry_dt + timedelta(days=1)).timestamp())
+        
+        # اگر لینک قبلی وجود دارد، آن را revoke می‌کنیم (برای امنیت بیشتر)
+        user = cloud.get_user(uid)
+        if user and user.get("last_link"):
+            try:
+                await bot.revoke_chat_invite_link(chat_id=VIP_CHANNEL_ID, invite_link=user["last_link"])
+            except Exception:
+                pass
+        
+        link = await bot.create_chat_invite_link(
+            chat_id=VIP_CHANNEL_ID,
+            name=f"VIP_{uid}_{plan[:3]}",
+            expire_date=link_expiry_ts,
+            member_limit=1,
+        )
+        
+        cloud.save_invite_link(uid, link.invite_link)
+        cloud.save()
+        log.info(f"✅ VIP Link generated for {uid}: {link.invite_link[:30]}...")
+        return link.invite_link
+    except Forbidden:
+        log.error(f"❌ Bot lacks 'Invite Users via Link' permission in VIP channel!")
+        return None
+    except Exception as e:
+        log.error(f"Link generation failed for {uid}: {e}")
+        return None
 
 # ══════════════════════════════════════════════════════════════════════
 # MEMBERSHIP & KEYBOARDS
@@ -368,11 +419,11 @@ def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
 
 def kb_subscribe() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🥉 هفتگی (7 روز) | {PLAN_WEEKLY_AZC} AZC", callback_data="buy:azc:weekly"),
+        [InlineKeyboardButton(f"🥉 هفتگی | {PLAN_WEEKLY_AZC} AZC", callback_data="buy:azc:weekly"),
          InlineKeyboardButton(f"{PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
-        [InlineKeyboardButton(f"🥈 ماهانه (30 روز) | {PLAN_MONTHLY_AZC} AZC", callback_data="buy:azc:monthly"),
+        [InlineKeyboardButton(f"🥈 ماهانه | {PLAN_MONTHLY_AZC} AZC", callback_data="buy:azc:monthly"),
          InlineKeyboardButton(f"{PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
-        [InlineKeyboardButton(f"🥇 سه ماهه (90 روز) | {PLAN_QUARTERLY_AZC} AZC", callback_data="buy:azc:quarterly"),
+        [InlineKeyboardButton(f"🥇 سه‌ماهه | {PLAN_QUARTERLY_AZC} AZC", callback_data="buy:azc:quarterly"),
          InlineKeyboardButton(f"{PLAN_QUARTERLY_USD}$", callback_data="buy:fiat:quarterly")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
     ])
@@ -390,6 +441,7 @@ def build_welcome_text() -> str:
         "  ⚡️ سیگنال‌های روزانه اسکالپ و سویینگ\n"
         "  📊 تحلیل‌های لایو و مدیریت سرمایه\n"
         "  🏆 وین‌ریت بالا و شفافیت کامل در نتایج\n\n"
+        "🔒 <b>کانال VIP کاملاً خصوصی است</b> و فقط با لینک دعوت یکبار مصرف می‌توان وارد آن شد.\n\n"
         "از منوی زیر شروع کن 👇"
     )
 
@@ -399,18 +451,28 @@ def build_profile_text(uid: int, u: dict) -> str:
     if u.get("vip_expiry"):
         expiry = datetime.fromisoformat(u["vip_expiry"])
         if expiry > now_ir():
-            status = f"🟢 فعال ({u.get('vip_plan', 'VIP')})"
+            plan_names = {"weekly": "هفتگی", "monthly": "ماهانه", "quarterly": "سه‌ماهه"}
+            plan_name = plan_names.get(u.get('vip_plan', ''), 'VIP')
+            status = f"🟢 فعال ({plan_name})"
             time_left = _fmt_timedelta((expiry - now_ir()).total_seconds())
         else:
             status = "⚫️ منقضی شده"
     
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
+    
+    # نمایش لینک VIP برای پلن‌های ماهانه و سه‌ماهه
+    link_section = ""
+    if u.get("vip_plan") in ("monthly", "quarterly") and u.get("last_link"):
+        if u.get("vip_expiry") and datetime.fromisoformat(u["vip_expiry"]) > now_ir():
+            link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(این لینک یکبار مصرف است و در صورت لفت دادن، باطل می‌شود)</i>\n"
+    
     return (
         f"👤 <b>پروفایل شما</b>\n\n"
         f"📛 نام: <b>{full}</b>\n"
         f"🆔 آیدی: <code>{uid}</code>\n\n"
         f"💎 <b>وضعیت اشتراک VIP:</b> {status}\n"
-        f"⏳ <b>زمان باقی‌مانده:</b> {time_left}\n\n"
+        f"⏳ <b>زمان باقی‌مانده:</b> {time_left}\n"
+        f"{link_section}\n"
         f"🪙 <b>موجودی Azadi Coin:</b> <code>{u.get('azc_balance', 0)} AZC</code>\n"
         f"👥 <b>تعداد دعوت‌های موفق:</b> {u.get('invites', 0)}"
     )
@@ -433,15 +495,17 @@ def build_help_text() -> str:
         "📖 <b>راهنمای استفاده از ربات Azadi</b>\n\n"
         "<blockquote expandable>"
         "🔹 <b>اشتراک هفتگی:</b> فقط دریافت سیگنال در همین ربات (بدون لینک کانال)\n"
-        "🔹 <b>اشتراک ماهانه و سه‌ماهه:</b> دریافت سیگنال در ربات + <b>دسترسی به کانال VIP</b>\n\n"
+        "🔹 <b>اشتراک ماهانه و سه‌ماهه:</b> دریافت سیگنال در ربات + <b>لینک یکبار مصرف برای ورود به کانال خصوصی VIP</b>\n\n"
         "🪙 <b>Azadi Coin (AZC) چیست؟</b>\n"
         "یک کوین داخلی است که با دعوت از دوستان تریدر خود می‌توانید آن را کسب کنید و به جای پول واقعی، با آن اشتراک VIP بخرید.\n\n"
+        "🔐 <b>امنیت کانال VIP:</b>\n"
+        "کانال VIP ما <b>کاملاً خصوصی</b> است. لینک دعوت شما فقط یکبار قابل استفاده است و دقیقاً تا زمان انقضای اشتراک اعتبار دارد.\n"
+        "در صورت خروج از کانال، باید اشتراک جدید خریداری کنید.\n\n"
         "💳 <b>پرداخت با پول واقعی:</b>\n"
-        "پس از انتخاب پلن، اطلاعات پرداخت (کارت/تتر) به شما نمایش داده می‌شود. پس از واریز، رسید را ارسال کنید تا ادمین ظرف چند دقیقه اشتراک شما را فعال کند.\n"
+        "پس از انتخاب پلن، اطلاعات پرداخت به شما نمایش داده می‌شود. پس از واریز، رسید را ارسال کنید تا ادمین ظرف چند دقیقه اشتراک شما را فعال کند.\n"
         "</blockquote>"
-        "⚖️ <b>قوانین و سلب مسئولیت:</b>\n"
+        "⚖️ <b>سلب مسئولیت:</b>\n"
         "• بازارهای مالی دارای ریسک هستند. مسئولیت سود و ضرر با خود شماست.\n"
-        "• اکانت‌های فیک و ربات از سیستم رفرال حذف خواهند شد.\n"
         "• پس از اتمام اشتراک، دسترسی شما به کانال VIP به صورت خودکار قطع خواهد شد."
     )
 
@@ -452,7 +516,7 @@ async def _require_membership(update: Update, bot) -> bool:
     uid = update.effective_user.id
     if await check_membership(bot, uid): return True
     await update.effective_message.reply_text(
-        "⛔️ <b>برای استفاده از ربات باید عضو کانال ما باشی!</b>\n\n👉 ابتدا عضو شو، سپس روی «✅ عضو شدم» بزن.",
+        "⛔️ <b>برای استفاده از ربات باید عضو کانال ما باشی!</b>",
         parse_mode=ParseMode.HTML, reply_markup=kb_join_required(),
     )
     return False
@@ -472,7 +536,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if not await check_membership(ctx.bot, uid):
                 ctx.user_data["pending_referral"] = ref_code
                 await ctx.bot.send_message(chat_id=uid,
-                    text="⛔️ <b>برای دریافت پاداش دعوت باید عضو کانال باشی!</b>\n\n👉 ابتدا عضو شو، سپس روی «✅ عضو شدم» بزن.",
+                    text="⛔️ <b>برای دریافت پاداش دعوت باید عضو کانال باشی!</b>",
                     parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
                 return
             
@@ -481,8 +545,6 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 try:
                     await ctx.bot.send_message(chat_id=ref_uid, parse_mode=ParseMode.HTML,
                         text=f"🎉 <b>یک دعوت موفق!</b>\n👤 کاربر جدید وارد ربات شد.\n⭐️ <b>+{REFERRAL_BONUS_AZC} AZC</b> به موجودی شما اضافه شد.")
-                    await ctx.bot.send_message(chat_id=uid, parse_mode=ParseMode.HTML,
-                        text=f"🎁 <b>خوش اومدی!</b> چون از لینک دعوت وارد شدی، سیستم ربات رو بهت معرفی می‌کنه.")
                 except Exception: pass
     
     if not await check_membership(ctx.bot, uid):
@@ -546,7 +608,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         u = cloud.ensure_user(uid)
         if data == "menu:home": await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         elif data == "menu:profile": await q.edit_message_text(build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
-        elif data == "menu:subscribe": await q.edit_message_text("💎 <b>پلن‌های اشتراک VIP Azadi</b>\n\nیک پلن را برای خرید انتخاب کنید:\n\n💡 <i>اشتراک ماهانه و سه‌ماهه شامل لینک عضویت در کانال VIP نیز می‌باشد.</i>", parse_mode=ParseMode.HTML, reply_markup=kb_subscribe())
+        elif data == "menu:subscribe": await q.edit_message_text(
+            "💎 <b>پلن‌های اشتراک VIP Azadi</b>\n\n"
+            "🔒 <b>نکته مهم:</b> کانال VIP <b>کاملاً خصوصی</b> است و فقط با لینک دعوت یکبار مصرف قابل ورود است.\n"
+            "💡 <i>اشتراک ماهانه و سه‌ماهه شامل لینک اختصاصی برای عضویت در کانال VIP نیز می‌باشد.</i>",
+            parse_mode=ParseMode.HTML, reply_markup=kb_subscribe())
         elif data == "menu:invite": 
             bot_username = (await ctx.bot.get_me()).username
             await q.edit_message_text(build_referral_text(uid, bot_username), parse_mode=ParseMode.HTML, reply_markup=kb_back())
@@ -556,26 +622,31 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # Buying Flow
     if data.startswith("buy:"):
-        _, method, plan = data.split(":")
+        try:
+            _, method, plan = data.split(":")
+        except Exception:
+            await q.answer(); return
+        
         await q.answer()
         u = cloud.get_user(uid)
+        duration_map = {"weekly": 7, "monthly": 30, "quarterly": 90}
+        days = duration_map[plan]
         
         if method == "azc":
-            price_map = {"weekly": (PLAN_WEEKLY_AZC, 7), "monthly": (PLAN_MONTHLY_AZC, 30), "quarterly": (PLAN_QUARTERLY_AZC, 90)}
-            price, days = price_map[plan]
+            price_map = {"weekly": PLAN_WEEKLY_AZC, "monthly": PLAN_MONTHLY_AZC, "quarterly": PLAN_QUARTERLY_AZC}
+            price = price_map[plan]
             if u.get("azc_balance", 0) >= price:
                 cloud.deduct_azc(uid, price)
-                cloud.activate_vip(uid, plan, days)
+                new_expiry = cloud.activate_vip(uid, plan, days)
                 cloud.save(force=True)
                 
-                msg = f"✅ <b>اشتراک {plan} با موفقیت فعال شد!</b>\n\n🪙 {price} AZC از حساب شما کسر شد.\n⏳ مدت زمان: {days} روز"
+                msg = f"✅ <b>اشتراک {plan} با موفقیت فعال شد!</b>\n\n🪙 {price} AZC از حساب شما کسر شد.\n⏳ مدت زمان: {days} روز\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}"
                 if plan in ("monthly", "quarterly") and VIP_CHANNEL_ID:
-                    try:
-                        link = await ctx.bot.create_chat_invite_link(chat_id=VIP_CHANNEL_ID, member_limit=1, expire_date=int((now_ir() + timedelta(days=days+1)).timestamp()))
-                        msg += f"\n\n🔗 <b>لینک عضویت در کانال VIP (یکبار مصرف):</b>\n{link.invite_link}"
-                    except Exception as e:
-                        log.error(f"Invite link generation failed: {e}")
-                        msg += f"\n\n⚠️ خطا در تولید لینک کانال. لطفاً به ادمین پیام دهید."
+                    link = await generate_vip_invite_link(ctx.bot, uid, plan, new_expiry)
+                    if link:
+                        msg += f"\n\n🔐 <b>لینک اختصاصی ورود به کانال VIP:</b>\n{link}\n\n⚠️ <i>این لینک یکبار مصرف است و تا {days} روز اعتبار دارد. در صورت خروج از کانال، باطل می‌شود.</i>"
+                    else:
+                        msg += "\n\n⚠️ خطا در تولید لینک کانال. لطفاً به ادمین پیام دهید."
                 
                 await q.edit_message_text(msg, parse_mode=ParseMode.HTML, reply_markup=kb_back())
             else:
@@ -583,8 +654,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         
         elif method == "fiat":
-            price_map = {"weekly": (PLAN_WEEKLY_USD, 7), "monthly": (PLAN_MONTHLY_USD, 30), "quarterly": (PLAN_QUARTERLY_USD, 90)}
-            price, days = price_map[plan]
+            price_map = {"weekly": PLAN_WEEKLY_USD, "monthly": PLAN_MONTHLY_USD, "quarterly": PLAN_QUARTERLY_USD}
+            price = price_map[plan]
             payment_id = cloud.create_pending_payment(uid, plan, price)
             
             ctx.user_data["awaiting"] = "payment_receipt"
@@ -640,34 +711,80 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for p in payments:
             u = cloud.get_user(p["uid"])
             name = u.get("full_name", "—") if u else "—"
-            text += f"• {name} | {p['plan']} | {p['amount_usd']}$\n"
+            text += f"• <b>{name}</b> | {p['plan']} | {p['amount_usd']}$\n"
             rows.append([
-                InlineKeyboardButton(f"✅ تایید {p['payment_id'][:6]}", callback_data=f"pay:approve:{p['payment_id']}"),
+                InlineKeyboardButton(f"✅ تایید", callback_data=f"pay:approve:{p['payment_id']}"),
                 InlineKeyboardButton(f"❌ رد", callback_data=f"pay:reject:{p['payment_id']}"),
             ])
+            rows.append([InlineKeyboardButton(f"👁 نمایش رسید {p['payment_id'][:6]}", callback_data=f"pay:view:{p['payment_id']}")])
         rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")])
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
         return
     
-    if data.startswith("pay:"):
-        _, action, payment_id = data.split(":")
+    if data.startswith("pay:view:"):
+        payment_id = data.split(":")[-1]
+        p = cloud.get_pending_payment(payment_id)
+        if not p:
+            await q.answer("یافت نشد", show_alert=True); return
+        
+        # نمایش اطلاعات پرداخت برای بررسی دستی (رسید در PV ادمین است)
+        await q.answer(f"رسید به PV شما ارسال شد", show_alert=True)
+        try:
+            await ctx.bot.send_message(
+                chat_id=uid,
+                text=f"📋 <b>جزئیات پرداخت {payment_id[:6]}</b>\n\n"
+                     f"👤 کاربر ID: <code>{p['uid']}</code>\n"
+                     f"📦 پلن: {p['plan']}\n"
+                     f"💰 مبلغ: {p['amount_usd']}$\n"
+                     f"📅 تاریخ: {p['created_at'][:19]}\n\n"
+                     f"💡 رسید این پرداخت در پیام‌های قبلی شما ارسال شده است.",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception: pass
+        return
+    
+    if data.startswith("pay:approve:"):
+        payment_id = data.split(":")[-1]
+        await q.answer("در حال پردازش...")
+        
+        # 🔧 رفع باگ: approve_payment حالا مقدار را برمی‌گرداند
+        result = cloud.approve_payment(payment_id)
+        cloud.save(force=True)
+        
+        if result:
+            p_uid, p_plan, new_expiry, days = result
+            await q.edit_message_text(
+                f"✅ <b>پرداخت تایید و اشتراک کاربر فعال شد.</b>\n\n"
+                f"👤 کاربر: <code>{p_uid}</code>\n"
+                f"📦 پلن: {p_plan}\n"
+                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]])
+            )
+            
+            # ارسال پیام تایید به کاربر + لینک VIP
+            try:
+                msg_to_user = f"🎉 <b>پرداخت شما تایید شد!</b>\n\nاشتراک {p_plan} شما فعال گردید.\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}"
+                
+                if p_plan in ("monthly", "quarterly") and VIP_CHANNEL_ID:
+                    link = await generate_vip_invite_link(ctx.bot, p_uid, p_plan, new_expiry)
+                    if link:
+                        msg_to_user += f"\n\n🔐 <b>لینک اختصاصی ورود به کانال VIP:</b>\n{link}\n\n⚠️ <i>این لینک یکبار مصرف است و تا پایان اشتراک اعتبار دارد.</i>"
+                
+                await ctx.bot.send_message(chat_id=p_uid, text=msg_to_user, parse_mode=ParseMode.HTML)
+            except Exception as e:
+                log.error(f"Failed to notify user {p_uid}: {e}")
+        else:
+            await q.edit_message_text("❌ خطا در تایید (پرداخت یافت نشد یا قبلاً پردازش شده).", parse_mode=ParseMode.HTML,
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+        return
+    
+    if data.startswith("pay:reject:"):
+        payment_id = data.split(":")[-1]
+        cloud.reject_payment(payment_id)
+        cloud.save(force=True)
         await q.answer()
-        if action == "approve":
-            if cloud.approve_payment(payment_id):
-                await q.edit_message_text("✅ پرداخت تایید و اشتراک کاربر فعال شد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
-                p = cloud.get_pending_payment(payment_id)
-                if p:
-                    try:
-                        await ctx.bot.send_message(chat_id=p["uid"], parse_mode=ParseMode.HTML,
-                            text=f"🎉 <b>پرداخت شما تایید شد!</b>\nاشتراک {p['plan']} شما فعال گردید.")
-                    except Exception: pass
-            else:
-                await q.edit_message_text("❌ خطا در تایید.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
-            cloud.save(force=True)
-        elif action == "reject":
-            cloud.reject_payment(payment_id)
-            cloud.save(force=True)
-            await q.edit_message_text("❌ پرداخت رد شد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+        await q.edit_message_text("❌ پرداخت رد شد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
         return
     
     if data.startswith("admin:users:"):
@@ -682,7 +799,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for u in users[start:end]:
             u_id = u.get("uid")
             name = u.get("full_name", "—")
-            text += f"• <b>{name}</b> | <code>{u_id}</code>\n"
+            vip_exp = u.get("vip_expiry", "—")
+            text += f"• <b>{name}</b> | <code>{u_id}</code>\n  VIP: {vip_exp[:10] if vip_exp and vip_exp != '—' else '—'}\n"
             rows.append([InlineKeyboardButton(f"🎁 +50 AZC به {name[:10]}", callback_data=f"admin:giveazc:{u_id}:50")])
         
         nav = []
@@ -709,7 +827,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await q.answer()
 
 # ══════════════════════════════════════════════════════════════════════
-# MESSAGE HANDLER (User Receipts & Admin Actions)
+# MESSAGE HANDLER
 # ══════════════════════════════════════════════════════════════════════
 async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -744,7 +862,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 log.error(f"Forwarding receipt failed: {e}")
         
-        await update.message.reply_text("✅ <b>رسید شما با موفقیت ثبت شد!</b>\n\nپس از بررسی توسط ادمین (معمولاً زیر ۱۰ دقیقه)، اشتراک شما فعال و به شما اطلاع‌رسانی خواهد شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        await update.message.reply_text("✅ <b>رسید شما با موفقیت ثبت شد!</b>\n\nپس از بررسی توسط ادمین، اشتراک شما فعال و به شما اطلاع‌رسانی خواهد شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         return
     
     if not is_admin(uid): return
@@ -778,9 +896,11 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     post = update.channel_post
     if not post: return
     
-    # اطمینان از اینکه پست از کانال VIP آمده
-    if VIP_CHANNEL_ID and str(post.chat.id) != str(VIP_CHANNEL_ID).replace("-100", "") and str(post.chat.id) != str(VIP_CHANNEL_ID):
-        return
+    if VIP_CHANNEL_ID:
+        post_chat_id = str(post.chat.id)
+        vip_id = str(VIP_CHANNEL_ID).replace("-100", "")
+        if post_chat_id != vip_id and post_chat_id != str(VIP_CHANNEL_ID):
+            return
     
     vip_users = cloud.get_vip_users()
     if not vip_users: return
@@ -789,7 +909,6 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for u in vip_users:
         uid = int(u.get("uid_str") or u.get("uid"))
         try:
-            # کپی کردن پست به پی‌وی کاربر
             await ctx.bot.copy_message(chat_id=uid, from_chat_id=post.chat.id, message_id=post.message_id)
             sent_count += 1
             await asyncio.sleep(0.03)
@@ -825,6 +944,12 @@ async def expiration_watcher(app: Application):
                         log.warning(f"Kick failed for {uid}: {e}")
                     cloud.mark_kick_attempted(uid)
                 
+                # Revoke کردن لینک دعوت قبلی کاربر (اگر وجود داشته باشد)
+                if u.get("last_link"):
+                    try:
+                        await app.bot.revoke_chat_invite_link(chat_id=VIP_CHANNEL_ID, invite_link=u["last_link"])
+                    except Exception: pass
+                
                 # هشدار به ادمین
                 for admin_id in ADMIN_IDS:
                     try:
@@ -856,7 +981,7 @@ async def on_startup(app: Application):
     except Exception: pass
     asyncio.create_task(expiration_watcher(app))
     asyncio.create_task(autosave_loop(app))
-    log.info("Azadi Signal Bot ready ✅")
+    log.info("Azadi Signal Bot v2.0 ready ✅")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -898,7 +1023,7 @@ def main():
         
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index(): return "🤖 Azadi Bot Alive!", 200
+        def index(): return "🤖 Azadi Bot v2.0 Alive!", 200
         @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
@@ -908,7 +1033,13 @@ def main():
             return "OK", 200
         
         async def setup():
-            await app.bot.set_webhook(url=webhook_url.rstrip("/") + "/" + BOT_TOKEN, allowed_updates=["message", "callback_query", "channel_post"], drop_pending_updates=True)
+            full_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+            await app.bot.set_webhook(
+                url=full_url,
+                allowed_updates=["message", "callback_query", "channel_post"],  # ✅ channel_post اضافه شد
+                drop_pending_updates=True
+            )
+            log.info(f"✅ Webhook set: {full_url[:60]}...")
         asyncio.run_coroutine_threadsafe(setup(), main_loop).result(timeout=30)
         
         async def init():
