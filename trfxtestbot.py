@@ -47,7 +47,7 @@ PORT = int(os.environ.get("PORT", 5000))
 _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "-1004450309103")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")  # آیدی کانال خصوصی VIP
 
 REFERRAL_BONUS_AZC = int(os.environ.get("REFERRAL_BONUS_AZC", 50))
