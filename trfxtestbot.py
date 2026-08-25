@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Azadi VIP Signal Bot — نسخه ۳.۰ (نهایی)
+Azadi VIP Signal Bot — نسخه ۵.۰ (ساده و نهایی)
 ════════════════════════════════════════════════════════════════════
-سیستم فروش اشتراک VIP با پرداخت واقعی + سیستم هشدار و مدیریت هوشمند انقضا
+سیستم فروش اشتراک VIP با هشدار انقضا و مدیریت هوشمند
 """
 import os
 import sys
 import time
-import json
-import signal
-import atexit
 import logging
 import hashlib
 import asyncio
 import threading
+import signal
+import atexit
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from typing import Optional
 from flask import Flask, request
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -27,9 +26,6 @@ from telegram.ext import (
     ContextTypes, filters, MessageHandler,
 )
 
-# ══════════════════════════════════════════════════════════════════════
-# LOGGING
-# ══════════════════════════════════════════════════════════════════════
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     level=logging.INFO, stream=sys.stdout,
@@ -47,11 +43,11 @@ ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")
 
-# 🧪 حالت تست
-TEST_MODE = True  # True = زمان‌ها به دقیقه محاسبه می‌شود
-
 PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 15))
 PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 40))
+
+PLAN_WEEKLY_DAYS = 0.0007
+PLAN_MONTHLY_DAYS = 0.0015
 
 PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
@@ -62,6 +58,9 @@ PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 BOT_USERNAME = ""
 ADMIN_PAGE_SIZE = 8
+
+# ⏱ زمان چک کردن انقضا (هر ۶۰ ثانیه)
+EXPIRY_CHECK_INTERVAL = 60
 
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
@@ -86,11 +85,14 @@ def mention_html(uid: int, name: str, username: str = "") -> str:
     if username: return f'<a href="https://t.me/{username}">{safe_name}</a>'
     return f'<a href="tg://user?id={uid}">{safe_name}</a>'
 
-def get_duration_days(plan: str) -> int:
-    """محاسبه مدت پلن با در نظر گرفتن TEST_MODE"""
-    if TEST_MODE:
-        return {"weekly": 0.0007, "monthly": 0.0014}.get(plan, 1)  # دقیقه!
-    return {"weekly": 7, "monthly": 30}.get(plan, 7)
+def get_vip_channel_id():
+    if not VIP_CHANNEL_ID: return None
+    s = str(VIP_CHANNEL_ID).strip()
+    if not s: return None
+    if s.lstrip("-").isdigit():
+        if not s.startswith("-100"): s = "-100" + s.lstrip("-")
+        return int(s)
+    return s
 
 # ══════════════════════════════════════════════════════════════════════
 # CLOUD STORAGE (MongoDB)
@@ -106,7 +108,6 @@ class CloudStorage:
     def __init__(self):
         self._uri = os.environ.get("MONGODB_URI", "")
         self._client = None
-        self._db = None
         self._collection = None
         self._lock = threading.Lock()
         self._dirty = False
@@ -139,6 +140,9 @@ class CloudStorage:
                     self._data.setdefault("pending_payments", {})
                     self._data.setdefault("archive_text", "📊 نتایج هفته جاری")
                     self._data.setdefault("stats", {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0})
+                    for k, u in self._data["users"].items():
+                        u.setdefault("warned_expired", False)
+                        u.setdefault("grace_until", None)
         except Exception as e:
             log.error(f"MongoDB load error: {e}")
     
@@ -164,14 +168,15 @@ class CloudStorage:
                     "vip_expiry": None, "vip_plan": None,
                     "signals_received": 0, "is_blocked": False,
                     "kick_attempted": False, "last_link": None,
-                    "warned_1d": False, "warned_expired": False,
-                    "grace_until": None,  # مهلت ادمین
+                    "warned_expired": False, "grace_until": None,
                 }
                 self._dirty = True
             else:
                 u = self._data["users"][key]
                 if username and u.get("username") != username: u["username"] = username; self._dirty = True
                 if full_name and u.get("full_name") != full_name: u["full_name"] = full_name; self._dirty = True
+                u.setdefault("warned_expired", False)
+                u.setdefault("grace_until", None)
             return dict(self._data["users"][key])
     
     def get_user(self, uid: int) -> Optional[dict]:
@@ -188,19 +193,15 @@ class CloudStorage:
             now = now_ir()
             result = []
             for k, u in self._data["users"].items():
-                # بررسی مهلت ادمین
                 if u.get("grace_until"):
                     try:
-                        grace_dt = datetime.fromisoformat(u["grace_until"])
-                        if grace_dt > now:
+                        if datetime.fromisoformat(u["grace_until"]) > now:
                             result.append({"uid_str": k, **u})
                             continue
                     except: pass
-                # بررسی VIP عادی
                 if u.get("vip_expiry"):
                     try:
-                        exp_dt = datetime.fromisoformat(u["vip_expiry"])
-                        if exp_dt > now:
+                        if datetime.fromisoformat(u["vip_expiry"]) > now:
                             result.append({"uid_str": k, **u})
                     except: pass
             return result
@@ -220,7 +221,6 @@ class CloudStorage:
         user["vip_plan"] = plan
         user["is_blocked"] = False
         user["kick_attempted"] = False
-        user["warned_1d"] = False
         user["warned_expired"] = False
         user["grace_until"] = None
         self._dirty = True
@@ -240,23 +240,7 @@ class CloudStorage:
                 self._data["users"][key]["last_link"] = link
                 self._dirty = True
     
-    # ═══════ سیستم هشدار و انقضا ═══════
-    def get_users_expiring_soon(self, hours: int = 24) -> list:
-        """کاربرانی که VIP آن‌ها در hours ساعت آینده منقضی می‌شود و هنوز هشدار نگرفته‌اند"""
-        with self._lock:
-            now = now_ir()
-            deadline = now + timedelta(hours=hours)
-            result = []
-            for k, u in self._data["users"].items():
-                if u.get("warned_1d") or u.get("is_blocked"): continue
-                if not u.get("vip_expiry"): continue
-                try:
-                    exp_dt = datetime.fromisoformat(u["vip_expiry"])
-                except: continue
-                if now < exp_dt <= deadline:
-                    result.append({"uid_str": k, **u})
-            return result
-    
+    # ═══════ سیستم انقضا ═══════
     def get_newly_expired_users(self) -> list:
         """کاربرانی که VIP آن‌ها تمام شده و هنوز هشدار انقضا نگرفته‌اند"""
         with self._lock:
@@ -265,7 +249,6 @@ class CloudStorage:
             for k, u in self._data["users"].items():
                 if u.get("warned_expired") or u.get("is_blocked"): continue
                 if not u.get("vip_expiry"): continue
-                # اگر در مهلت ادمین است، رد کن
                 if u.get("grace_until"):
                     try:
                         if datetime.fromisoformat(u["grace_until"]) > now:
@@ -278,13 +261,6 @@ class CloudStorage:
                     result.append({"uid_str": k, **u})
             return result
     
-    def mark_warned_1d(self, uid: int):
-        with self._lock:
-            k = str(uid)
-            if k in self._data["users"]:
-                self._data["users"][k]["warned_1d"] = True
-                self._dirty = True
-    
     def mark_warned_expired(self, uid: int):
         with self._lock:
             k = str(uid)
@@ -292,35 +268,19 @@ class CloudStorage:
                 self._data["users"][k]["warned_expired"] = True
                 self._dirty = True
     
-    def mark_user_blocked(self, uid: int):
-        with self._lock:
-            k = str(uid)
-            if k in self._data["users"]:
-                self._data["users"][k]["is_blocked"] = True
-                self._dirty = True
-    
-    def mark_kick_attempted(self, uid: int):
-        with self._lock:
-            k = str(uid)
-            if k in self._data["users"]:
-                self._data["users"][k]["kick_attempted"] = True
-                self._dirty = True
-    
     def grant_grace(self, uid: int, days: int = 3) -> Optional[datetime]:
-        """تمدید موقت توسط ادمین"""
         with self._lock:
             k = str(uid)
             u = self._data["users"].get(k)
             if not u: return None
             new_grace = now_ir() + timedelta(days=days)
             u["grace_until"] = new_grace.isoformat()
-            u["warned_expired"] = False  # ریست هشدار
+            u["warned_expired"] = False
             u["is_blocked"] = False
             self._dirty = True
             return new_grace
     
     def admin_kick_user(self, uid: int) -> bool:
-        """حذف کامل کاربر توسط ادمین"""
         with self._lock:
             k = str(uid)
             if k in self._data["users"]:
@@ -353,7 +313,10 @@ class CloudStorage:
             p["approved_at"] = now_ir().isoformat()
             u = self._data["users"].get(str(p["uid"]))
             if u:
-                days = get_duration_days(p["plan"])
+                if p["plan"] == "weekly":
+                    days = PLAN_WEEKLY_DAYS
+                else:
+                    days = PLAN_MONTHLY_DAYS
                 new_expiry = self._activate_vip_internal(u, p["plan"], days)
                 self._data["stats"]["total_revenue_usd"] = self._data["stats"].get("total_revenue_usd", 0) + p["amount_usd"]
                 self._data["stats"]["total_subscriptions"] = self._data["stats"].get("total_subscriptions", 0) + 1
@@ -391,15 +354,6 @@ cloud = CloudStorage()
 # ══════════════════════════════════════════════════════════════════════
 # VIP LINK GENERATION
 # ══════════════════════════════════════════════════════════════════════
-def get_vip_channel_id():
-    if not VIP_CHANNEL_ID: return None
-    s = str(VIP_CHANNEL_ID).strip()
-    if not s: return None
-    if s.lstrip("-").isdigit():
-        if not s.startswith("-100"): s = "-100" + s.lstrip("-")
-        return int(s)
-    return s
-
 async def generate_vip_invite_link(bot, uid: int, plan: str, expiry_dt: datetime) -> Optional[str]:
     vip_id = get_vip_channel_id()
     if not vip_id: return None
@@ -461,12 +415,9 @@ def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"menu:{dest}")]])
 
 def kb_subscribe() -> InlineKeyboardMarkup:
-    time_unit = "دقیقه" if TEST_MODE else "روز"
-    d_w = 1 if TEST_MODE else 7
-    d_m = 2 if TEST_MODE else 30
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🥉 هفتگی ({d_w} {time_unit}) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
-        [InlineKeyboardButton(f"🥈 ماهانه ({d_m} {time_unit}) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
+        [InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
+        [InlineKeyboardButton(f"🥈 ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
     ])
 
@@ -498,7 +449,6 @@ def build_profile_text(uid: int, u: dict) -> str:
     status = "🔴 غیرفعال"
     time_left = "—"
     
-    # بررسی مهلت ادمین
     grace_until = None
     if u.get("grace_until"):
         try:
@@ -525,8 +475,7 @@ def build_profile_text(uid: int, u: dict) -> str:
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     
     link_section = ""
-    if u.get("last_link") and (u.get("vip_expiry") or grace_until):
-        # لینک را اگر VIP فعال یا در مهلت است نشان بده
+    if u.get("last_link"):
         has_access = False
         if u.get("vip_expiry"):
             try:
@@ -534,7 +483,7 @@ def build_profile_text(uid: int, u: dict) -> str:
             except: pass
         if grace_until: has_access = True
         if has_access:
-            link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(یکبار مصرف — در صورت خروج باطل می‌شود)</i>\n"
+            link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(یکبار مصرف)</i>\n"
     
     return (
         f"👤 <b>پروفایل شما</b>\n\n"
@@ -552,16 +501,14 @@ def build_help_text() -> str:
         "💳 <b>نحوه خرید اشتراک:</b>\n"
         "۱. روی «خرید اشتراک» کلیک کنید\n"
         "۲. پلن مورد نظر را انتخاب کنید\n"
-        "۳. مبلغ را به کارت یا USDT واریز کنید\n"
-        "۴. رسید را در ربات ارسال کنید\n"
-        "۵. پس از تایید ادمین (معمولاً زیر ۱۰ دقیقه)، اشتراک فعال می‌شود\n\n"
+        "۳. مبلغ را واریز کنید\n"
+        "۴. رسید را ارسال کنید\n"
+        "۵. پس از تایید ادمین، اشتراک فعال می‌شود\n\n"
         "🔐 <b>امنیت کانال VIP:</b>\n"
-        "لینک دعوت شما یکبار مصرف است و تا پایان اشتراک اعتبار دارد. در صورت خروج، باید اشتراک جدید بخرید.\n\n"
-        "⏰ <b>یادآوری انقضا:</b>\n"
-        "۱ روز قبل از انقضا، هشداری برای تمدید دریافت خواهید کرد.\n"
+        "لینک دعوت شما یکبار مصرف است و تا پایان اشتراک اعتبار دارد.\n"
         "</blockquote>"
         "⚖️ <b>سلب مسئولیت:</b>\n"
-        "• بازارهای مالی دارای ریسک هستند. مسئولیت سود و ضرر با شماست.\n"
+        "• بازارهای مالی دارای ریسک هستند.\n"
     )
 
 # ══════════════════════════════════════════════════════════════════════
@@ -622,7 +569,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
     
-    # Main Menu
     if data.startswith("menu:"):
         await q.answer()
         u = cloud.ensure_user(uid)
@@ -631,14 +577,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif data == "menu:subscribe":
             await q.edit_message_text(
                 "💎 <b>پلن‌های اشتراک VIP Azadi</b>\n\n"
-                "🔒 <b>نکته مهم:</b> کانال VIP کاملاً خصوصی است و هر پلن شامل لینک اختصاصی یکبار مصرف می‌باشد.\n\n"
+                "🔒 کانال VIP کاملاً خصوصی است و هر پلن شامل لینک اختصاصی یکبار مصرف می‌باشد.\n\n"
                 "یک پلن را برای خرید یا تمدید انتخاب کنید:",
                 parse_mode=ParseMode.HTML, reply_markup=kb_subscribe())
         elif data == "menu:archive": await q.edit_message_text(cloud.get_archive_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
         elif data == "menu:help": await q.edit_message_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
         return
     
-    # Buying Flow
     if data.startswith("buy:fiat:"):
         try: plan = data.split(":")[-1]
         except: await q.answer(); return
@@ -653,7 +598,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"💳 <b>پرداخت برای پلن {plan}</b>\n\n"
             f"💰 مبلغ قابل پرداخت: <b>{price}$</b>\n\n"
             f"{PAYMENT_INFO}\n\n"
-            f"📸 <b>لطفاً عکس رسید واریزی یا هش تراکنش (TXID) را همینجا ارسال کنید:</b>\n"
+            f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
             f"(برای لغو /cancel بزنید)",
             parse_mode=ParseMode.HTML)
         return
@@ -685,7 +630,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "admin:edit_archive":
         ctx.user_data["awaiting"] = "admin_archive_text"
         await q.answer()
-        await q.edit_message_text("✍️ <b>ویرایش متن آرشیو</b>\n\nمتن جدید را ارسال کنید (HTML پشتیبانی می‌شود):\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        await q.edit_message_text("✍️ <b>ویرایش متن آرشیو</b>\n\nمتن جدید را ارسال کنید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
         return
     
     if data == "admin:pending_payments":
@@ -716,12 +661,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if result:
             p_uid, p_plan, new_expiry, days = result
             await q.edit_message_text(
-                f"✅ <b>پرداخت تایید و اشتراک کاربر فعال شد.</b>\n\n"
-                f"👤 کاربر: <code>{p_uid}</code>\n📦 پلن: {p_plan}\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}",
+                f"✅ <b>پرداخت تایید و اشتراک فعال شد.</b>\n\n"
+                f"👤 کاربر: <code>{p_uid}</code>\n📦 پلن: {p_plan}\n"
+                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n"
+                f"⏳ مدت: {days} روز",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
             try:
-                msg_to_user = f"🎉 <b>پرداخت شما تایید شد!</b>\n\nاشتراک {p_plan} شما فعال گردید.\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}"
+                msg_to_user = f"🎉 <b>پرداخت شما تایید شد!</b>\n\nاشتراک {p_plan} شما فعال گردید.\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n⏳ مدت: {days} روز"
                 if VIP_CHANNEL_ID:
                     link = await generate_vip_invite_link(ctx.bot, p_uid, p_plan, new_expiry)
                     if link:
@@ -742,23 +689,20 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("❌ پرداخت رد شد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
         return
     
-    # ═══════ Admin Kick / Extend ═══════
     if data.startswith("admin:kick:"):
         try: target_uid = int(data.split(":")[-1])
         except: await q.answer(); return
         await q.answer("در حال حذف کاربر...")
         cloud.admin_kick_user(target_uid)
-        # اخراج از کانال VIP
         vip_id = get_vip_channel_id()
         kick_result = "❌ ناموفق"
         if vip_id:
             try:
                 await ctx.bot.ban_chat_member(chat_id=vip_id, user_id=target_uid)
                 await ctx.bot.unban_chat_member(chat_id=vip_id, user_id=target_uid, only_if_banned=True)
-                kick_result = "✅ اخراج از کانال انجام شد"
+                kick_result = "✅ اخراج انجام شد"
             except Exception as e:
                 kick_result = f"❌ خطا: {str(e)[:60]}"
-        # Revoke link
         u = cloud.get_user(target_uid)
         if u and u.get("last_link") and vip_id:
             try: await ctx.bot.revoke_chat_invite_link(chat_id=vip_id, invite_link=u["last_link"])
@@ -766,7 +710,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         cloud.save(force=True)
         try:
             await q.edit_message_text(
-                f"✅ <b>کاربر با موفقیت حذف شد</b>\n\n👤 ID: <code>{target_uid}</code>\n⚠️ وضعیت: {kick_result}",
+                f"✅ <b>کاربر حذف شد</b>\n\n👤 ID: <code>{target_uid}</code>\n⚠️ وضعیت: {kick_result}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
         except: pass
@@ -781,14 +725,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if new_grace:
             try:
                 await q.edit_message_text(
-                    f"✅ <b>مهلت ۳ روزه به کاربر اعطا شد</b>\n\n👤 ID: <code>{target_uid}</code>\n📅 مهلت جدید: {new_grace.strftime('%Y-%m-%d %H:%M')}",
+                    f"✅ <b>مهلت ۳ روزه اعطا شد</b>\n\n👤 ID: <code>{target_uid}</code>\n📅 مهلت: {new_grace.strftime('%Y-%m-%d %H:%M')}",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
-                # اطلاع به کاربر
                 await ctx.bot.send_message(chat_id=target_uid, parse_mode=ParseMode.HTML,
-                    text=f"🎁 <b>هدیه ویژه از طرف تیم Azadi!</b>\n\nاشتراک شما به مدت <b>۳ روز</b> تمدید شد.\n"
-                         f"📅 مهلت جدید: {new_grace.strftime('%Y-%m-%d')}\n\n"
-                         f"برای تمدید کامل، از دکمه زیر استفاده کنید:")
+                    text=f"🎁 <b>هدیه ویژه از تیم Azadi!</b>\n\nاشتراک شما به مدت <b>۳ روز</b> تمدید شد.\n📅 مهلت: {new_grace.strftime('%Y-%m-%d')}")
             except Exception as e:
                 log.error(f"Extend notify failed: {e}")
         return
@@ -819,7 +760,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "admin:broadcast:prompt":
         ctx.user_data["awaiting"] = "broadcast_text"
         await q.answer()
-        await q.edit_message_text("📢 <b>ارسال همگانی</b>\n\nپیام خود را بنویسید (HTML پشتیبانی می‌شود):\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        await q.edit_message_text("📢 <b>ارسال همگانی</b>\n\nپیام خود را بنویسید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
         return
     
     await q.answer()
@@ -845,18 +786,18 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for admin_id in ADMIN_IDS:
             try:
                 await ctx.bot.send_message(chat_id=admin_id, parse_mode=ParseMode.HTML,
-                    text=f"🚨 <b>پرداخت جدید در انتظار تایید</b>\n\n"
+                    text=f"🚨 <b>پرداخت جدید</b>\n\n"
                          f"👤 کاربر: {mention_html(uid, update.effective_user.full_name, update.effective_user.username)}\n"
                          f"🆔 آیدی: <code>{uid}</code>\n"
-                         f"🧾 ID پرداخت: <code>{payment_id}</code>\n\n"
-                         f"👇 رسید ارسالی کاربر:")
+                         f"🧾 ID: <code>{payment_id}</code>\n\n"
+                         f"👇 رسید:")
                 if update.message.photo:
                     await ctx.bot.forward_message(chat_id=admin_id, from_chat_id=uid, message_id=update.message.message_id)
                 elif update.message.text:
                     await ctx.bot.send_message(chat_id=admin_id, text=update.message.text)
             except Exception as e:
-                log.error(f"Forwarding receipt failed: {e}")
-        await update.message.reply_text("✅ <b>رسید شما با موفقیت ثبت شد!</b>\n\nپس از بررسی توسط ادمین، اشتراک شما فعال می‌شود.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+                log.error(f"Forwarding failed: {e}")
+        await update.message.reply_text("✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی ادمین، اشتراک فعال می‌شود.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         return
     
     if not is_admin(uid): return
@@ -878,7 +819,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 sent += 1
                 await asyncio.sleep(0.05)
             except: pass
-        await update.message.reply_text(f"✅ ارسال همگانی پایان یافت.\nارسال موفق: {sent} از {len(users)}", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        await update.message.reply_text(f"✅ ارسال شد: {sent} از {len(users)}", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         return
 
 # ══════════════════════════════════════════════════════════════════════
@@ -889,9 +830,7 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not post: return
     vip_id = get_vip_channel_id()
     if vip_id:
-        post_chat_id = str(post.chat.id)
-        vip_str = str(vip_id).replace("-100", "")
-        if post_chat_id != vip_str and post_chat_id != str(vip_id):
+        if str(post.chat.id) != str(vip_id):
             return
     vip_users = cloud.get_vip_users()
     if not vip_users: return
@@ -903,7 +842,11 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             sent_count += 1
             await asyncio.sleep(0.05)
         except Forbidden:
-            cloud.mark_user_blocked(uid_int)
+            with cloud._lock:
+                k = str(uid_int)
+                if k in cloud._data["users"]:
+                    cloud._data["users"][k]["is_blocked"] = True
+                    cloud._dirty = True
         except Exception as e:
             log.warning(f"Signal forward failed for {uid_int}: {e}")
     cloud.increment_signals_sent(sent_count)
@@ -911,64 +854,46 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     log.info(f"📡 Signal forwarded to {sent_count} VIP users.")
 
 # ══════════════════════════════════════════════════════════════════════
-# EXPIRATION WATCHER (سیستم ۳ مرحله‌ای)
+# EXPIRATION WATCHER (فقط هشدار نهایی انقضا)
 # ══════════════════════════════════════════════════════════════════════
 async def expiration_watcher(app: Application):
-    """سیستم هوشمند ۳ مرحله‌ای برای مدیریت انقضای اشتراک"""
+    """بررسی دوره‌ای انقضای اشتراک‌ها"""
+    await asyncio.sleep(10)
+    
     while True:
         try:
-            sleep_time = 30 if TEST_MODE else 600  # هر 30 ثانیه (تست) یا 10 دقیقه (عادی)
-            await asyncio.sleep(sleep_time)
-            
-            # ═══ مرحله ۱: هشدار ۱ روز قبل از انقضا ═══
-            expiring_soon = cloud.get_users_expiring_soon(hours=24)
-            for u in expiring_soon:
-                uid_int = int(u.get("uid_str") or u.get("uid"))
-                try:
-                    exp_dt = datetime.fromisoformat(u["vip_expiry"])
-                    remaining = (exp_dt - now_ir()).total_seconds()
-                    plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
-                    plan_name = plan_names.get(u.get("vip_plan"), "VIP")
-                    
-                    await app.bot.send_message(chat_id=uid_int, parse_mode=ParseMode.HTML,
-                        text=f"⏰ <b>هشدار انقضای اشتراک</b>\n\n"
-                             f"👤 {u.get('full_name', '')} عزیز،\n"
-                             f"اشتراک <b>{plan_name}</b> شما تا <b>۱ روز آینده</b> منقضی می‌شود.\n\n"
-                             f"⏳ زمان باقی‌مانده: <b>{_fmt_timedelta(remaining)}</b>\n\n"
-                             f"🔴 در صورت عدم تمدید:\n"
-                             f"• دسترسی شما به کانال VIP قطع می‌شود\n"
-                             f"• سیگنال‌ها دیگر برای شما ارسال نمی‌شوند\n\n"
-                             f"💎 برای ادامه استفاده از خدمات، اشتراک خود را تمدید کنید:")
-                    cloud.mark_warned_1d(uid_int)
-                    cloud.save()
-                except Forbidden:
-                    cloud.mark_user_blocked(uid_int)
-                except Exception as e:
-                    log.warning(f"Warning 1d failed for {uid_int}: {e}")
-            
-            # ═══ مرحله ۲: لحظه انقضا - هشدار به کاربر ═══
+            now = now_ir()
             newly_expired = cloud.get_newly_expired_users()
+            
             for u in newly_expired:
                 uid_int = int(u.get("uid_str") or u.get("uid"))
-                cloud.mark_warned_expired(uid_int)
                 
-                # ارسال هشدار به کاربر با دکمه تمدید (حذف نمی‌شود!)
+                # ═══ ارسال هشدار به کاربر ═══
+                user_msg_sent = False
                 try:
                     await app.bot.send_message(chat_id=uid_int, parse_mode=ParseMode.HTML,
                         text=f"🔴 <b>اشتراک VIP شما به پایان رسید</b>\n\n"
                              f"👤 {u.get('full_name', '')} عزیز،\n"
                              f"متاسفانه اشتراک شما به پایان رسیده است.\n\n"
                              f"⚠️ از این لحظه:\n"
-                             f"• سیگنال‌های جدید برای شما ارسال نمی‌شوند\n"
-                             f"• دسترسی شما به کانال VIP محدود شده است\n\n"
-                             f"💎 برای بازگشت به جمع تریدرهای حرفه‌ای، همین حالا اشتراک خود را تمدید کنید:",
+                             f"• سیگنال‌های جدید ارسال نمی‌شوند\n"
+                             f"• دسترسی به کانال VIP محدود شده است\n\n"
+                             f"💎 برای بازگشت، اشتراک خود را تمدید کنید:",
                         reply_markup=kb_renew_now())
+                    user_msg_sent = True
+                    log.info(f"✅ Expiry warning sent to user {uid_int}")
                 except Forbidden:
-                    cloud.mark_user_blocked(uid_int)
+                    with cloud._lock:
+                        k = str(uid_int)
+                        if k in cloud._data["users"]:
+                            cloud._data["users"][k]["is_blocked"] = True
+                            cloud._dirty = True
+                    user_msg_sent = True
                 except Exception as e:
-                    log.warning(f"Expired warning failed for {uid_int}: {e}")
+                    log.error(f"❌ User expiry warning failed for {uid_int}: {e}")
                 
-                # ═══ مرحله ۳: هشدار به ادمین با دکمه‌های مدیریتی ═══
+                # ═══ ارسال هشدار به ادمین ═══
+                admin_msg_sent = False
                 for admin_id in ADMIN_IDS:
                     try:
                         name = u.get("full_name", "—")
@@ -976,25 +901,30 @@ async def expiration_watcher(app: Application):
                         admin_kb = InlineKeyboardMarkup([
                             [
                                 InlineKeyboardButton("🗑 حذف کاربر", callback_data=f"admin:kick:{uid_int}"),
-                                InlineKeyboardButton("🎁 تمدید ۳ روزه (Grace)", callback_data=f"admin:extend:{uid_int}"),
+                                InlineKeyboardButton("🎁 تمدید ۳ روزه", callback_data=f"admin:extend:{uid_int}"),
                             ],
-                            [InlineKeyboardButton("👁 مشاهده پروفایل", url=f"tg://user?id={uid_int}")],
                         ])
                         await app.bot.send_message(chat_id=admin_id, parse_mode=ParseMode.HTML,
                             text=f"🚨 <b>اشتراک کاربر به پایان رسید!</b>\n\n"
                                  f"👤 نام: {mention_html(uid_int, name, username)}\n"
                                  f"🆔 آیدی: <code>{uid_int}</code>\n"
                                  f"📦 پلن قبلی: {u.get('vip_plan', 'VIP')}\n\n"
-                                 f"⚠️ کاربر به صورت خودکار حذف نشده است.\n"
-                                 f"👇 یکی از گزینه‌های زیر را انتخاب کنید:",
+                                 f"⚠️ کاربر حذف نشده است. تصمیم بگیرید:",
                             reply_markup=admin_kb)
+                        admin_msg_sent = True
+                        log.info(f"✅ Admin notification sent for {uid_int}")
                     except Exception as e:
-                        log.warning(f"Admin notification failed: {e}")
+                        log.error(f"❌ Admin notification failed: {e}")
                 
-                cloud.save(force=True)
+                if user_msg_sent or admin_msg_sent:
+                    cloud.mark_warned_expired(uid_int)
+                    cloud.save(force=True)
             
-        except asyncio.CancelledError: break
-        except Exception as e: log.error(f"expiration_watcher error: {e}")
+            await asyncio.sleep(EXPIRY_CHECK_INTERVAL)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.error(f"expiration_watcher error: {e}")
 
 async def autosave_loop(app: Application):
     while True:
@@ -1012,7 +942,7 @@ async def on_startup(app: Application):
     except: pass
     asyncio.create_task(expiration_watcher(app))
     asyncio.create_task(autosave_loop(app))
-    log.info("Azadi Signal Bot v3.0 ready ✅")
+    log.info("Azadi Signal Bot v5.0 ready ✅")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1052,7 +982,7 @@ def main():
         
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index(): return "🤖 Azadi Bot v3.0 Alive!", 200
+        def index(): return "🤖 Azadi Bot v5.0 Alive!", 200
         @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
