@@ -89,7 +89,7 @@ def mention_html(uid: int, name: str, username: str = "") -> str:
 def get_duration_days(plan: str) -> int:
     """محاسبه مدت پلن با در نظر گرفتن TEST_MODE"""
     if TEST_MODE:
-        return {"weekly": 1, "monthly": 2}.get(plan, 1)  # دقیقه!
+        return {"weekly": 0.0007, "monthly": 0.0014}.get(plan, 1)  # دقیقه!
     return {"weekly": 7, "monthly": 30}.get(plan, 7)
 
 # ══════════════════════════════════════════════════════════════════════
