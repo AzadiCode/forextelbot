@@ -303,7 +303,7 @@ class CloudStorage:
             p["status"] = "approved"
             p["approved_at"] = now_ir().isoformat()
             
-            duration_map = {"weekly": 7, "monthly": 30, "quarterly": 90}
+            duration_map = {"weekly": 0.0007, "monthly": 30, "quarterly": 90}
             u = self._data["users"].get(str(p["uid"]))
             if u:
                 new_expiry = self._activate_vip_internal(
@@ -629,7 +629,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         
         await q.answer()
         u = cloud.get_user(uid)
-        duration_map = {"weekly": 7, "monthly": 30, "quarterly": 90}
+        duration_map = {"weekly": 0.0007, "monthly": 30, "quarterly": 90}
         days = duration_map[plan]
         
         if method == "azc":
@@ -928,7 +928,7 @@ async def expiration_watcher(app: Application):
     """بررسی اشتراک‌های منقضی شده و اخراج از کانال VIP"""
     while True:
         try:
-            await asyncio.sleep(600)  # هر 10 دقیقه
+            await asyncio.sleep(10)  # هر 10 دقیقه
             expired = cloud.get_expired_vip_users()
             for u in expired:
                 uid = int(u.get("uid_str") or u.get("uid"))
