@@ -87,13 +87,13 @@ PHASE1_GROWTH_MAX = 2.4     # ضریب رشد حداکثر
 
 # فاز دوم: متوسط (Reaction های 4-6)
 PHASE2_END = 6
-PHASE2_GROWTH_MIN = 1.5
-PHASE2_GROWTH_MAX = 2.1
+PHASE2_GROWTH_MIN = 1.3
+PHASE2_GROWTH_MAX = 1.9
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 18
-PHASE3_GROWTH_MIN = 0.9
-PHASE3_GROWTH_MAX = 1.2
+PHASE3_GROWTH_MIN = 0.7
+PHASE3_GROWTH_MAX = 1.0
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
 PHASE4_GROWTH_MIN = 0.2
