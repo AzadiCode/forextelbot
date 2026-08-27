@@ -43,6 +43,17 @@ BOT_TOKENS = [
     "8812675366:AAGc3mEFghotDEmCI1F5FmDsDqg7bhAnLJM",
     "8256189527:AAHkrXQ_2-YQpf8VxLzqcVSZ4er3hXnDNGw",
     "8686837562:AAHUx-YR3IBDBbfF2KcyXNl2rViuFzN9MSg",
+    "8495660126:AAEkSKTTCaTxxp-7J_qaXwQIv61ItPl918M"
+    "8939935419:AAGHiZ3UPefkI0Od9NCKHGmVE95wjH0UxD4"
+    "8892889528:AAH82IXcDBROGycWeQNfWe7h30odKxj8mxA"
+    "8941229229:AAHoJIs2ZMr_7bpvtQoEx-OlOfgsHpw4F1w"
+    "8768512582:AAHkCifiROCZXlqPzHtA0MW69M-7RxCtdUA"
+    "8387542329:AAHNkOaRd4D5VKZWKIbNhnPmERv8ia1dxeE"
+    "8911189546:AAHJDYtsNZmc-UGi6PH2AYIMF1ePS-Q0Y14"
+    "8924052979:AAFU_IoHeo-j3JMqxWI0HPgYGOZVApRSGKw"
+    "8938358915:AAH1otpQqtZNZwOb9QLskBIfOeEGxc3IJu4"
+    "8509500523:AAEFW62GxMFqlmSvyd46HqyI3Htwo-n_ZbU"
+
 
 
 ]
@@ -59,7 +70,7 @@ log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_T
 # ══════════════════════════════════════════════════════════════════════
 # 🎲 Reactions و تنظیمات
 # ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["❤️", "❤️", "❤️", "🔥", "❤️", "❤️", "❤️", "❤️", "👍", "❤️", "❤️", "❤️", "👏", "❤️", "❤️", "❤️", "💯", "❤️", "❤️", "❤️", "🙏", "❤️", "❤️", "❤️", "❤️", "🏆", "❤️", "❤️","❤️"]
+REACTIONS = ["❤️", "❤️", "❤️", "🔥", "❤️", "❤️", "❤️", "❤️", "👍", "❤️", "❤️", "❤️", "👏", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "🙏", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️","❤️"]
 
 # تنظیمات اولیه
 INITIAL_DELAY_MIN = 15       # حداقل تاخیر اولیه قبل از شروع Reaction ها
@@ -71,26 +82,26 @@ MAX_RETRIES = 3
 # ══════════════════════════════════════════════════════════════════════
 # فاز اول: سریع (Reaction های 1-3)
 PHASE1_END = 3              # تا Reaction سوم
-PHASE1_GROWTH_MIN = 2.0     # ضریب رشد حداقل
-PHASE1_GROWTH_MAX = 2.2     # ضریب رشد حداکثر
+PHASE1_GROWTH_MIN = 2.1     # ضریب رشد حداقل
+PHASE1_GROWTH_MAX = 2.4     # ضریب رشد حداکثر
 
 # فاز دوم: متوسط (Reaction های 4-6)
 PHASE2_END = 6
-PHASE2_GROWTH_MIN = 1.3
-PHASE2_GROWTH_MAX = 2.0
+PHASE2_GROWTH_MIN = 1.5
+PHASE2_GROWTH_MAX = 2.1
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 12
-PHASE3_GROWTH_MIN = 1.08
-PHASE3_GROWTH_MAX = 1.2
+PHASE3_GROWTH_MIN = 1.1
+PHASE3_GROWTH_MAX = 1.4
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
-PHASE4_GROWTH_MIN = 1.01
-PHASE4_GROWTH_MAX = 1.03
+PHASE4_GROWTH_MIN = 1.02
+PHASE4_GROWTH_MAX = 1.05
 
 # نویز رندوم برای طبیعی‌تر شدن (±20%)
-NOISE_MIN = 0.6
-NOISE_MAX = 1.1
+NOISE_MIN = 0.8
+NOISE_MAX = 1.25
 
 # اولین Reaction (سریع)
 FIRST_REACTION_MIN = 10
