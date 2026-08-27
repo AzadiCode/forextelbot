@@ -96,8 +96,8 @@ PHASE3_GROWTH_MIN = 1.1
 PHASE3_GROWTH_MAX = 1.4
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
-PHASE4_GROWTH_MIN = 1.02
-PHASE4_GROWTH_MAX = 1.05
+PHASE4_GROWTH_MIN = 0.5
+PHASE4_GROWTH_MAX = 0.5
 
 # نویز رندوم برای طبیعی‌تر شدن (±20%)
 NOISE_MIN = 0.8
