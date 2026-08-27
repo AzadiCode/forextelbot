@@ -92,8 +92,8 @@ PHASE2_GROWTH_MAX = 1.9
 
 # فاز سوم: کند (Reaction های 7-12)
 PHASE3_END = 18
-PHASE3_GROWTH_MIN = 0.7
-PHASE3_GROWTH_MAX = 1.0
+PHASE3_GROWTH_MIN = 0.5
+PHASE3_GROWTH_MAX = 0.8
 
 # فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
 PHASE4_GROWTH_MIN = 0.2
