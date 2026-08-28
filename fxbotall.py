@@ -1,593 +1,1033 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Random Reaction Bot v5 - Butterfly Curve Natural Reactions
+Azadi VIP Signal Bot — نسخه ۵.۰ (ساده و نهایی)
 ════════════════════════════════════════════════════════════════════
-سیستم Reaction با منحنی تصاعدی طبیعی (سریع → متوسط → کند)
+سیستم فروش اشتراک VIP با هشدار انقضا و مدیریت هوشمند
 """
-
 import os
-import re
-import asyncio
-import random
-import threading
+import sys
+import time
 import logging
-import json
+import hashlib
+import asyncio
+import threading
+import signal
+import atexit
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from flask import Flask, request
-from telegram import Bot, ReactionTypeEmoji, Update
-from telegram.ext import Application, MessageHandler, CommandHandler, filters
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.error import BadRequest, Forbidden
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, filters, MessageHandler,
+)
 
 logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    level=logging.INFO
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    level=logging.INFO, stream=sys.stdout,
 )
-log = logging.getLogger("RandomReactionBot")
+log = logging.getLogger("AzadiSignalBot")
 
 # ══════════════════════════════════════════════════════════════════════
-# 🔑 توکن‌ها
+# CONFIG
 # ══════════════════════════════════════════════════════════════════════
-BOT_TOKENS = [
-    # 🎯 ربات اصلی (باید ادمین کانال باشد)
-    "8504586965:AAH0QZ8QlnofhNE33gNDEQsjym6Ey-CDpSY",   # TOKEN_1 - ربات اصلی
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8972429048:AAE57wdflfIRxyiWLjBMol10WZYK_IqfSds")
+PORT = int(os.environ.get("PORT", 5000))
+_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
+ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
+
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")
+
+PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 15))
+PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 40))
+
+PLAN_WEEKLY_DAYS = 0.0007
+PLAN_MONTHLY_DAYS = 0.0015
+
+PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
+    "💳 <b>اطلاعات پرداخت:</b>\n"
+    "کارت: 6037-9918-XXXX-XXXX\n"
+    "به نام: Azadi Trading\n\n"
+    "یا USDT (TRC20): TXxxxxxxxxxxxxxxxxxxxxxxx")
+
+IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+BOT_USERNAME = ""
+ADMIN_PAGE_SIZE = 8
+
+# ⏱ زمان چک کردن انقضا (هر ۶۰ ثانیه)
+EXPIRY_CHECK_INTERVAL = 60
+
+def now_ir() -> datetime:
+    return datetime.now(IRAN_TZ)
+
+def is_admin(uid: int) -> bool:
+    return uid in ADMIN_IDS
+
+def _fmt_timedelta(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    parts = []
+    if d: parts.append(f"{d} روز")
+    if h or d: parts.append(f"{h} ساعت")
+    parts.append(f"{m} دقیقه")
+    return " و ".join(parts) if parts else "کمتر از یک دقیقه"
+
+def mention_html(uid: int, name: str, username: str = "") -> str:
+    safe_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if not safe_name.strip(): safe_name = f"کاربر {uid}"
+    if username: return f'<a href="https://t.me/{username}">{safe_name}</a>'
+    return f'<a href="tg://user?id={uid}">{safe_name}</a>'
+
+def get_vip_channel_id():
+    if not VIP_CHANNEL_ID: return None
+    s = str(VIP_CHANNEL_ID).strip()
+    if not s: return None
+    if s.lstrip("-").isdigit():
+        if not s.startswith("-100"): s = "-100" + s.lstrip("-")
+        return int(s)
+    return s
+
+# ══════════════════════════════════════════════════════════════════════
+# CLOUD STORAGE (MongoDB)
+# ══════════════════════════════════════════════════════════════════════
+try:
+    from pymongo import MongoClient
+    MONGODB_AVAILABLE = True
+except ImportError:
+    MONGODB_AVAILABLE = False
+    log.critical("pymongo نصب نیست!")
+
+class CloudStorage:
+    def __init__(self):
+        self._uri = os.environ.get("MONGODB_URI", "")
+        self._client = None
+        self._collection = None
+        self._lock = threading.Lock()
+        self._dirty = False
+        self._data = {
+            "users": {},
+            "pending_payments": {},
+            "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط ادمین ثبت نشده است.",
+            "stats": {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0},
+            "last_updated": None,
+        }
+        if self._uri and MONGODB_AVAILABLE:
+            try:
+                self._client = MongoClient(self._uri, serverSelectionTimeoutMS=10000, connectTimeoutMS=10000)
+                self._client.admin.command('ping')
+                self._db = self._client.get_database()
+                self._collection = self._db["azadi_bot_data"]
+                log.info("MongoDB: اتصال برقرار شد ✅")
+            except Exception as e:
+                log.error(f"MongoDB اتصال ناموفق: {e}")
     
-    # 🤖 ربات‌های واکنش‌دهنده (فقط عضو کانال باشند)
-    "8977670673:AAHmUCp4I9K-LZbui0DS17zvTyaYt4CSwfw",   # TOKEN_2
-    "7276868854:AAEYeHXcvwjN35sq_CcBWewGVmQuXqQcgm8",   # TOKEN_3
-    "8501873739:AAEVgQQ2vKiZhCtViE-NfzRe7RtCA813MCM",   # TOKEN_4
-    "8617939621:AAG0P6rl6WCX4nWnD0X3mnmZ-ii9cx_u3qw",   # TOKEN_5
-    "8938641269:AAFHeeKMr1zWKIXacn8FiNcx6fhz2DepYF0",   # TOKEN_6
-    "8812461262:AAGb_9XP38sQUpcKe5JJmSz0vp_6lArrguI",   # TOKEN_7
-    "8614754345:AAFnMGqqzty-vR7SEmjN4NY0U-EhI0rhYlo",   # TOKEN_8
-    "8899642552:AAGChO_p_UPtHbOftUoBZzBLm-lFs5dxIqo",   # TOKEN_9
-    "8880007544:AAGE-w6fZrnsT2oeIlXKyZWX0dKZHcJUqtA",
-    "8812675366:AAGc3mEFghotDEmCI1F5FmDsDqg7bhAnLJM",
-    "8256189527:AAHkrXQ_2-YQpf8VxLzqcVSZ4er3hXnDNGw",
-    "8686837562:AAHUx-YR3IBDBbfF2KcyXNl2rViuFzN9MSg",
-    "8495660126:AAEkSKTTCaTxxp-7J_qaXwQIv61ItPl918M",
-    "8939935419:AAGHiZ3UPefkI0Od9NCKHGmVE95wjH0UxD4",
-    "8892889528:AAH82IXcDBROGycWeQNfWe7h30odKxj8mxA",
-    "8941229229:AAHoJIs2ZMr_7bpvtQoEx-OlOfgsHpw4F1w",
-    "8768512582:AAHkCifiROCZXlqPzHtA0MW69M-7RxCtdUA",
-    "8387542329:AAHNkOaRd4D5VKZWKIbNhnPmERv8ia1dxeE",
-    "8911189546:AAHJDYtsNZmc-UGi6PH2AYIMF1ePS-Q0Y14",
-    "8924052979:AAFU_IoHeo-j3JMqxWI0HPgYGOZVApRSGKw",
-    "8938358915:AAH1otpQqtZNZwOb9QLskBIfOeEGxc3IJu4",
-    "8509500523:AAEFW62GxMFqlmSvyd46HqyI3Htwo-n_ZbU"
-
-
-
-]
-for i in range(1, 201):
-    token = os.environ.get(f"TOKEN_{i}", "")
-    if token and token.strip():
-        BOT_TOKENS.append(token.strip())
-
-if not BOT_TOKENS:
-    BOT_TOKENS = []
-
-log.info(f"📋 تعداد توکن‌های بارگذاری شده: {len(BOT_TOKENS)}")
-
-# ══════════════════════════════════════════════════════════════════════
-# 🎲 Reactions و تنظیمات
-# ══════════════════════════════════════════════════════════════════════
-REACTIONS = ["❤️", "❤️", "❤️", "🔥", "❤️", "❤️", "❤️", "❤️", "👍", "❤️", "❤️", "❤️", "👏", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️", "🙏", "❤️", "❤️", "❤️", "❤️", "❤️", "❤️","❤️"]
-
-# تنظیمات اولیه
-INITIAL_DELAY_MIN = 15       # حداقل تاخیر اولیه قبل از شروع Reaction ها
-INITIAL_DELAY_MAX = 25       # حداکثر تاخیر اولیه
-MAX_RETRIES = 3
-
-# ══════════════════════════════════════════════════════════════════════
-# 🦋 تنظیمات منحنی تصاعدی (Butterfly Curve)
-# ══════════════════════════════════════════════════════════════════════
-# فاز اول: سریع (Reaction های 1-3)
-PHASE1_END = 3              # تا Reaction سوم
-PHASE1_GROWTH_MIN = 1.7     # ضریب رشد حداقل
-PHASE1_GROWTH_MAX = 2.2     # ضریب رشد حداکثر
-
-# فاز دوم: متوسط (Reaction های 4-6)
-PHASE2_END = 10
-PHASE2_GROWTH_MIN = 1.3
-PHASE2_GROWTH_MAX = 1.7
-
-# فاز سوم: کند (Reaction های 7-12)
-PHASE3_END = 17
-PHASE3_GROWTH_MIN = 0.7
-PHASE3_GROWTH_MAX = 1
-
-# فاز چهارم: خیلی کند (Reaction های 13 به بعد) - Proportional
-PHASE4_GROWTH_MIN = 0.2
-PHASE4_GROWTH_MAX = 0.3
-
-# نویز رندوم برای طبیعی‌تر شدن (±20%)
-NOISE_MIN = 0.8
-NOISE_MAX = 1.25
-
-# اولین Reaction (سریع)
-FIRST_REACTION_MIN = 5
-FIRST_REACTION_MAX = 10
-
-_bot_cache = {}
-_stats = {
-    "updates_received": 0,
-    "forwards_processed": 0,
-    "reactions_sent": 0,
-    "errors": 0,
-}
-
-
-def get_bot(token):
-    if token not in _bot_cache:
-        _bot_cache[token] = Bot(token)
-    return _bot_cache[token]
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 🦋 محاسبه زمان‌های Reaction با منحنی تصاعدی
-# ══════════════════════════════════════════════════════════════════════
-def calculate_butterfly_delays(total_bots):
-    """
-    محاسبه زمان‌های Reaction با منحنی butterfly/exponential
-    
-    منحنی رشد:
-    - فاز 1 (Reaction 1-3): سریع (ضریب 2.3-3.0)
-    - فاز 2 (Reaction 4-6): متوسط (ضریب 1.8-2.3)
-    - فاز 3 (Reaction 7-12): کند (ضریب 1.3-1.7)
-    - فاز 4 (Reaction 13+): خیلی کند (ضریب 1.1-1.35)
-    
-    مثال برای 10 ربات:
-    Reaction 1: ~5 ثانیه
-    Reaction 2: ~13 ثانیه
-    Reaction 3: ~35 ثانیه
-    Reaction 4: ~70 ثانیه
-    Reaction 5: ~150 ثانیه
-    Reaction 6: ~270 ثانیه
-    Reaction 7: ~400 ثانیه
-    Reaction 8: ~580 ثانیه
-    Reaction 9: ~800 ثانیه
-    Reaction 10: ~1050 ثانیه
-    """
-    delays = []
-    
-    # اولین Reaction: سریع (3-7 ثانیه)
-    current_delay = random.uniform(FIRST_REACTION_MIN, FIRST_REACTION_MAX)
-    
-    for i in range(total_bots):
-        # اضافه کردن noise رندوم برای طبیعی‌تر شدن
-        noise = random.uniform(NOISE_MIN, NOISE_MAX)
-        delay_with_noise = current_delay * noise
-        
-        # حداقل 2 ثانیه
-        final_delay = max(2, delay_with_noise)
-        delays.append(final_delay)
-        
-        # محاسبه ضریب رشد برای Reaction بعدی
-        if i < PHASE1_END - 1:
-            # فاز اول: سریع
-            growth = random.uniform(PHASE1_GROWTH_MIN, PHASE1_GROWTH_MAX)
-        elif i < PHASE2_END - 1:
-            # فاز دوم: متوسط
-            growth = random.uniform(PHASE2_GROWTH_MIN, PHASE2_GROWTH_MAX)
-        elif i < PHASE3_END - 1:
-            # فاز سوم: کند
-            growth = random.uniform(PHASE3_GROWTH_MIN, PHASE3_GROWTH_MAX)
-        else:
-            # فاز چهارم: خیلی کند (proportional)
-            growth = random.uniform(PHASE4_GROWTH_MIN, PHASE4_GROWTH_MAX)
-        
-        current_delay *= growth
-    
-    return delays
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 🚀 Reaction با Retry هوشمند
-# ══════════════════════════════════════════════════════════════════════
-async def try_reaction(bot, chat_id, message_id, reaction, bot_index):
-    for attempt in range(MAX_RETRIES):
+    def load(self):
+        if not self._uri or self._collection is None: return
         try:
-            await bot.set_message_reaction(
-                chat_id=chat_id,
-                message_id=message_id,
-                reaction=[ReactionTypeEmoji(emoji=reaction)],
-                is_big=False
-            )
-            _stats["reactions_sent"] += 1
-            return True
+            doc = self._collection.find_one({"_id": "main"})
+            if doc:
+                with self._lock:
+                    doc.pop("_id", None)
+                    for k, v in doc.items(): self._data[k] = v
+                    self._data.setdefault("users", {})
+                    self._data.setdefault("pending_payments", {})
+                    self._data.setdefault("archive_text", "📊 نتایج هفته جاری")
+                    self._data.setdefault("stats", {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0})
+                    for k, u in self._data["users"].items():
+                        u.setdefault("warned_expired", False)
+                        u.setdefault("grace_until", None)
         except Exception as e:
-            error_msg = str(e).lower()
-            
-            if "retry_after" in error_msg or "too many" in error_msg:
-                match = re.search(r'retry after (\d+)', error_msg)
-                wait = int(match.group(1)) + random.uniform(1, 3) if match else random.uniform(8, 20)
-                log.warning(f"⏳ Bot {bot_index}: Rate limit، صبر {wait:.1f}s")
-                await asyncio.sleep(wait)
-                continue
-            
-            if any(err in error_msg for err in [
-                "message_id_invalid", "chat not found",
-                "message not found", "bot was blocked",
-                "not authorized", "bot can't"
-            ]):
-                log.warning(f"❌ Bot {bot_index}: {str(e)[:80]}")
-                _stats["errors"] += 1
-                return False
-            
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(random.uniform(1.5, 4))
-                continue
-            
-            log.warning(f"❌ Bot {bot_index}: {str(e)[:80]}")
-            _stats["errors"] += 1
+            log.error(f"MongoDB load error: {e}")
+    
+    def save(self, force: bool = False):
+        if not self._uri or self._collection is None: return
+        if not force and not self._dirty: return
+        with self._lock:
+            self._data["last_updated"] = now_ir().isoformat()
+            payload = {"_id": "main"}
+            payload.update(self._data)
+            try:
+                self._collection.replace_one({"_id": "main"}, payload, upsert=True)
+                self._dirty = False
+            except Exception as e:
+                log.error(f"MongoDB save error: {e}")
+    
+    def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> dict:
+        key = str(uid)
+        with self._lock:
+            if key not in self._data["users"]:
+                self._data["users"][key] = {
+                    "uid": uid, "username": username or "", "full_name": full_name or "",
+                    "vip_expiry": None, "vip_plan": None,
+                    "signals_received": 0, "is_blocked": False,
+                    "kick_attempted": False, "last_link": None,
+                    "warned_expired": False, "grace_until": None,
+                }
+                self._dirty = True
+            else:
+                u = self._data["users"][key]
+                if username and u.get("username") != username: u["username"] = username; self._dirty = True
+                if full_name and u.get("full_name") != full_name: u["full_name"] = full_name; self._dirty = True
+                u.setdefault("warned_expired", False)
+                u.setdefault("grace_until", None)
+            return dict(self._data["users"][key])
+    
+    def get_user(self, uid: int) -> Optional[dict]:
+        with self._lock:
+            u = self._data["users"].get(str(uid))
+            return dict(u) if u else None
+    
+    def get_all_users(self) -> list:
+        with self._lock: return [{"uid_str": k, **v} for k, v in self._data["users"].items()]
+    
+    def get_vip_users(self) -> list:
+        """کاربرانی که VIP فعال دارند یا در مهلت ادمین هستند"""
+        with self._lock:
+            now = now_ir()
+            result = []
+            for k, u in self._data["users"].items():
+                if u.get("grace_until"):
+                    try:
+                        if datetime.fromisoformat(u["grace_until"]) > now:
+                            result.append({"uid_str": k, **u})
+                            continue
+                    except: pass
+                if u.get("vip_expiry"):
+                    try:
+                        if datetime.fromisoformat(u["vip_expiry"]) > now:
+                            result.append({"uid_str": k, **u})
+                    except: pass
+            return result
+    
+    def _activate_vip_internal(self, user: dict, plan: str, duration_days: int) -> datetime:
+        if user.get("vip_expiry"):
+            try:
+                current = datetime.fromisoformat(user["vip_expiry"])
+                base = current if current > now_ir() else now_ir()
+            except:
+                base = now_ir()
+        else:
+            base = now_ir()
+        
+        new_expiry = base + timedelta(days=duration_days)
+        user["vip_expiry"] = new_expiry.isoformat()
+        user["vip_plan"] = plan
+        user["is_blocked"] = False
+        user["kick_attempted"] = False
+        user["warned_expired"] = False
+        user["grace_until"] = None
+        self._dirty = True
+        return new_expiry
+    
+    def activate_vip(self, uid: int, plan: str, duration_days: int) -> Optional[datetime]:
+        key = str(uid)
+        with self._lock:
+            u = self._data["users"].get(key)
+            if not u: return None
+            return self._activate_vip_internal(u, plan, duration_days)
+    
+    def save_invite_link(self, uid: int, link: str):
+        key = str(uid)
+        with self._lock:
+            if key in self._data["users"]:
+                self._data["users"][key]["last_link"] = link
+                self._dirty = True
+    
+    # ═══════ سیستم انقضا ═══════
+    def get_newly_expired_users(self) -> list:
+        """کاربرانی که VIP آن‌ها تمام شده و هنوز هشدار انقضا نگرفته‌اند"""
+        with self._lock:
+            now = now_ir()
+            result = []
+            for k, u in self._data["users"].items():
+                if u.get("warned_expired") or u.get("is_blocked"): continue
+                if not u.get("vip_expiry"): continue
+                if u.get("grace_until"):
+                    try:
+                        if datetime.fromisoformat(u["grace_until"]) > now:
+                            continue
+                    except: pass
+                try:
+                    exp_dt = datetime.fromisoformat(u["vip_expiry"])
+                except: continue
+                if exp_dt <= now:
+                    result.append({"uid_str": k, **u})
+            return result
+    
+    def mark_warned_expired(self, uid: int):
+        with self._lock:
+            k = str(uid)
+            if k in self._data["users"]:
+                self._data["users"][k]["warned_expired"] = True
+                self._dirty = True
+    
+    def grant_grace(self, uid: int, days: int = 3) -> Optional[datetime]:
+        with self._lock:
+            k = str(uid)
+            u = self._data["users"].get(k)
+            if not u: return None
+            new_grace = now_ir() + timedelta(days=days)
+            u["grace_until"] = new_grace.isoformat()
+            u["warned_expired"] = False
+            u["is_blocked"] = False
+            self._dirty = True
+            return new_grace
+    
+    def admin_kick_user(self, uid: int) -> bool:
+        with self._lock:
+            k = str(uid)
+            if k in self._data["users"]:
+                self._data["users"][k]["is_blocked"] = True
+                self._data["users"][k]["vip_expiry"] = None
+                self._data["users"][k]["grace_until"] = None
+                self._dirty = True
+                return True
             return False
     
+    # ═══════ پرداخت‌ها ═══════
+    def create_pending_payment(self, uid: int, plan: str, amount_usd: float) -> str:
+        payment_id = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:12]
+        with self._lock:
+            self._data["pending_payments"][payment_id] = {
+                "uid": uid, "plan": plan, "amount_usd": amount_usd,
+                "created_at": now_ir().isoformat(), "status": "pending",
+            }
+            self._dirty = True
+        return payment_id
+    
+    def get_pending_payment(self, payment_id: str) -> Optional[dict]:
+        with self._lock: return self._data["pending_payments"].get(payment_id)
+    
+    def approve_payment(self, payment_id: str) -> Optional[tuple]:
+        with self._lock:
+            p = self._data["pending_payments"].get(payment_id)
+            if not p or p["status"] != "pending": return None
+            p["status"] = "approved"
+            p["approved_at"] = now_ir().isoformat()
+            u = self._data["users"].get(str(p["uid"]))
+            if u:
+                if p["plan"] == "weekly":
+                    days = PLAN_WEEKLY_DAYS
+                else:
+                    days = PLAN_MONTHLY_DAYS
+                new_expiry = self._activate_vip_internal(u, p["plan"], days)
+                self._data["stats"]["total_revenue_usd"] = self._data["stats"].get("total_revenue_usd", 0) + p["amount_usd"]
+                self._data["stats"]["total_subscriptions"] = self._data["stats"].get("total_subscriptions", 0) + 1
+                return (p["uid"], p["plan"], new_expiry, days)
+            return None
+    
+    def reject_payment(self, payment_id: str) -> bool:
+        with self._lock:
+            p = self._data["pending_payments"].get(payment_id)
+            if not p or p["status"] != "pending": return False
+            p["status"] = "rejected"
+            self._dirty = True
+            return True
+    
+    def get_all_pending_payments(self) -> list:
+        with self._lock:
+            return [{"payment_id": k, **v} for k, v in self._data["pending_payments"].items() if v.get("status") == "pending"]
+    
+    def get_archive_text(self) -> str:
+        with self._lock: return self._data.get("archive_text", "📊 نتایج هفته جاری")
+    
+    def set_archive_text(self, text: str):
+        with self._lock: self._data["archive_text"] = text; self._dirty = True
+    
+    def increment_signals_sent(self, count: int = 1):
+        with self._lock:
+            self._data["stats"]["total_signals_sent"] = self._data["stats"].get("total_signals_sent", 0) + count
+            self._dirty = True
+    
+    def get_stats(self) -> dict:
+        with self._lock: return dict(self._data.get("stats", {}))
+
+cloud = CloudStorage()
+
+# ══════════════════════════════════════════════════════════════════════
+# VIP LINK GENERATION
+# ══════════════════════════════════════════════════════════════════════
+async def generate_vip_invite_link(bot, uid: int, plan: str, expiry_dt: datetime) -> Optional[str]:
+    vip_id = get_vip_channel_id()
+    if not vip_id: return None
+    try:
+        link_expiry_ts = int((expiry_dt + timedelta(days=1)).timestamp())
+        user = cloud.get_user(uid)
+        if user and user.get("last_link"):
+            try: await bot.revoke_chat_invite_link(chat_id=vip_id, invite_link=user["last_link"])
+            except: pass
+        link = await bot.create_chat_invite_link(
+            chat_id=vip_id, name=f"VIP_{uid}_{plan[:3]}",
+            expire_date=link_expiry_ts, member_limit=1,
+        )
+        cloud.save_invite_link(uid, link.invite_link)
+        cloud.save()
+        return link.invite_link
+    except Forbidden:
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(chat_id=admin_id,
+                    text="⚠️ <b>خطای بحرانی!</b>\n\nربات دسترسی <code>Invite Users via Link</code> را در کانال VIP ندارد.",
+                    parse_mode=ParseMode.HTML)
+            except: pass
+        return None
+    except Exception as e:
+        log.error(f"Link generation failed for {uid}: {e}")
+        return None
+
+# ══════════════════════════════════════════════════════════════════════
+# MEMBERSHIP & KEYBOARDS
+# ══════════════════════════════════════════════════════════════════════
+async def check_membership(bot, uid: int) -> bool:
+    if not FORCE_JOIN_CHANNEL: return True
+    try:
+        member = await bot.get_chat_member(chat_id=FORCE_JOIN_CHANNEL, user_id=uid)
+        return member.status not in ("left", "kicked", "banned")
+    except: return True
+
+def kb_join_required() -> InlineKeyboardMarkup:
+    btns = []
+    if FORCE_JOIN_CHANNEL:
+        url = f"https://t.me/{FORCE_JOIN_CHANNEL.lstrip('@')}" if FORCE_JOIN_CHANNEL.startswith("@") else f"https://t.me/c/{str(FORCE_JOIN_CHANNEL).replace('-100', '')}"
+        btns.append([InlineKeyboardButton("📢 عضویت در کانال", url=url)])
+        btns.append([InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")])
+    return InlineKeyboardMarkup(btns)
+
+def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
+         InlineKeyboardButton("💎 خرید/تمدید اشتراک", callback_data="menu:subscribe")],
+        [InlineKeyboardButton("📊 آرشیو نتایج", callback_data="menu:archive"),
+         InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
+    ]
+    if uid and is_admin(uid):
+        rows.append([InlineKeyboardButton("👑 پنل ادمین", callback_data="admin:panel:0")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"menu:{dest}")]])
+
+def kb_subscribe() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
+        [InlineKeyboardButton(f"🥈 ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
+    ])
+
+def kb_renew_now() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💎 تمدید اشتراک VIP", callback_data="menu:subscribe")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu:home")],
+    ])
+
+# ══════════════════════════════════════════════════════════════════════
+# TEXT BUILDERS
+# ══════════════════════════════════════════════════════════════════════
+def build_welcome_text() -> str:
+    return (
+        "💎✨ <b>به ربات سیگنال VIP Azadi خوش اومدی!</b> ✨💎\n\n"
+        "<blockquote expandable>"
+        "با خرید اشتراک VIP به جمع تریدرهای حرفه‌ای کانال ما بپیوند و سیگنال‌های لحظه‌ای و پرسود دریافت کن!\n"
+        "</blockquote>"
+        "🔥 <b>ویژگی‌های کانال VIP:</b>\n"
+        "  ⚡️ سیگنال‌های روزانه اسکالپ و سویینگ\n"
+        "  📊 تحلیل‌های لایو و مدیریت سرمایه\n"
+        "  🏆 وین‌ریت بالا و شفافیت کامل\n\n"
+        "🔒 <b>کانال VIP کاملاً خصوصی است</b> و فقط با لینک یکبار مصرف قابل ورود است.\n\n"
+        "از منوی زیر شروع کن 👇"
+    )
+
+def build_profile_text(uid: int, u: dict) -> str:
+    now = now_ir()
+    status = "🔴 غیرفعال"
+    time_left = "—"
+    
+    grace_until = None
+    if u.get("grace_until"):
+        try:
+            grace_dt = datetime.fromisoformat(u["grace_until"])
+            if grace_dt > now:
+                grace_until = grace_dt
+        except: pass
+    
+    if grace_until:
+        status = "🟡 در مهلت تمدید (Grace Period)"
+        time_left = _fmt_timedelta((grace_dt - now).total_seconds())
+    elif u.get("vip_expiry"):
+        try:
+            expiry = datetime.fromisoformat(u["vip_expiry"])
+            if expiry > now:
+                plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+                plan_name = plan_names.get(u.get('vip_plan', ''), 'VIP')
+                status = f"🟢 فعال ({plan_name})"
+                time_left = _fmt_timedelta((expiry - now).total_seconds())
+            else:
+                status = "⚫️ منقضی شده"
+        except: pass
+    
+    full = u.get("full_name", "").strip() or u.get("username", "") or "—"
+    
+    link_section = ""
+    if u.get("last_link"):
+        has_access = False
+        if u.get("vip_expiry"):
+            try:
+                if datetime.fromisoformat(u["vip_expiry"]) > now: has_access = True
+            except: pass
+        if grace_until: has_access = True
+        if has_access:
+            link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(یکبار مصرف)</i>\n"
+    
+    return (
+        f"👤 <b>پروفایل شما</b>\n\n"
+        f"📛 نام: <b>{full}</b>\n"
+        f"🆔 آیدی: <code>{uid}</code>\n\n"
+        f"💎 <b>وضعیت اشتراک VIP:</b> {status}\n"
+        f"⏳ <b>زمان باقی‌مانده:</b> {time_left}\n"
+        f"{link_section}"
+    )
+
+def build_help_text() -> str:
+    return (
+        "📖 <b>راهنمای استفاده از ربات Azadi</b>\n\n"
+        "<blockquote expandable>"
+        "💳 <b>نحوه خرید اشتراک:</b>\n"
+        "۱. روی «خرید اشتراک» کلیک کنید\n"
+        "۲. پلن مورد نظر را انتخاب کنید\n"
+        "۳. مبلغ را واریز کنید\n"
+        "۴. رسید را ارسال کنید\n"
+        "۵. پس از تایید ادمین، اشتراک فعال می‌شود\n\n"
+        "🔐 <b>امنیت کانال VIP:</b>\n"
+        "لینک دعوت شما یکبار مصرف است و تا پایان اشتراک اعتبار دارد.\n"
+        "</blockquote>"
+        "⚖️ <b>سلب مسئولیت:</b>\n"
+        "• بازارهای مالی دارای ریسک هستند.\n"
+    )
+
+# ══════════════════════════════════════════════════════════════════════
+# COMMAND HANDLERS
+# ══════════════════════════════════════════════════════════════════════
+async def _require_membership(update: Update, bot) -> bool:
+    uid = update.effective_user.id
+    if await check_membership(bot, uid): return True
+    await update.effective_message.reply_text(
+        "⛔️ <b>برای استفاده از ربات باید عضو کانال ما باشی!</b>",
+        parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
     return False
 
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    uid = user.id
+    cloud.ensure_user(uid, user.username or "", f"{user.first_name or ''} {user.last_name or ''}".strip())
+    if not await check_membership(ctx.bot, uid):
+        await update.effective_message.reply_text(
+            "⛔️ <b>برای استفاده از ربات باید عضو کانال ما باشی!</b>",
+            parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
+        return
+    await update.effective_message.reply_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+    cloud.save()
 
-async def send_all_reactions(chat_id, message_id):
-    """ارسال Reaction با منحنی butterfly طبیعی"""
-    total_bots = len(BOT_TOKENS)
-    log.info(f"🚀 شروع Reaction روی پیام {message_id} با {total_bots} ربات (منحنی butterfly)")
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _require_membership(update, ctx.bot): return
+    await update.effective_message.reply_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+
+async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _require_membership(update, ctx.bot): return
+    user = update.effective_user
+    u = cloud.ensure_user(user.id, user.username or "", f"{user.first_name or ''} {user.last_name or ''}".strip())
+    await update.effective_message.reply_text(build_profile_text(user.id, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+
+async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """لغو هر عملیات در حال انتظار"""
+    ctx.user_data.pop("awaiting", None)
+    ctx.user_data.pop("payment_id", None)
+    ctx.user_data.pop("senduser_target", None)
+    ctx.user_data.pop("fake_add_name", None)
+    ctx.user_data.pop("fake_edit_id", None)
+    ctx.user_data.pop("setpts_uid", None)
     
-    # محاسبه زمان‌های Reaction با منحنی تصاعدی
-    delays = calculate_butterfly_delays(total_bots)
+    await update.message.reply_text(
+        "❌ <b>عملیات لغو شد.</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb_main(update.effective_user.id)
+    )
+
+# ══════════════════════════════════════════════════════════════════════
+# CALLBACK HANDLERS
+# ══════════════════════════════════════════════════════════════════════
+async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    data = q.data or ""
+    uid = q.from_user.id
+    cloud.ensure_user(uid, q.from_user.username or "", f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
     
-    # رندوم کردن ترتیب ربات‌ها (برای طبیعی‌تر بودن)
-    bot_indices = list(range(total_bots))
-    random.shuffle(bot_indices)
+    if data != "check_join":
+        if not await check_membership(q.get_bot(), uid):
+            await q.answer()
+            try:
+                await q.edit_message_text("⛔️ <b>ابتدا عضو کانال شو!</b>", parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
+            except: pass
+            return
     
-    success = 0
-    failed = 0
-    
-    # نمایش برنامه زمانی
-    total_time = sum(delays)
-    log.info(f"⏱ زمان کل تخمینی: {total_time:.0f} ثانیه ({total_time/60:.1f} دقیقه)")
-    log.info(f"📊 برنامه زمانی (اولین 10 Reaction):")
-    for i in range(min(10, total_bots)):
-        log.info(f"   Reaction {i+1}: {delays[i]:.1f}s")
-    
-    # اجرای Reaction ها با تاخیرهای محاسبه شده
-    for i, bot_idx in enumerate(bot_indices):
-        reaction = random.choice(REACTIONS)
-        bot = get_bot(BOT_TOKENS[bot_idx])
-        
-        # تاخیر بر اساس منحنی butterfly
-        delay = delays[i]
-        
-        if await try_reaction(bot, chat_id, message_id, reaction, bot_idx+1):
-            success += 1
-            log.info(f"✅ Reaction {i+1}/{total_bots} → Bot {bot_idx+1} ({reaction}) [بعد از {delay:.1f}s]")
+    if data == "check_join":
+        if await check_membership(q.get_bot(), uid):
+            await q.answer("✅ تایید شد!")
+            await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         else:
-            failed += 1
-            log.warning(f"❌ Reaction {i+1}/{total_bots} → Bot {bot_idx+1} ناموفق [بعد از {delay:.1f}s]")
-        
-        # صبر تا Reaction بعدی (اگر آخرین Reaction نیست)
-        if i < total_bots - 1:
-            next_delay = delays[i + 1]
-            log.debug(f"⏱ صبر {next_delay:.1f}s تا Reaction بعدی...")
-            await asyncio.sleep(next_delay)
-    
-    log.info(f"🎯 پایان: ✅ {success} موفق | ❌ {failed} ناموفق | مجموع: {total_bots}")
-    _stats["forwards_processed"] += 1
-    return success, failed
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 🔍 تشخیص فوروارد (سازگار با PTB v22)
-# ══════════════════════════════════════════════════════════════════════
-def is_forwarded_message(message):
-    if not message:
-        return False
-    if hasattr(message, 'forward_origin') and message.forward_origin:
-        return True
-    if hasattr(message, 'forward_from_chat') and message.forward_from_chat:
-        return True
-    if hasattr(message, 'forward_from') and message.forward_from:
-        return True
-    return False
-
-
-def get_forward_info(message):
-    original_chat_id = None
-    original_message_id = None
-    
-    if hasattr(message, 'forward_origin') and message.forward_origin:
-        origin = message.forward_origin
-        if hasattr(origin, 'chat') and origin.chat:
-            original_chat_id = origin.chat.id
-        if hasattr(origin, 'message_id'):
-            original_message_id = origin.message_id
-    
-    if not original_chat_id and hasattr(message, 'forward_from_chat') and message.forward_from_chat:
-        original_chat_id = message.forward_from_chat.id
-        original_message_id = getattr(message, 'forward_from_message_id', None)
-    
-    return original_chat_id, original_message_id
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 🤖 Command Handlers
-# ══════════════════════════════════════════════════════════════════════
-async def cmd_start(update: Update, context):
-    """پاسخ به دستور /start"""
-    await update.message.reply_text(
-        f"👋 <b>سلام! ربات Reaction فعال است</b>\n\n"
-        f"🤖 تعداد ربات‌های متصل: <b>{len(BOT_TOKENS)}</b>\n\n"
-        f"🦋 <b>سیستم Reaction طبیعی (Butterfly Curve):</b>\n"
-        f"• فاز ۱ (سریع): Reaction های 1-3\n"
-        f"• فاز ۲ (متوسط): Reaction های 4-6\n"
-        f"• فاز ۳ (کند): Reaction های 7-12\n"
-        f"• فاز ۴ (خیلی کند): Reaction های 13+\n\n"
-        f"📌 <b>نحوه استفاده:</b>\n"
-        f"1️⃣ یک پست از کانال را انتخاب کنید\n"
-        f"2️⃣ روی آن کلیک راست و Forward را بزنید\n"
-        f"3️⃣ به این ربات ارسال کنید\n\n"
-        f"⏱ <b>تنظیمات:</b>\n"
-        f"• تاخیر اولیه: {INITIAL_DELAY_MIN}-{INITIAL_DELAY_MAX} ثانیه\n"
-        f"• اولین Reaction: {FIRST_REACTION_MIN}-{FIRST_REACTION_MAX} ثانیه\n"
-        f"• ضریب رشد تصاعدی: طبیعی\n\n"
-        f"📈 <b>آمار:</b>\n"
-        f"• آپدیت‌های دریافتی: {_stats['updates_received']}\n"
-        f"• فوروارد پردازش شده: {_stats['forwards_processed']}\n"
-        f"• Reaction ارسال شده: {_stats['reactions_sent']}\n\n"
-        f"💡 دستور /status برای آمار لحظه‌ای",
-        parse_mode="HTML"
-    )
-
-
-async def cmd_status(update: Update, context):
-    """نمایش وضعیت ربات"""
-    await update.message.reply_text(
-        f"📊 <b>وضعیت ربات</b>\n\n"
-        f"🤖 ربات‌های متصل: <b>{len(BOT_TOKENS)}</b>\n"
-        f"📥 آپدیت‌های دریافتی: <b>{_stats['updates_received']}</b>\n"
-        f"📨 فوروارد پردازش شده: <b>{_stats['forwards_processed']}</b>\n"
-        f"👍 Reaction ارسال شده: <b>{_stats['reactions_sent']}</b>\n"
-        f"❌ خطاها: <b>{_stats['errors']}</b>",
-        parse_mode="HTML"
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 🎯 Handler اصلی
-# ══════════════════════════════════════════════════════════════════════
-async def forward_reaction_handler(update: Update, context):
-    """پردازش پیام‌های فوروارد شده"""
-    _stats["updates_received"] += 1
-    
-    message = update.message
-    if not message:
-        log.warning("⚠️ update.message is None")
+            await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
     
-    log.info(f"📥 پیام دریافت شد از: {message.chat.id}, نوع: {message.chat.type}")
-    log.info(f"📄 متن: {(message.text or message.caption or '📎 فایل')[:80]}")
+    if data.startswith("menu:"):
+        await q.answer()
+        u = cloud.ensure_user(uid)
+        if data == "menu:home": await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        elif data == "menu:profile": await q.edit_message_text(build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        elif data == "menu:subscribe":
+            await q.edit_message_text(
+                "💎 <b>پلن‌های اشتراک VIP Azadi</b>\n\n"
+                "🔒 کانال VIP کاملاً خصوصی است و هر پلن شامل لینک اختصاصی یکبار مصرف می‌باشد.\n\n"
+                "یک پلن را برای خرید یا تمدید انتخاب کنید:",
+                parse_mode=ParseMode.HTML, reply_markup=kb_subscribe())
+        elif data == "menu:archive": await q.edit_message_text(cloud.get_archive_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        elif data == "menu:help": await q.edit_message_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        return
     
-    if not is_forwarded_message(message):
-        log.info("⏭️ پیام فوروارد نشده است")
+    if data.startswith("buy:fiat:"):
+        try: plan = data.split(":")[-1]
+        except: await q.answer(); return
+        await q.answer()
+        price_map = {"weekly": PLAN_WEEKLY_USD, "monthly": PLAN_MONTHLY_USD}
+        price = price_map.get(plan)
+        if not price: return
+        payment_id = cloud.create_pending_payment(uid, plan, price)
+        ctx.user_data["awaiting"] = "payment_receipt"
+        ctx.user_data["payment_id"] = payment_id
+        await q.edit_message_text(
+            f"💳 <b>پرداخت برای پلن {plan}</b>\n\n"
+            f"💰 مبلغ قابل پرداخت: <b>{price}$</b>\n\n"
+            f"{PAYMENT_INFO}\n\n"
+            f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
+            f"(برای لغو /cancel بزنید)",
+            parse_mode=ParseMode.HTML)
+        return
+    
+    # ═══════ ADMIN ACTIONS ═══════
+    if not is_admin(uid):
+        await q.answer("⛔️ دسترسی ندارید.", show_alert=True)
+        return
+    
+    if data.startswith("admin:panel:"):
+        await q.answer()
+        stats = cloud.get_stats()
+        text = (f"👑 <b>پنل مدیریت Azadi</b>\n\n"
+                f"👥 کل کاربران: {len(cloud.get_all_users())}\n"
+                f"💎 کاربران VIP فعال: {len(cloud.get_vip_users())}\n"
+                f"💰 درآمد کل: {stats.get('total_revenue_usd', 0):.2f}$\n"
+                f"📨 سیگنال‌های ارسالی: {stats.get('total_signals_sent', 0)}\n\n"
+                f"یک گزینه را انتخاب کنید:")
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✍️ ویرایش متن آرشیو", callback_data="admin:edit_archive")],
+            [InlineKeyboardButton("⏳ پرداخت‌های در انتظار", callback_data="admin:pending_payments")],
+            [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
+            [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
+            [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
+        ])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    
+    if data == "admin:edit_archive":
+        ctx.user_data["awaiting"] = "admin_archive_text"
+        await q.answer()
+        await q.edit_message_text("✍️ <b>ویرایش متن آرشیو</b>\n\nمتن جدید را ارسال کنید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        return
+    
+    if data == "admin:pending_payments":
+        await q.answer()
+        payments = cloud.get_all_pending_payments()
+        if not payments:
+            await q.edit_message_text("✅ هیچ پرداخت در انتظاری وجود ندارد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+            return
+        rows = []
+        text = "⏳ <b>پرداخت‌های در انتظار تایید:</b>\n\n"
+        for p in payments:
+            u = cloud.get_user(p["uid"])
+            name = u.get("full_name", "—") if u else "—"
+            text += f"• <b>{name}</b> | {p['plan']} | {p['amount_usd']}$\n"
+            rows.append([
+                InlineKeyboardButton(f"✅ تایید", callback_data=f"pay:approve:{p['payment_id']}"),
+                InlineKeyboardButton(f"❌ رد", callback_data=f"pay:reject:{p['payment_id']}"),
+            ])
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        return
+    
+    if data.startswith("pay:approve:"):
+        payment_id = data.split(":")[-1]
+        await q.answer("در حال پردازش...")
+        result = cloud.approve_payment(payment_id)
+        cloud.save(force=True)
+        if result:
+            p_uid, p_plan, new_expiry, days = result
+            await q.edit_message_text(
+                f"✅ <b>پرداخت تایید و اشتراک فعال شد.</b>\n\n"
+                f"👤 کاربر: <code>{p_uid}</code>\n📦 پلن: {p_plan}\n"
+                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n"
+                f"⏳ مدت: {days} روز",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+            try:
+                msg_to_user = f"🎉 <b>پرداخت شما تایید شد!</b>\n\nاشتراک {p_plan} شما فعال گردید.\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n⏳ مدت: {days} روز"
+                if VIP_CHANNEL_ID:
+                    link = await generate_vip_invite_link(ctx.bot, p_uid, p_plan, new_expiry)
+                    if link:
+                        msg_to_user += f"\n\n🔐 <b>لینک اختصاصی ورود به کانال VIP:</b>\n{link}"
+                await ctx.bot.send_message(chat_id=p_uid, text=msg_to_user, parse_mode=ParseMode.HTML)
+            except Exception as e:
+                log.error(f"Failed to notify user {p_uid}: {e}")
+        else:
+            await q.edit_message_text("❌ خطا در تایید.", parse_mode=ParseMode.HTML,
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+        return
+    
+    if data.startswith("pay:reject:"):
+        payment_id = data.split(":")[-1]
+        cloud.reject_payment(payment_id)
+        cloud.save(force=True)
+        await q.answer()
+        await q.edit_message_text("❌ پرداخت رد شد.", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+        return
+    
+    if data.startswith("admin:kick:"):
+        try: target_uid = int(data.split(":")[-1])
+        except: await q.answer(); return
+        await q.answer("در حال حذف کاربر...")
+        cloud.admin_kick_user(target_uid)
+        vip_id = get_vip_channel_id()
+        kick_result = "❌ ناموفق"
+        if vip_id:
+            try:
+                await ctx.bot.ban_chat_member(chat_id=vip_id, user_id=target_uid)
+                await ctx.bot.unban_chat_member(chat_id=vip_id, user_id=target_uid, only_if_banned=True)
+                kick_result = "✅ اخراج انجام شد"
+            except Exception as e:
+                kick_result = f"❌ خطا: {str(e)[:60]}"
+        u = cloud.get_user(target_uid)
+        if u and u.get("last_link") and vip_id:
+            try: await ctx.bot.revoke_chat_invite_link(chat_id=vip_id, invite_link=u["last_link"])
+            except: pass
+        cloud.save(force=True)
         try:
-            await message.reply_text(
-                "⚠️ <b>فقط پیام‌های فوروارد شده پردازش می‌شوند!</b>\n\n"
-                "📌 لطفاً یک پست از <b>کانال</b> را انتخاب و Forward کنید.\n\n"
-                "💡 برای راهنما /start را بزنید.",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            log.error(f"❌ خطا در ارسال پاسخ: {e}")
+            await q.edit_message_text(
+                f"✅ <b>کاربر حذف شد</b>\n\n👤 ID: <code>{target_uid}</code>\n⚠️ وضعیت: {kick_result}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+        except: pass
         return
     
-    original_chat_id, original_message_id = get_forward_info(message)
+    if data.startswith("admin:extend:"):
+        try: target_uid = int(data.split(":")[-1])
+        except: await q.answer(); return
+        await q.answer("در حال تمدید...")
+        new_grace = cloud.grant_grace(target_uid, days=3)
+        cloud.save(force=True)
+        if new_grace:
+            try:
+                await q.edit_message_text(
+                    f"✅ <b>مهلت ۳ روزه اعطا شد</b>\n\n👤 ID: <code>{target_uid}</code>\n📅 مهلت: {new_grace.strftime('%Y-%m-%d %H:%M')}",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+                await ctx.bot.send_message(chat_id=target_uid, parse_mode=ParseMode.HTML,
+                    text=f"🎁 <b>هدیه ویژه از تیم Azadi!</b>\n\nاشتراک شما به مدت <b>۳ روز</b> تمدید شد.\n📅 مهلت: {new_grace.strftime('%Y-%m-%d')}")
+            except Exception as e:
+                log.error(f"Extend notify failed: {e}")
+        return
     
-    if not original_chat_id or not original_message_id:
-        log.warning("⚠️ نمی‌توان اطلاعات پست اصلی را استخراج کرد")
+    if data.startswith("admin:users:"):
+        page = int(data.split(":")[-1])
+        await q.answer()
+        users = sorted(cloud.get_all_users(), key=lambda u: u.get("vip_expiry") or "1970", reverse=True)
+        total = len(users)
+        start = page * ADMIN_PAGE_SIZE
+        end = min(start + ADMIN_PAGE_SIZE, total)
+        text = f"👥 <b>لیست کاربران</b> (صفحه {page + 1})\n\n"
+        rows = []
+        for u in users[start:end]:
+            u_id = u.get("uid")
+            name = u.get("full_name", "—")
+            vip_exp = u.get("vip_expiry")
+            exp_short = vip_exp[:10] if vip_exp else "—"
+            text += f"• <b>{name}</b> | <code>{u_id}</code>\n  VIP: {exp_short}\n"
+        nav = []
+        if page > 0: nav.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"admin:users:{page - 1}"))
+        if end < total: nav.append(InlineKeyboardButton("بعدی ▶️", callback_data=f"admin:users:{page + 1}"))
+        if nav: rows.append(nav)
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        return
+    
+    if data == "admin:broadcast:prompt":
+        ctx.user_data["awaiting"] = "broadcast_text"
+        await q.answer()
+        await q.edit_message_text("📢 <b>ارسال همگانی</b>\n\nپیام خود را بنویسید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        return
+    
+    await q.answer()
+
+# ══════════════════════════════════════════════════════════════════════
+# MESSAGE HANDLER
+# ══════════════════════════════════════════════════════════════════════
+async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    text_in = (update.message.text or "").strip()
+    awaiting = ctx.user_data.get("awaiting")
+    
+    if text_in == "/cancel":
+        ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("payment_id", None)
+        await update.message.reply_text("❌ لغو شد.", reply_markup=kb_main(uid))
+        return
+    
+    if awaiting == "payment_receipt":
+        payment_id = ctx.user_data.get("payment_id")
+        ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("payment_id", None)
+        for admin_id in ADMIN_IDS:
+            try:
+                await ctx.bot.send_message(chat_id=admin_id, parse_mode=ParseMode.HTML,
+                    text=f"🚨 <b>پرداخت جدید</b>\n\n"
+                         f"👤 کاربر: {mention_html(uid, update.effective_user.full_name, update.effective_user.username)}\n"
+                         f"🆔 آیدی: <code>{uid}</code>\n"
+                         f"🧾 ID: <code>{payment_id}</code>\n\n"
+                         f"👇 رسید:")
+                if update.message.photo:
+                    await ctx.bot.forward_message(chat_id=admin_id, from_chat_id=uid, message_id=update.message.message_id)
+                elif update.message.text:
+                    await ctx.bot.send_message(chat_id=admin_id, text=update.message.text)
+            except Exception as e:
+                log.error(f"Forwarding failed: {e}")
+        await update.message.reply_text("✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی ادمین، اشتراک فعال می‌شود.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        return
+    
+    if not is_admin(uid): return
+    
+    if awaiting == "admin_archive_text":
+        ctx.user_data.pop("awaiting", None)
+        cloud.set_archive_text(text_in)
+        cloud.save(force=True)
+        await update.message.reply_text("✅ متن آرشیو به‌روزرسانی شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        return
+    
+    if awaiting == "broadcast_text":
+        ctx.user_data.pop("awaiting", None)
+        users = cloud.get_all_users()
+        sent = 0
+        for u in users:
+            try:
+                await ctx.bot.send_message(chat_id=int(u.get("uid_str") or u.get("uid")), text=text_in, parse_mode=ParseMode.HTML)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except: pass
+        await update.message.reply_text(f"✅ ارسال شد: {sent} از {len(users)}", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        return
+
+# ══════════════════════════════════════════════════════════════════════
+# CHANNEL POST HANDLER
+# ══════════════════════════════════════════════════════════════════════
+async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    post = update.channel_post
+    if not post: return
+    vip_id = get_vip_channel_id()
+    if vip_id:
+        if str(post.chat.id) != str(vip_id):
+            return
+    vip_users = cloud.get_vip_users()
+    if not vip_users: return
+    sent_count = 0
+    for u in vip_users:
+        uid_int = int(u.get("uid_str") or u.get("uid"))
         try:
-            await message.reply_text(
-                "❌ <b>خطا!</b>\n\n"
-                "نمی‌توان اطلاعات پست اصلی را استخراج کرد.\n"
-                "مطمئن شوید پست از یک <b>کانال</b> (نه کاربر) فوروارد شده است.\n\n"
-                "💡 ربات‌های Reaction باید عضو آن کانال باشند.",
-                parse_mode="HTML"
-            )
+            await ctx.bot.copy_message(chat_id=uid_int, from_chat_id=post.chat.id, message_id=post.message_id)
+            sent_count += 1
+            await asyncio.sleep(0.05)
+        except Forbidden:
+            with cloud._lock:
+                k = str(uid_int)
+                if k in cloud._data["users"]:
+                    cloud._data["users"][k]["is_blocked"] = True
+                    cloud._dirty = True
         except Exception as e:
-            log.error(f"❌ خطا در ارسال پاسخ: {e}")
-        return
-    
-    text_preview = (message.text or message.caption or "📎 فایل")[:50]
-    log.info(f"📢 [فوروارد] از کانال {original_chat_id}, پیام {original_message_id}: {text_preview}...")
-    
-    # محاسبه زمان کل تخمینی
-    delays = calculate_butterfly_delays(len(BOT_TOKENS))
-    total_time = sum(delays)
-    
-    try:
-        await message.reply_text(
-            f"✅ <b>پست دریافت شد!</b>\n\n"
-            f"🦋 شروع Reaction با <b>{len(BOT_TOKENS)}</b> ربات...\n"
-            f"⏱ زمان کل تخمینی: <b>{total_time:.0f}</b> ثانیه ({total_time/60:.1f} دقیقه)\n\n"
-            f"📊 <b>برنامه زمانی:</b>\n"
-            f"• Reaction 1: ~{delays[0]:.0f} ثانیه\n"
-            f"• Reaction 3: ~{delays[2]:.0f} ثانیه\n"
-            f"• Reaction 6: ~{delays[5]:.0f} ثانیه\n"
-            f"• Reaction 10: ~{delays[min(9, len(delays)-1)]:.0f} ثانیه",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        log.error(f"❌ خطا در ارسال پاسخ: {e}")
-    
-    # تاخیر اولیه
-    initial_delay = random.uniform(INITIAL_DELAY_MIN, INITIAL_DELAY_MAX)
-    log.info(f"⏱ تاخیر اولیه: {initial_delay:.1f}s")
-    await asyncio.sleep(initial_delay)
-    
-    # شروع Reaction
-    success, failed = await send_all_reactions(original_chat_id, original_message_id)
-    
-    try:
-        await message.reply_text(
-            f"🎯 <b>پایان عملیات!</b>\n\n"
-            f"✅ موفق: <b>{success}</b>\n"
-            f"❌ ناموفق: <b>{failed}</b>\n"
-            f"📊 مجموع: <b>{len(BOT_TOKENS)}</b>\n"
-            f"⏱ زمان کل: <b>{total_time:.0f}</b> ثانیه",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        log.error(f"❌ خطا در ارسال گزارش: {e}")
-
+            log.warning(f"Signal forward failed for {uid_int}: {e}")
+    cloud.increment_signals_sent(sent_count)
+    cloud.save()
+    log.info(f"📡 Signal forwarded to {sent_count} VIP users.")
 
 # ══════════════════════════════════════════════════════════════════════
-# 🌐 Flask Server
+# EXPIRATION WATCHER (فقط هشدار نهایی انقضا)
 # ══════════════════════════════════════════════════════════════════════
-flask_app = Flask(__name__)
-_application_ref = None
+async def expiration_watcher(app: Application):
+    """بررسی دوره‌ای انقضای اشتراک‌ها"""
+    await asyncio.sleep(10)
+    
+    while True:
+        try:
+            now = now_ir()
+            newly_expired = cloud.get_newly_expired_users()
+            
+            for u in newly_expired:
+                uid_int = int(u.get("uid_str") or u.get("uid"))
+                
+                # ═══ ارسال هشدار به کاربر ═══
+                user_msg_sent = False
+                try:
+                    await app.bot.send_message(chat_id=uid_int, parse_mode=ParseMode.HTML,
+                        text=f"🔴 <b>اشتراک VIP شما به پایان رسید</b>\n\n"
+                             f"👤 {u.get('full_name', '')} عزیز،\n"
+                             f"متاسفانه اشتراک شما به پایان رسیده است.\n\n"
+                             f"⚠️ از این لحظه:\n"
+                             f"• سیگنال‌های جدید ارسال نمی‌شوند\n"
+                             f"• دسترسی به کانال VIP محدود شده است\n\n"
+                             f"💎 برای بازگشت، اشتراک خود را تمدید کنید:",
+                        reply_markup=kb_renew_now())
+                    user_msg_sent = True
+                    log.info(f"✅ Expiry warning sent to user {uid_int}")
+                except Forbidden:
+                    with cloud._lock:
+                        k = str(uid_int)
+                        if k in cloud._data["users"]:
+                            cloud._data["users"][k]["is_blocked"] = True
+                            cloud._dirty = True
+                    user_msg_sent = True
+                except Exception as e:
+                    log.error(f"❌ User expiry warning failed for {uid_int}: {e}")
+                
+                # ═══ ارسال هشدار به ادمین ═══
+                admin_msg_sent = False
+                for admin_id in ADMIN_IDS:
+                    try:
+                        name = u.get("full_name", "—")
+                        username = u.get("username", "")
+                        admin_kb = InlineKeyboardMarkup([
+                            [
+                                InlineKeyboardButton("🗑 حذف کاربر", callback_data=f"admin:kick:{uid_int}"),
+                                InlineKeyboardButton("🎁 تمدید ۳ روزه", callback_data=f"admin:extend:{uid_int}"),
+                            ],
+                        ])
+                        await app.bot.send_message(chat_id=admin_id, parse_mode=ParseMode.HTML,
+                            text=f"🚨 <b>اشتراک کاربر به پایان رسید!</b>\n\n"
+                                 f"👤 نام: {mention_html(uid_int, name, username)}\n"
+                                 f"🆔 آیدی: <code>{uid_int}</code>\n"
+                                 f"📦 پلن قبلی: {u.get('vip_plan', 'VIP')}\n\n"
+                                 f"⚠️ کاربر حذف نشده است. تصمیم بگیرید:",
+                            reply_markup=admin_kb)
+                        admin_msg_sent = True
+                        log.info(f"✅ Admin notification sent for {uid_int}")
+                    except Exception as e:
+                        log.error(f"❌ Admin notification failed: {e}")
+                
+                if user_msg_sent or admin_msg_sent:
+                    cloud.mark_warned_expired(uid_int)
+                    cloud.save(force=True)
+            
+            await asyncio.sleep(EXPIRY_CHECK_INTERVAL)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.error(f"expiration_watcher error: {e}")
 
+async def autosave_loop(app: Application):
+    while True:
+        try:
+            await asyncio.sleep(300)
+            cloud.save()
+        except asyncio.CancelledError: break
+        except Exception as e: log.error(f"autosave_loop error: {e}")
 
-@flask_app.route('/')
-def home():
-    return f"""🤖 Random Reaction Bot v5 (Butterfly Curve)
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Bots: {len(BOT_TOKENS)}
-⚙️ Mode: Webhook
-📥 Updates: {_stats['updates_received']}
-📨 Forwards: {_stats['forwards_processed']}
-👍 Reactions: {_stats['reactions_sent']}
-✅ Status: OK
-""", 200
-
-
-@flask_app.route('/health')
-def health():
-    return {
-        "status": "ok",
-        "bots": len(BOT_TOKENS),
-        "mode": "webhook",
-        "stats": _stats,
-    }, 200
-
-
-@flask_app.route('/webhook-info')
-def webhook_info():
-    import requests as req
-    if not BOT_TOKENS:
-        return {"error": "No tokens"}, 500
+async def on_startup(app: Application):
+    global BOT_USERNAME
     try:
-        resp = req.get(f"https://api.telegram.org/bot{BOT_TOKENS[0]}/getWebhookInfo", timeout=10)
-        return resp.json()
-    except Exception as e:
-        return {"error": str(e)}, 500
+        me = await app.bot.get_me()
+        BOT_USERNAME = me.username or ""
+    except: pass
+    asyncio.create_task(expiration_watcher(app))
+    asyncio.create_task(autosave_loop(app))
+    log.info("Azadi Signal Bot v5.0 ready ✅")
 
-
-@flask_app.route('/delete-webhook')
-def delete_webhook():
-    import requests as req
-    if not BOT_TOKENS:
-        return {"error": "No tokens"}, 500
-    try:
-        resp = req.get(f"https://api.telegram.org/bot{BOT_TOKENS[0]}/deleteWebhook?drop_pending_updates=true", timeout=10)
-        return {"result": "Webhook deleted", "telegram_response": resp.json()}
-    except Exception as e:
-        return {"error": str(e)}, 500
-
+async def on_shutdown(app: Application):
+    cloud.save(force=True)
+    log.info("shutdown")
 
 # ══════════════════════════════════════════════════════════════════════
-# 🎯 Main
+# MAIN
 # ══════════════════════════════════════════════════════════════════════
 def main():
-    global _application_ref
+    if not BOT_TOKEN:
+        log.critical("BOT_TOKEN تنظیم نشده!")
+        sys.exit(1)
+    cloud.load()
+    app = (Application.builder().token(BOT_TOKEN)
+           .post_init(on_startup).post_shutdown(on_shutdown).build())
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("profile", cmd_profile))
+    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, on_message))
+    app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, on_message))
+    app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, on_channel_post))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))  # ← این خط را اضافه کنید
     
-    if not BOT_TOKENS:
-        log.error("❌ هیچ توکنی تنظیم نشده!")
-        return
-    
-    log.info(f"🚀 شروع ربات با {len(BOT_TOKENS)} توکن (Butterfly Curve)")
-    
-    # نمایش نمونه برنامه زمانی
-    sample_delays = calculate_butterfly_delays(min(10, len(BOT_TOKENS)))
-    log.info("📊 نمونه برنامه زمانی (اولین 10 Reaction):")
-    for i, delay in enumerate(sample_delays):
-        log.info(f"   Reaction {i+1}: {delay:.1f} ثانیه")
-    
-    main_token = BOT_TOKENS[0]
-    application = Application.builder().token(main_token).build()
-    _application_ref = application
-    
-    application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("status", cmd_status))
-    
-    application.add_handler(
-        MessageHandler(
-            (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
-            forward_reaction_handler
-        )
-    )
-    
-    async def error_handler(update, context):
-        log.error(f"❌ Exception: {context.error}", exc_info=context.error)
-    application.add_error_handler(error_handler)
+    def _sig(s, f): cloud.save(force=True); sys.exit(0)
+    signal.signal(signal.SIGTERM, _sig)
+    signal.signal(signal.SIGINT, _sig)
+    atexit.register(lambda: cloud.save(force=True))
     
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
-    
     if webhook_url:
         log.info("🌐 Running with Flask Webhook")
-        
         main_loop = asyncio.new_event_loop()
-        
         def run_event_loop(loop):
             asyncio.set_event_loop(loop)
             loop.run_forever()
+        threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True).start()
         
-        loop_thread = threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True)
-        loop_thread.start()
-        
-        @flask_app.route(f"/{main_token}", methods=["POST"])
-        def telegram_webhook():
+        flask_app = Flask(__name__)
+        @flask_app.route("/")
+        def index(): return "🤖 Azadi Bot v5.0 Alive!", 200
+        @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+        def webhook():
             try:
-                json_data = request.get_json(force=True)
-                log.info(f"📥 Webhook received")
-                update = Update.de_json(json_data, application.bot)
-                asyncio.run_coroutine_threadsafe(
-                    application.process_update(update),
-                    main_loop
-                )
-            except Exception as e:
-                log.error(f"❌ Webhook error: {e}", exc_info=True)
+                update = Update.de_json(request.get_json(force=True), app.bot)
+                asyncio.run_coroutine_threadsafe(app.process_update(update), main_loop)
+            except Exception as e: log.error(f"Webhook error: {e}")
             return "OK", 200
         
-        async def setup_webhook():
-            log.info("🗑 Deleting old webhook...")
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            await asyncio.sleep(2)
-            
-            full_url = webhook_url.rstrip("/") + "/" + main_token
-            success = await application.bot.set_webhook(
+        async def setup():
+            full_url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
+            await app.bot.delete_webhook(drop_pending_updates=True)
+            await asyncio.sleep(1)
+            await app.bot.set_webhook(
                 url=full_url,
-                allowed_updates=["message", "edited_message", "channel_post", "callback_query"],
-                drop_pending_updates=True,
-            )
-            log.info(f"✅ Webhook set: {full_url}")
-            
-            info = await application.bot.get_webhook_info()
-            log.info(f"📊 Webhook info: URL={info.url}, Pending={info.pending_update_count}")
+                allowed_updates=["message", "callback_query", "channel_post"],
+                drop_pending_updates=True)
+            log.info(f"✅ Webhook set: {full_url[:60]}...")
+        asyncio.run_coroutine_threadsafe(setup(), main_loop).result(timeout=30)
         
-        async def initialize():
-            await application.initialize()
-            await application.start()
-            await setup_webhook()
-            log.info("🤖 Bot ready ✅")
+        async def init():
+            await app.initialize()
+            await app.start()
+            await on_startup(app)
+        asyncio.run_coroutine_threadsafe(init(), main_loop).result(timeout=30)
         
-        asyncio.run_coroutine_threadsafe(initialize(), main_loop).result(timeout=30)
-        
-        port = int(os.environ.get('PORT', 10000))
-        log.info(f"🚀 Starting Flask on port {port}")
-        flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-    
+        flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
     else:
-        log.warning("⚠️ RENDER_EXTERNAL_URL not set, falling back to polling")
-        application.run_polling(
-            allowed_updates=["message", "edited_message", "channel_post", "callback_query"],
-            drop_pending_updates=True,
-        )
-
+        log.warning("⚠️ Fallback to polling")
+        app.run_polling(allowed_updates=["message", "callback_query", "channel_post"], drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
