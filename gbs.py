@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GramBotSaz — پلتفرم حرفه‌ای ربات‌ساز تلگرام
+GramBotSaz v2.0 — پلتفرم ربات‌ساز حرفه‌ای با معماری پلاگین‌محور
 ════════════════════════════════════════════════════════════════════
-ساخت، مدیریت و اجرای ربات‌های تلگرام با سیستم اقتصاد داخلی (GramCoin)
+سیستم اشتراک‌محور + پلاگین‌های توسعه‌پذیر
 """
 import os
 import sys
@@ -16,7 +16,7 @@ import hashlib
 import asyncio
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Callable
 from flask import Flask, request
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
@@ -53,45 +53,131 @@ FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 GRAMCOIN_SYMBOL = "GC"
 REFERRAL_BONUS_GC = 50
 DAILY_REWARD_GC = 5
-BOT_DAILY_COST_GC = 2  # هزینه روزانه نگهداری هر ربات
 
-# ══════════════════════════════════════════════════════════════════════
-# BOT TEMPLATES
-# ══════════════════════════════════════════════════════════════════════
-AVAILABLE_TEMPLATES = {
-    "echo": {
-        "name": "🤖 Echo Bot",
-        "description": "ربات ساده که پیام‌ها را تکرار می‌کند",
-        "cost_gc": 0,
-        "features": ["تکرار پیام", "پاسخ خودکار ساده"],
-        "is_premium": False,
-    },
-    "shop": {
-        "name": "🛒 Shop Bot",
-        "description": "فروشگاه آنلاین با سبد خرید",
-        "cost_gc": 100,
-        "features": ["مدیریت محصولات", "سبد خرید"],
-        "is_premium": False,
-    },
-    "signal": {
-        "name": "📊 Signal Bot",
-        "description": "ارسال سیگنال VIP به مشترکین",
-        "cost_gc": 150,
-        "features": ["ارسال سیگنال", "مدیریت اشتراک"],
-        "is_premium": True,
-    },
-    "support": {
-        "name": "🎫 Support Bot",
-        "description": "سیستم تیکت و پشتیبانی",
-        "cost_gc": 80,
-        "features": ["تیکت", "FAQ", "پاسخ خودکار"],
-        "is_premium": False,
-    },
-}
+# اشتراک‌های ربات
+SUBSCRIPTION_WEEKLY_GC = 50
+SUBSCRIPTION_MONTHLY_GC = 150
+SUBSCRIPTION_WEEKLY_DAYS = 7
+SUBSCRIPTION_MONTHLY_DAYS = 30
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 PLATFORM_BOT_USERNAME = ""
 ADMIN_PAGE_SIZE = 8
+
+# ══════════════════════════════════════════════════════════════════════
+# PLUGINS REGISTRY - تعریف پلاگین‌ها
+# ══════════════════════════════════════════════════════════════════════
+AVAILABLE_PLUGINS = {
+    # ── پلاگین‌های رایگان (با اشتراک فعال) ──
+    "echo": {
+        "name": "🤖 Echo (تکرار پیام)",
+        "description": "ربات هر پیامی که کاربر بفرستد را تکرار می‌کند",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+    },
+    "welcome": {
+        "name": "👋 پیام خوش‌آمد",
+        "description": "ارسال پیام خوش‌آمدگویی سفارشی به کاربران جدید",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+        "has_settings": True,
+    },
+    "auto_reply": {
+        "name": "💬 پاسخ خودکار",
+        "description": "پاسخ خودکار به کلمات کلیدی خاص",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+        "has_settings": True,
+    },
+    "broadcast": {
+        "name": "📢 ارسال همگانی",
+        "description": "ارسال پیام به همه کاربران ربات شما",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+    },
+    "stats": {
+        "name": "📊 آمار پایه",
+        "description": "مشاهده آمار کاربران و پیام‌های ربات",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+    },
+    # ── پلاگین‌های پرمیوم ──
+    "support": {
+        "name": "🎫 سیستم پشتیبانی",
+        "description": "سیستم تیکت حرفه‌ای برای ارتباط با کاربران",
+        "cost_gc": 100,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "shop": {
+        "name": "🛒 فروشگاه آنلاین",
+        "description": "فروشگاه کامل با سبد خرید و مدیریت محصولات",
+        "cost_gc": 150,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "form_builder": {
+        "name": "📝 فرم‌ساز",
+        "description": "ساخت فرم و جمع‌آوری اطلاعات از کاربران",
+        "cost_gc": 80,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "signal": {
+        "name": "📊 سیستم سیگنال VIP",
+        "description": "ارسال سیگنال به مشترکین VIP با مدیریت اشتراک",
+        "cost_gc": 200,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "referral": {
+        "name": "👥 سیستم زیرمجموعه‌گیری",
+        "description": "سیستم رفرال حرفه‌ای برای ربات شما",
+        "cost_gc": 120,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "payment": {
+        "name": "💳 درگاه پرداخت",
+        "description": "دریافت پرداخت از کاربران ربات شما",
+        "cost_gc": 180,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "lottery": {
+        "name": "🎰 سیستم قرعه‌کشی",
+        "description": "برگزاری قرعه‌کشی بین کاربران ربات",
+        "cost_gc": 90,
+        "is_premium": True,
+        "category": "advanced",
+    },
+    "quiz": {
+        "name": "🧠 کوییز و نظرسنجی",
+        "description": "ساخت کوییز و نظرسنجی تعاملی",
+        "cost_gc": 70,
+        "is_premium": True,
+        "category": "advanced",
+        "has_settings": True,
+    },
+    "scheduler": {
+        "name": "⏰ زمان‌بندی پیام",
+        "description": "ارسال پیام در زمان مشخص به کاربران",
+        "cost_gc": 100,
+        "is_premium": True,
+        "category": "advanced",
+    },
+}
 
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
@@ -161,6 +247,14 @@ class CloudStorage:
                     self._data.setdefault("users", {})
                     self._data.setdefault("bots", {})
                     self._data.setdefault("transactions", [])
+                    # مهاجرت: اضافه کردن فیلدهای جدید
+                    for b in self._data["bots"].values():
+                        b.setdefault("enabled_plugins", [])
+                        b.setdefault("purchased_plugins", [])
+                        b.setdefault("plugin_settings", {})
+                        b.setdefault("subscription_expiry", None)
+                        b.setdefault("subscription_plan", None)
+                        b.setdefault("bot_users", [])
         except Exception as e:
             log.error(f"MongoDB load error: {e}")
     
@@ -276,7 +370,7 @@ class CloudStorage:
         return self.add_gramcoin(uid, amount, "daily_reward")
     
     # ═══════ BOT MANAGEMENT ═══════
-    def create_bot(self, owner_uid: int, bot_token: str, template_type: str) -> Optional[dict]:
+    def create_bot(self, owner_uid: int, bot_token: str) -> Optional[dict]:
         bot_id = hashlib.md5(f"{owner_uid}{bot_token}{time.time()}".encode()).hexdigest()[:12]
         with self._lock:
             self._data["bots"][bot_id] = {
@@ -284,11 +378,15 @@ class CloudStorage:
                 "owner_uid": owner_uid,
                 "bot_token": bot_token,
                 "bot_username": "",
-                "template_type": template_type,
-                "is_active": True,
+                "is_active": False,  # باید اشتراک بخرد تا فعال شود
                 "created_at": now_ir().isoformat(),
                 "last_activity": None,
-                "settings": {},
+                "enabled_plugins": [],  # پلاگین‌های فعال
+                "purchased_plugins": [],  # پلاگین‌های خریداری شده (پرمیوم)
+                "plugin_settings": {},  # تنظیمات پلاگین‌ها
+                "subscription_expiry": None,  # تاریخ انقضای اشتراک
+                "subscription_plan": None,  # weekly/monthly
+                "bot_users": [],  # لیست کاربران ربات
                 "stats": {
                     "messages_received": 0,
                     "messages_sent": 0,
@@ -325,14 +423,6 @@ class CloudStorage:
                 self._data["bots"][bot_id]["bot_username"] = username
                 self._dirty = True
     
-    def toggle_bot_active(self, bot_id: str) -> bool:
-        with self._lock:
-            if bot_id in self._data["bots"]:
-                self._data["bots"][bot_id]["is_active"] = not self._data["bots"][bot_id]["is_active"]
-                self._dirty = True
-                return self._data["bots"][bot_id]["is_active"]
-            return False
-    
     def delete_bot(self, bot_id: str, owner_uid: int) -> bool:
         with self._lock:
             if bot_id in self._data["bots"]:
@@ -355,7 +445,135 @@ class CloudStorage:
                 self._data["bots"][bot_id]["last_activity"] = now_ir().isoformat()
                 self._dirty = True
     
-    # ═══════ REFERRAL SYSTEM ═══════
+    def add_bot_user(self, bot_id: str, user_id: int, username: str = "", full_name: str = ""):
+        """ثبت کاربر جدید در ربات"""
+        with self._lock:
+            if bot_id in self._data["bots"]:
+                bot_users = self._data["bots"][bot_id].setdefault("bot_users", [])
+                # چک کردن تکراری نبودن
+                for bu in bot_users:
+                    if bu["user_id"] == user_id:
+                        return  # قبلاً ثبت شده
+                bot_users.append({
+                    "user_id": user_id,
+                    "username": username,
+                    "full_name": full_name,
+                    "joined_at": now_ir().isoformat(),
+                })
+                self._data["bots"][bot_id]["stats"]["unique_users"] = len(bot_users)
+                self._dirty = True
+    
+    # ═══════ SUBSCRIPTION ═══════
+    def activate_subscription(self, bot_id: str, plan: str, days: int) -> Optional[datetime]:
+        """فعال‌سازی اشتراک ربات"""
+        with self._lock:
+            if bot_id not in self._data["bots"]:
+                return None
+            bot = self._data["bots"][bot_id]
+            
+            # محاسبه تاریخ انقضای جدید
+            if bot.get("subscription_expiry"):
+                try:
+                    current = datetime.fromisoformat(bot["subscription_expiry"])
+                    base = current if current > now_ir() else now_ir()
+                except:
+                    base = now_ir()
+            else:
+                base = now_ir()
+            
+            new_expiry = base + timedelta(days=days)
+            bot["subscription_expiry"] = new_expiry.isoformat()
+            bot["subscription_plan"] = plan
+            bot["is_active"] = True
+            
+            # فعال‌سازی پلاگین‌های رایگان به صورت خودکار
+            free_plugins = [pid for pid, p in AVAILABLE_PLUGINS.items() if not p.get("is_premium")]
+            for plugin in free_plugins:
+                if plugin not in bot["enabled_plugins"]:
+                    bot["enabled_plugins"].append(plugin)
+            
+            self._dirty = True
+            return new_expiry
+    
+    def check_subscription_expired(self, bot_id: str) -> bool:
+        """بررسی انقضای اشتراک"""
+        with self._lock:
+            bot = self._data["bots"].get(bot_id)
+            if not bot or not bot.get("subscription_expiry"):
+                return True
+            try:
+                expiry = datetime.fromisoformat(bot["subscription_expiry"])
+                return now_ir() >= expiry
+            except:
+                return True
+    
+    def deactivate_bot(self, bot_id: str):
+        """غیرفعال کردن ربات (بدون حذف اشتراک)"""
+        with self._lock:
+            if bot_id in self._data["bots"]:
+                self._data["bots"][bot_id]["is_active"] = False
+                self._dirty = True
+    
+    # ═══════ PLUGINS ═══════
+    def enable_plugin(self, bot_id: str, plugin_id: str) -> bool:
+        with self._lock:
+            if bot_id not in self._data["bots"]:
+                return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id not in bot.get("enabled_plugins", []):
+                bot.setdefault("enabled_plugins", []).append(plugin_id)
+                self._dirty = True
+            return True
+    
+    def disable_plugin(self, bot_id: str, plugin_id: str) -> bool:
+        with self._lock:
+            if bot_id not in self._data["bots"]:
+                return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id in bot.get("enabled_plugins", []):
+                bot["enabled_plugins"].remove(plugin_id)
+                self._dirty = True
+            return True
+    
+    def purchase_plugin(self, bot_id: str, plugin_id: str) -> bool:
+        """خرید پلاگین پرمیوم"""
+        with self._lock:
+            if bot_id not in self._data["bots"]:
+                return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id not in bot.get("purchased_plugins", []):
+                bot.setdefault("purchased_plugins", []).append(plugin_id)
+                # پلاگین خریداری شده به صورت خودکار فعال می‌شود
+                if plugin_id not in bot.get("enabled_plugins", []):
+                    bot.setdefault("enabled_plugins", []).append(plugin_id)
+                self._dirty = True
+            return True
+    
+    def is_plugin_purchased(self, bot_id: str, plugin_id: str) -> bool:
+        with self._lock:
+            bot = self._data["bots"].get(bot_id)
+            if not bot: return False
+            return plugin_id in bot.get("purchased_plugins", [])
+    
+    def is_plugin_enabled(self, bot_id: str, plugin_id: str) -> bool:
+        with self._lock:
+            bot = self._data["bots"].get(bot_id)
+            if not bot: return False
+            return plugin_id in bot.get("enabled_plugins", [])
+    
+    def update_plugin_settings(self, bot_id: str, plugin_id: str, settings: dict):
+        with self._lock:
+            if bot_id in self._data["bots"]:
+                self._data["bots"][bot_id].setdefault("plugin_settings", {})[plugin_id] = settings
+                self._dirty = True
+    
+    def get_plugin_settings(self, bot_id: str, plugin_id: str) -> dict:
+        with self._lock:
+            bot = self._data["bots"].get(bot_id)
+            if not bot: return {}
+            return bot.get("plugin_settings", {}).get(plugin_id, {})
+    
+    # ═══════ REFERRAL ═══════
     def find_uid_by_referral(self, ref_code: str) -> Optional[int]:
         with self._lock:
             for uid_str, u in self._data["users"].items():
@@ -386,51 +604,268 @@ class CloudStorage:
 cloud = CloudStorage()
 
 # ══════════════════════════════════════════════════════════════════════
-# BOT FACTORY - سیستم ساخت و اجرای ربات‌ها
+# PLUGIN SYSTEM - اجرای پلاگین‌ها در ربات‌های کاربر
+# ══════════════════════════════════════════════════════════════════════
+class PluginManager:
+    """مدیریت و اجرای پلاگین‌ها برای ربات‌های کاربر"""
+    
+    def __init__(self):
+        self._plugin_handlers: Dict[str, Callable] = {}
+        self._register_all_plugins()
+    
+    def _register_all_plugins(self):
+        """ثبت همه پلاگین‌ها"""
+        self._plugin_handlers["echo"] = self._setup_echo
+        self._plugin_handlers["welcome"] = self._setup_welcome
+        self._plugin_handlers["auto_reply"] = self._setup_auto_reply
+        self._plugin_handlers["broadcast"] = self._setup_broadcast
+        self._plugin_handlers["stats"] = self._setup_stats
+        self._plugin_handlers["support"] = self._setup_support
+    
+    def setup_plugins_for_bot(self, app: Application, bot_id: str):
+        """نصب پلاگین‌های فعال روی یک ربات"""
+        bot_data = cloud.get_bot(bot_id)
+        if not bot_data: return
+        
+        enabled = bot_data.get("enabled_plugins", [])
+        for plugin_id in enabled:
+            handler = self._plugin_handlers.get(plugin_id)
+            if handler:
+                try:
+                    handler(app, bot_id)
+                    log.info(f"✅ Plugin '{plugin_id}' enabled for bot {bot_id}")
+                except Exception as e:
+                    log.error(f"❌ Plugin '{plugin_id}' setup failed for bot {bot_id}: {e}")
+    
+    # ═══════ ECHO PLUGIN ═══════
+    def _setup_echo(self, app: Application, bot_id: str):
+        async def echo_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            if not update.message or not update.message.text: return
+            if update.message.text.startswith("/"): return  # دستورات را تکرار نکن
+            
+            cloud.add_bot_user(bot_id, update.effective_user.id, 
+                             update.effective_user.username or "",
+                             f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
+            
+            try:
+                await update.message.reply_text(update.message.text)
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
+            except Exception as e:
+                log.warning(f"Echo failed: {e}")
+        
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler), group=10)
+    
+    # ═══════ WELCOME PLUGIN ═══════
+    def _setup_welcome(self, app: Application, bot_id: str):
+        async def welcome_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            settings = cloud.get_plugin_settings(bot_id, "welcome")
+            welcome_msg = settings.get("message", "👋 <b>سلام! به ربات من خوش آمدید!</b>")
+            
+            cloud.add_bot_user(bot_id, update.effective_user.id,
+                             update.effective_user.username or "",
+                             f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
+            
+            try:
+                await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
+            except Exception as e:
+                log.warning(f"Welcome failed: {e}")
+        
+        app.add_handler(CommandHandler("start", welcome_handler), group=5)
+    
+    # ═══════ AUTO REPLY PLUGIN ═══════
+    def _setup_auto_reply(self, app: Application, bot_id: str):
+        async def auto_reply_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            if not update.message or not update.message.text: return
+            
+            settings = cloud.get_plugin_settings(bot_id, "auto_reply")
+            replies = settings.get("replies", {})
+            
+            text_lower = update.message.text.lower()
+            for keyword, reply in replies.items():
+                if keyword.lower() in text_lower:
+                    try:
+                        await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
+                        cloud.update_bot_stats(bot_id, messages_sent=1)
+                    except Exception as e:
+                        log.warning(f"Auto reply failed: {e}")
+                    break
+        
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, auto_reply_handler), group=20)
+    
+    # ═══════ BROADCAST PLUGIN ═══════
+    def _setup_broadcast(self, app: Application, bot_id: str):
+        async def broadcast_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            # فقط مالک ربات می‌تواند broadcast کند
+            bot_data = cloud.get_bot(bot_id)
+            if not bot_data or bot_data.get("owner_uid") != update.effective_user.id:
+                await update.message.reply_text("⛔️ فقط مالک ربات می‌تواند ارسال همگانی انجام دهد.")
+                return
+            
+            if not ctx.args:
+                await update.message.reply_text(
+                    "📢 <b>استفاده:</b>\n<code>/broadcast پیام شما</code>\n\n"
+                    "پیام به همه کاربران ربات ارسال می‌شود.",
+                    parse_mode=ParseMode.HTML)
+                return
+            
+            message = " ".join(ctx.args)
+            bot_users = bot_data.get("bot_users", [])
+            sent = 0
+            failed = 0
+            
+            progress_msg = await update.message.reply_text(
+                f"📢 <b>در حال ارسال...</b>\n\n👥 تعداد کاربران: {len(bot_users)}",
+                parse_mode=ParseMode.HTML)
+            
+            for user in bot_users:
+                try:
+                    await ctx.bot.send_message(
+                        chat_id=user["user_id"],
+                        text=message,
+                        parse_mode=ParseMode.HTML
+                    )
+                    sent += 1
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    failed += 1
+            
+            try:
+                await progress_msg.edit_text(
+                    f"✅ <b>ارسال همگانی کامل شد!</b>\n\n"
+                    f"✅ موفق: <b>{sent}</b>\n"
+                    f"❌ ناموفق: <b>{failed}</b>",
+                    parse_mode=ParseMode.HTML)
+            except: pass
+        
+        app.add_handler(CommandHandler("broadcast", broadcast_command), group=30)
+    
+    # ═══════ STATS PLUGIN ═══════
+    def _setup_stats(self, app: Application, bot_id: str):
+        async def stats_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            bot_data = cloud.get_bot(bot_id)
+            if not bot_data or bot_data.get("owner_uid") != update.effective_user.id:
+                await update.message.reply_text("⛔️ فقط مالک ربات دسترسی دارد.")
+                return
+            
+            stats = bot_data.get("stats", {})
+            users_count = len(bot_data.get("bot_users", []))
+            
+            await update.message.reply_text(
+                f"📊 <b>آمار ربات شما</b>\n\n"
+                f"👥 <b>تعداد کاربران:</b> {users_count}\n"
+                f"📨 <b>پیام‌های دریافتی:</b> {stats.get('messages_received', 0)}\n"
+                f"📤 <b>پیام‌های ارسالی:</b> {stats.get('messages_sent', 0)}\n"
+                f"📅 <b>آخرین فعالیت:</b> {bot_data.get('last_activity', '—')[:16]}",
+                parse_mode=ParseMode.HTML)
+        
+        app.add_handler(CommandHandler("stats", stats_command), group=30)
+    
+    # ═══════ SUPPORT PLUGIN (Premium) ═══════
+    def _setup_support(self, app: Application, bot_id: str):
+        async def support_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            bot_data = cloud.get_bot(bot_id)
+            if not bot_data: return
+            
+            settings = cloud.get_plugin_settings(bot_id, "support")
+            admin_id = settings.get("admin_id") or bot_data.get("owner_uid")
+            
+            cloud.add_bot_user(bot_id, update.effective_user.id,
+                             update.effective_user.username or "",
+                             f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
+            
+            await update.message.reply_text(
+                "🎫 <b>به پشتیبانی خوش آمدید!</b>\n\n"
+                "📝 پیام خود را بنویسید تا به تیم پشتیبانی ارسال شود.\n"
+                "💬 در سریع‌ترین زمان ممکن پاسخ خواهید گرفت.",
+                parse_mode=ParseMode.HTML)
+            
+            ctx.user_data[f"support_{bot_id}"] = {"state": "awaiting_message"}
+        
+        async def support_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            state_data = ctx.user_data.get(f"support_{bot_id}")
+            if not state_data or state_data.get("state") != "awaiting_message": return
+            
+            bot_data = cloud.get_bot(bot_id)
+            if not bot_data: return
+            
+            settings = cloud.get_plugin_settings(bot_id, "support")
+            admin_id = settings.get("admin_id") or bot_data.get("owner_uid")
+            
+            user = update.effective_user
+            user_text = update.message.text or "[Media]"
+            
+            # ارسال به ادمین
+            try:
+                await ctx.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"🎫 <b>پیام جدید از کاربر</b>\n\n"
+                         f"👤 {mention_html(user.id, user.full_name, user.username)}\n"
+                         f"🆔 <code>{user.id}</code>\n"
+                         f"🤖 Bot: <code>{bot_id}</code>\n\n"
+                         f"📝 <b>پیام:</b>\n{user_text}",
+                    parse_mode=ParseMode.HTML
+                )
+                
+                await update.message.reply_text(
+                    "✅ <b>پیام شما با موفقیت ارسال شد!</b>\n\n"
+                    "📨 تیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
+                    parse_mode=ParseMode.HTML)
+                
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
+            except Exception as e:
+                log.error(f"Support forward failed: {e}")
+                await update.message.reply_text("❌ خطا در ارسال پیام.")
+        
+        app.add_handler(CommandHandler("start", support_start), group=5)
+        app.add_handler(CommandHandler("support", support_start), group=5)
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, support_message), group=25)
+
+plugin_manager = PluginManager()
+
+# ══════════════════════════════════════════════════════════════════════
+# BOT FACTORY
 # ══════════════════════════════════════════════════════════════════════
 class BotFactory:
     """مدیریت ساخت و اجرای ربات‌های کاربران"""
     
     def __init__(self):
         self._running_bots: Dict[str, asyncio.Task] = {}
+        self._bot_apps: Dict[str, Application] = {}
         self._lock = asyncio.Lock()
     
-    async def start_bot(self, bot_id: str, bot_token: str, template_type: str):
-        """شروع اجرای یک ربات"""
+    async def start_bot(self, bot_id: str, bot_token: str):
+        """شروع اجرای یک ربات با پلاگین‌های فعال"""
         async with self._lock:
             if bot_id in self._running_bots:
                 log.warning(f"Bot {bot_id} already running")
                 return
             
+            # چک کردن اشتراک
+            if cloud.check_subscription_expired(bot_id):
+                log.warning(f"Bot {bot_id} subscription expired, not starting")
+                cloud.deactivate_bot(bot_id)
+                return
+            
             try:
-                # ساخت Application برای ربات
                 bot_app = (Application.builder()
                     .token(bot_token)
                     .build())
                 
-                # ثبت handler ها بر اساس template
-                if template_type == "echo":
-                    self._setup_echo_bot(bot_app, bot_id)
-                elif template_type == "shop":
-                    self._setup_shop_bot(bot_app, bot_id)
-                elif template_type == "signal":
-                    self._setup_signal_bot(bot_app, bot_id)
-                elif template_type == "support":
-                    self._setup_support_bot(bot_app, bot_id)
-                else:
-                    self._setup_echo_bot(bot_app, bot_id)
+                # نصب پلاگین‌های فعال
+                plugin_manager.setup_plugins_for_bot(bot_app, bot_id)
                 
-                # دریافت username ربات
+                # دریافت username
                 await bot_app.initialize()
                 me = await bot_app.bot.get_me()
                 cloud.update_bot_username(bot_id, me.username or "")
                 cloud.save()
                 
-                # شروع polling در task جداگانه
                 task = asyncio.create_task(self._run_bot_polling(bot_app, bot_id))
                 self._running_bots[bot_id] = task
+                self._bot_apps[bot_id] = bot_app
                 
-                log.info(f"✅ Bot {bot_id} (@{me.username}) started successfully")
+                log.info(f"✅ Bot {bot_id} (@{me.username}) started with plugins")
             except InvalidToken:
                 log.error(f"❌ Invalid token for bot {bot_id}")
                 await self._notify_owner_invalid_token(bot_id)
@@ -438,7 +873,6 @@ class BotFactory:
                 log.error(f"❌ Failed to start bot {bot_id}: {e}")
     
     async def stop_bot(self, bot_id: str):
-        """توقف اجرای یک ربات"""
         async with self._lock:
             if bot_id in self._running_bots:
                 task = self._running_bots[bot_id]
@@ -447,18 +881,33 @@ class BotFactory:
                     await task
                 except asyncio.CancelledError:
                     pass
+                
+                if bot_id in self._bot_apps:
+                    try:
+                        await self._bot_apps[bot_id].shutdown()
+                    except: pass
+                    del self._bot_apps[bot_id]
+                
                 del self._running_bots[bot_id]
                 log.info(f"⏹ Bot {bot_id} stopped")
     
+    async def restart_bot(self, bot_id: str):
+        """ری‌استارت ربات (برای اعمال تغییرات پلاگین)"""
+        bot_data = cloud.get_bot(bot_id)
+        if not bot_data: return
+        
+        await self.stop_bot(bot_id)
+        if bot_data.get("is_active"):
+            await asyncio.sleep(1)
+            await self.start_bot(bot_id, bot_data["bot_token"])
+    
     async def _run_bot_polling(self, app: Application, bot_id: str):
-        """اجرای polling برای ربات"""
         try:
             await app.start()
             await app.updater.start_polling(
                 allowed_updates=["message", "callback_query"],
                 drop_pending_updates=True,
             )
-            # نگه داشتن task تا زمانی که cancel شود
             while True:
                 await asyncio.sleep(60)
         except asyncio.CancelledError:
@@ -470,105 +919,39 @@ class BotFactory:
                 await app.updater.stop()
                 await app.stop()
                 await app.shutdown()
-            except:
-                pass
-    
-    def _setup_echo_bot(self, app: Application, bot_id: str):
-        """راه‌اندازی Echo Bot"""
-        async def echo_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "🤖 <b>سلام! من یک Echo Bot هستم.</b>\n\n"
-                "هر پیامی بفرستی، همون رو برات تکرار می‌کنم!",
-                parse_mode=ParseMode.HTML
-            )
-            cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-        
-        async def echo_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            if update.message.text:
-                await update.message.reply_text(update.message.text)
-                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-        
-        app.add_handler(CommandHandler("start", echo_start))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_message))
-    
-    def _setup_shop_bot(self, app: Application, bot_id: str):
-        """راه‌اندازی Shop Bot"""
-        async def shop_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "🛒 <b>به فروشگاه خوش آمدید!</b>\n\n"
-                "🏪 این یک قالب Shop Bot است.\n"
-                "📦 در نسخه‌های آینده قابلیت مدیریت محصولات اضافه می‌شود.",
-                parse_mode=ParseMode.HTML
-            )
-            cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-        
-        app.add_handler(CommandHandler("start", shop_start))
-    
-    def _setup_signal_bot(self, app: Application, bot_id: str):
-        """راه‌اندازی Signal Bot"""
-        async def signal_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "📊 <b>به کانال سیگنال خوش آمدید!</b>\n\n"
-                "⚡️ این یک قالب Signal Bot است.\n"
-                "🔐 در نسخه‌های آینده قابلیت مدیریت اشتراک اضافه می‌شود.",
-                parse_mode=ParseMode.HTML
-            )
-            cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-        
-        app.add_handler(CommandHandler("start", signal_start))
-    
-    def _setup_support_bot(self, app: Application, bot_id: str):
-        """راه‌اندازی Support Bot"""
-        async def support_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "🎫 <b>به پشتیبانی خوش آمدید!</b>\n\n"
-                "💬 این یک قالب Support Bot است.\n"
-                "📝 در نسخه‌های آینده قابلیت تیکت اضافه می‌شود.",
-                parse_mode=ParseMode.HTML
-            )
-            cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-        
-        app.add_handler(CommandHandler("start", support_start))
+            except: pass
     
     async def _notify_owner_invalid_token(self, bot_id: str):
-        """اطلاع‌رسانی به مالک ربات درباره توکن نامعتبر"""
         bot_data = cloud.get_bot(bot_id)
         if not bot_data: return
         
         owner_uid = bot_data.get("owner_uid")
         try:
-            from telegram import Bot
             temp_bot = Bot(token=PLATFORM_BOT_TOKEN)
             await temp_bot.send_message(
                 chat_id=owner_uid,
                 text=f"⚠️ <b>خطا در ربات شما!</b>\n\n"
-                     f"🤖 ربات با ID <code>{bot_id}</code> به دلیل توکن نامعتبر متوقف شد.\n"
-                     f"لطفاً توکن جدید از BotFather دریافت کنید و ربات را دوباره فعال کنید.",
+                     f"🤖 ربات <code>{bot_id}</code> به دلیل توکن نامعتبر متوقف شد.\n"
+                     f"لطفاً توکن جدید از BotFather دریافت کنید.",
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
             log.error(f"Failed to notify owner: {e}")
     
     async def start_all_active_bots(self):
-        """شروع همه ربات‌های فعال"""
         all_bots = cloud.get_all_bots()
         for bot_data in all_bots:
-            if bot_data.get("is_active"):
-                await self.start_bot(
-                    bot_data["bot_id"],
-                    bot_data["bot_token"],
-                    bot_data["template_type"]
-                )
+            if bot_data.get("is_active") and not cloud.check_subscription_expired(bot_data["bot_id"]):
+                await self.start_bot(bot_data["bot_id"], bot_data["bot_token"])
     
     async def stop_all_bots(self):
-        """توقف همه ربات‌ها"""
         for bot_id in list(self._running_bots.keys()):
             await self.stop_bot(bot_id)
 
 bot_factory = BotFactory()
 
 # ══════════════════════════════════════════════════════════════════════
-# MEMBERSHIP CHECK
+# MEMBERSHIP & KEYBOARDS
 # ══════════════════════════════════════════════════════════════════════
 async def check_membership(bot, uid: int) -> bool:
     if not FORCE_JOIN_CHANNEL: return True
@@ -577,9 +960,6 @@ async def check_membership(bot, uid: int) -> bool:
         return member.status not in ("left", "kicked", "banned")
     except: return True
 
-# ══════════════════════════════════════════════════════════════════════
-# KEYBOARDS
-# ══════════════════════════════════════════════════════════════════════
 def kb_join_required() -> InlineKeyboardMarkup:
     btns = []
     if FORCE_JOIN_CHANNEL:
@@ -593,7 +973,7 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
          InlineKeyboardButton("🤖 ربات‌های من", callback_data="menu:mybots")],
         [InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="menu:create_bot"),
-         InlineKeyboardButton("🎁 دریافت جایزه روزانه", callback_data="menu:daily")],
+         InlineKeyboardButton("🎁 جایزه روزانه", callback_data="menu:daily")],
         [InlineKeyboardButton("👥 دعوت دوستان", callback_data="menu:invite"),
          InlineKeyboardButton("📊 تراکنش‌ها", callback_data="menu:transactions")],
         [InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
@@ -605,24 +985,74 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
 def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"menu:{dest}")]])
 
-def kb_templates() -> InlineKeyboardMarkup:
+def kb_bot_management(bot_id: str, bot_data: dict) -> InlineKeyboardMarkup:
+    expiry = bot_data.get("subscription_expiry")
+    is_expired = cloud.check_subscription_expired(bot_id)
+    
     rows = []
-    for template_id, template in AVAILABLE_TEMPLATES.items():
-        premium_badge = " 💎" if template.get("is_premium") else ""
-        rows.append([InlineKeyboardButton(
-            f"{template['name']}{premium_badge} — {template['cost_gc']} GC",
-            callback_data=f"create:{template_id}"
-        )])
-    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")])
+    
+    # دکمه‌های اشتراک
+    if is_expired:
+        rows.append([InlineKeyboardButton("💎 خرید اشتراک", callback_data=f"bot:subscribe:{bot_id}")])
+    else:
+        rows.append([InlineKeyboardButton("🔄 تمدید اشتراک", callback_data=f"bot:subscribe:{bot_id}")])
+    
+    # دکمه مدیریت پلاگین‌ها
+    rows.append([InlineKeyboardButton("🧩 مدیریت پلاگین‌ها", callback_data=f"bot:plugins:{bot_id}")])
+    
+    # دکمه آمار
+    rows.append([InlineKeyboardButton("📊 آمار ربات", callback_data=f"bot:stats:{bot_id}")])
+    
+    # دکمه حذف
+    rows.append([InlineKeyboardButton("🗑 حذف ربات", callback_data=f"bot:delete:{bot_id}")])
+    
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:mybots")])
+    
     return InlineKeyboardMarkup(rows)
 
-def kb_bot_management(bot_id: str, is_active: bool) -> InlineKeyboardMarkup:
-    status_text = "⏹ غیرفعال کردن" if is_active else "▶️ فعال کردن"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(status_text, callback_data=f"bot:toggle:{bot_id}")],
-        [InlineKeyboardButton("🗑 حذف ربات", callback_data=f"bot:delete:{bot_id}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:mybots")],
-    ])
+def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
+    bot_data = cloud.get_bot(bot_id)
+    if not bot_data: return kb_back("mybots")
+    
+    enabled = bot_data.get("enabled_plugins", [])
+    purchased = bot_data.get("purchased_plugins", [])
+    
+    rows = []
+    
+    # دسته‌بندی: پایه (رایگان)
+    rows.append([InlineKeyboardButton("─── 🆓 پلاگین‌های پایه ───", callback_data="noop")])
+    for pid, plugin in AVAILABLE_PLUGINS.items():
+        if plugin.get("is_premium"): continue
+        
+        is_enabled = pid in enabled
+        status = "✅" if is_enabled else "⬜️"
+        rows.append([InlineKeyboardButton(
+            f"{status} {plugin['name']}",
+            callback_data=f"plugin:toggle:{bot_id}:{pid}"
+        )])
+    
+    # دسته‌بندی: پرمیوم
+    rows.append([InlineKeyboardButton("─── 💎 پلاگین‌های پرمیوم ───", callback_data="noop")])
+    for pid, plugin in AVAILABLE_PLUGINS.items():
+        if not plugin.get("is_premium"): continue
+        
+        is_purchased = pid in purchased
+        is_enabled = pid in enabled
+        
+        if is_purchased:
+            status = "✅" if is_enabled else "⏸️"
+            rows.append([InlineKeyboardButton(
+                f"{status} {plugin['name']}",
+                callback_data=f"plugin:toggle:{bot_id}:{pid}"
+            )])
+        else:
+            rows.append([InlineKeyboardButton(
+                f"🔒 {plugin['name']} ({plugin['cost_gc']} GC)",
+                callback_data=f"plugin:buy:{bot_id}:{pid}"
+            )])
+    
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
+    return InlineKeyboardMarkup(rows)
 
 # ══════════════════════════════════════════════════════════════════════
 # TEXT BUILDERS
@@ -631,11 +1061,11 @@ def build_welcome_text() -> str:
     return (
         "🤖✨ <b>به GramBotSaz خوش اومدی!</b> ✨🤖\n\n"
         "<blockquote expandable>"
-        "اینجا می‌تونی بدون نیاز به کدنویسی، ربات تلگرام خودت رو بسازی و مدیریت کنی!\n"
+        "اینجا می‌تونی بدون نیاز به کدنویسی، ربات تلگرام خودت رو بسازی و با پلاگین‌های متنوع توسعه بدی!\n"
         "</blockquote>"
         "🔥 <b>ویژگی‌های پلتفرم:</b>\n"
         "  ⚡️ ساخت ربات در کمتر از ۱ دقیقه\n"
-        "  🎨 قالب‌های آماده (فروشگاه، سیگنال، پشتیبانی)\n"
+        "  🧩 ۱۵+ پلاگین حرفه‌ای (پشتیبانی، فروشگاه، سیگنال و...)\n"
         "  💰 سیستم اقتصادی با GramCoin\n"
         "  🎁 جایزه روزانه و سیستم رفرال\n\n"
         "از منوی زیر شروع کن 👇"
@@ -645,7 +1075,7 @@ def build_profile_text(uid: int, u: dict) -> str:
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     bots_count = len(u.get("bots_created", []))
     
-    daily_status = "✅ قابل دریافت" if cloud.can_claim_daily(uid) else "⏳ فردا دوباره امتحان کن"
+    daily_status = "✅ قابل دریافت" if cloud.can_claim_daily(uid) else "⏳ فردا"
     
     return (
         f"👤 <b>پروفایل شما</b>\n\n"
@@ -659,7 +1089,6 @@ def build_profile_text(uid: int, u: dict) -> str:
     )
 
 def build_mybots_text(uid: int) -> tuple:
-    """(متن، کیبورد) لیست ربات‌های کاربر"""
     bots = cloud.get_user_bots(uid)
     
     if not bots:
@@ -677,15 +1106,31 @@ def build_mybots_text(uid: int) -> tuple:
     text = "🤖 <b>ربات‌های شما</b>\n\n"
     rows = []
     for bot in bots:
-        status = "🟢 فعال" if bot.get("is_active") else "🔴 غیرفعال"
-        template = AVAILABLE_TEMPLATES.get(bot.get("template_type", "echo"), {})
-        template_name = template.get("name", "Unknown")
+        is_expired = cloud.check_subscription_expired(bot["bot_id"])
+        
+        if is_expired:
+            status = "🔴 منقضی"
+        elif bot.get("is_active"):
+            status = "🟢 فعال"
+        else:
+            status = "⏸️ غیرفعال"
+        
         username = f"@{bot.get('bot_username')}" if bot.get("bot_username") else "—"
+        enabled_plugins = len(bot.get("enabled_plugins", []))
+        
+        expiry_str = "—"
+        if bot.get("subscription_expiry"):
+            try:
+                exp = datetime.fromisoformat(bot["subscription_expiry"])
+                if exp > now_ir():
+                    expiry_str = exp.strftime("%Y-%m-%d")
+                else:
+                    expiry_str = "منقضی"
+            except: pass
         
         text += (
-            f"• <b>{template_name}</b>\n"
-            f"  🆔 <code>{bot['bot_id']}</code> | {username}\n"
-            f"  {status}\n\n"
+            f"• <b>{bot['bot_id'][:8]}</b> | {username}\n"
+            f"  {status} | 🧩 {enabled_plugins} پلاگین | 📅 {expiry_str}\n\n"
         )
         rows.append([InlineKeyboardButton(
             f"⚙️ مدیریت {bot['bot_id'][:8]}",
@@ -697,19 +1142,42 @@ def build_mybots_text(uid: int) -> tuple:
     
     return text, InlineKeyboardMarkup(rows)
 
-def build_create_bot_text() -> str:
-    text = "🎨 <b>انتخاب قالب ربات</b>\n\nیک قالب برای ربات خود انتخاب کنید:\n\n"
+def build_bot_detail_text(bot_id: str, bot_data: dict) -> str:
+    username = f"@{bot_data.get('bot_username')}" if bot_data.get("bot_username") else "—"
+    is_expired = cloud.check_subscription_expired(bot_id)
     
-    for template_id, template in AVAILABLE_TEMPLATES.items():
-        premium_badge = " 💎 پرمیوم" if template.get("is_premium") else ""
-        text += (
-            f"<b>{template['name']}</b>{premium_badge}\n"
-            f"📝 {template['description']}\n"
-            f"💰 هزینه: <b>{template['cost_gc']} GC</b>\n"
-            f"✨ امکانات: {', '.join(template['features'])}\n\n"
+    if is_expired:
+        sub_status = "🔴 <b>منقضی شده</b>\n\n⚠️ ربات شما غیرفعال است. برای فعال‌سازی مجدد اشتراک بخرید."
+    elif bot_data.get("is_active"):
+        exp = datetime.fromisoformat(bot_data["subscription_expiry"])
+        remaining = (exp - now_ir()).total_seconds()
+        plan_name = "هفتگی" if bot_data.get("subscription_plan") == "weekly" else "ماهانه"
+        sub_status = (
+            f"🟢 <b>فعال</b> ({plan_name})\n"
+            f"⏳ <b>زمان باقی‌مانده:</b> {_fmt_timedelta(remaining)}\n"
+            f"📅 <b>انقضا:</b> {exp.strftime('%Y-%m-%d')}"
         )
+    else:
+        sub_status = "⏸️ <b>غیرفعال</b>"
     
-    return text
+    enabled = bot_data.get("enabled_plugins", [])
+    purchased = bot_data.get("purchased_plugins", [])
+    stats = bot_data.get("stats", {})
+    users_count = len(bot_data.get("bot_users", []))
+    
+    return (
+        f"⚙️ <b>مدیریت ربات</b>\n\n"
+        f"🆔 <b>ID:</b> <code>{bot_id}</code>\n"
+        f"📛 <b>یوزرنیم:</b> {username}\n\n"
+        f"💎 <b>وضعیت اشتراک:</b>\n"
+        f"{sub_status}\n\n"
+        f"🧩 <b>پلاگین‌های فعال:</b> {len(enabled)}\n"
+        f"💰 <b>پلاگین‌های پرمیوم:</b> {len(purchased)}\n\n"
+        f"📊 <b>آمار:</b>\n"
+        f"• کاربران: {users_count}\n"
+        f"• پیام دریافتی: {stats.get('messages_received', 0)}\n"
+        f"• پیام ارسالی: {stats.get('messages_sent', 0)}"
+    )
 
 def build_referral_text(uid: int, bot_username: str) -> str:
     u = cloud.ensure_user(uid)
@@ -721,7 +1189,7 @@ def build_referral_text(uid: int, bot_username: str) -> str:
         f"🔗 <b>لینک اختصاصی شما:</b>\n<code>{link}</code>\n\n"
         "<blockquote expandable>"
         f"✅ به ازای هر دوستی که از طریق لینک تو وارد شود، <b>{REFERRAL_BONUS_GC} GC</b> به صورت آنی به حسابت اضافه می‌شود!\n"
-        "با جمع‌آوری GC می‌توانی ربات‌های بیشتری بسازی و آن‌ها را فعال نگه داری.\n"
+        "با جمع‌آوری GC می‌توانی اشتراک ربات‌هایت را تمدید کنی و پلاگین‌های پرمیوم بخری.\n"
         "</blockquote>"
         f"👥 تعداد دعوت‌های موفق: <b>{referrals_count}</b>"
     )
@@ -730,20 +1198,25 @@ def build_help_text() -> str:
     return (
         "📖 <b>راهنمای استفاده از GramBotSaz</b>\n\n"
         "<blockquote expandable>"
-        "🤖 <b>ساخت ربات:</b>\n"
+        "🤖 <b>مراحل ساخت ربات:</b>\n"
         "۱. روی «ساخت ربات جدید» کلیک کنید\n"
-        "۲. یک قالب انتخاب کنید\n"
-        "۳. توکن ربات را از BotFather دریافت کنید\n"
-        "۴. توکن را در ربات وارد کنید\n"
-        "۵. ربات شما فعال می‌شود!\n\n"
+        "۲. توکن ربات را از BotFather بگیرید\n"
+        "۳. توکن را در ربات وارد کنید\n"
+        "۴. یک اشتراک (هفتگی/ماهانه) بخرید\n"
+        "۵. پلاگین‌های دلخواه را فعال کنید\n\n"
         "💰 <b>GramCoin (GC) چیست؟</b>\n"
-        "ارز داخلی پلتفرم است که برای ساخت و نگهداری ربات‌ها استفاده می‌شود.\n\n"
+        "ارز داخلی پلتفرم است که برای خرید اشتراک و پلاگین استفاده می‌شود.\n\n"
         "🎁 <b>روش‌های کسب GC:</b>\n"
-        "• جایزه روزانه: ۵ GC\n"
-        "• دعوت دوستان: ۵۰ GC به ازای هر نفر\n\n"
-        "💸 <b>هزینه نگهداری:</b>\n"
-        f"هر ربات فعال روزانه {BOT_DAILY_COST_GC} GC هزینه دارد.\n"
-        "اگر موجودی کافی نباشد، ربات به صورت خودکار غیرفعال می‌شود.\n"
+        f"• جایزه روزانه: <b>{DAILY_REWARD_GC} GC</b>\n"
+        f"• دعوت دوستان: <b>{REFERRAL_BONUS_GC} GC</b> به ازای هر نفر\n\n"
+        "💎 <b>اشتراک‌های ربات:</b>\n"
+        f"• هفتگی: <b>{SUBSCRIPTION_WEEKLY_GC} GC</b>\n"
+        f"• ماهانه: <b>{SUBSCRIPTION_MONTHLY_GC} GC</b>\n\n"
+        "🧩 <b>پلاگین‌ها:</b>\n"
+        "• پلاگین‌های پایه (رایگان با اشتراک فعال)\n"
+        "• پلاگین‌های پرمیوم (با هزینه جداگانه)\n\n"
+        "⚠️ <b>توجه:</b>\n"
+        "پس از انقضای اشتراک، ربات شما غیرفعال می‌شود تا زمانی که اشتراک را تمدید کنید.\n"
         "</blockquote>"
     )
 
@@ -796,9 +1269,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cloud.save()
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """لغو عملیات در حال انتظار"""
     ctx.user_data.pop("awaiting", None)
-    ctx.user_data.pop("pending_bot_template", None)
+    ctx.user_data.pop("pending_bot_token", None)
+    ctx.user_data.pop("pending_bot_id", None)
+    ctx.user_data.pop("pending_plugin_id", None)
+    ctx.user_data.pop("pending_plugin_setting", None)
     await update.message.reply_text("❌ <b>عملیات لغو شد.</b>", parse_mode=ParseMode.HTML, reply_markup=kb_main(update.effective_user.id))
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -819,6 +1294,10 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = q.data or ""
     uid = q.from_user.id
     cloud.ensure_user(uid, q.from_user.username or "", f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
+    
+    if data == "noop":
+        await q.answer()
+        return
     
     if data != "check_join":
         if not await check_membership(q.get_bot(), uid):
@@ -845,7 +1324,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
     
-    # Main Menu
+    # ═══════ MAIN MENU ═══════
     if data.startswith("menu:"):
         await q.answer()
         u = cloud.ensure_user(uid)
@@ -855,7 +1334,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             text, kb = build_mybots_text(uid)
             await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         elif data == "menu:create_bot":
-            await q.edit_message_text(build_create_bot_text(), parse_mode=ParseMode.HTML, reply_markup=kb_templates())
+            ctx.user_data["awaiting"] = "bot_token"
+            await q.edit_message_text(
+                "🤖 <b>ساخت ربات جدید</b>\n\n"
+                "📝 <b>مراحل:</b>\n"
+                "۱. به @BotFather در تلگرام مراجعه کنید\n"
+                "۲. دستور /newbot را بزنید\n"
+                "۳. نام و یوزرنیم ربات را انتخاب کنید\n"
+                "۴. توکن دریافتی را اینجا ارسال کنید\n\n"
+                "🔑 <b>لطفاً توکن ربات را ارسال کنید:</b>\n"
+                "(برای لغو /cancel بزنید)",
+                parse_mode=ParseMode.HTML)
         elif data == "menu:daily":
             if cloud.can_claim_daily(uid):
                 cloud.claim_daily_reward(uid, DAILY_REWARD_GC)
@@ -867,7 +1356,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     f"⏰ فردا دوباره مراجعه کنید!",
                     parse_mode=ParseMode.HTML, reply_markup=kb_back())
             else:
-                await q.answer("⏳ جایزه روزانه قبلاً دریافت شده. فردا دوباره امتحان کن!", show_alert=True)
+                await q.answer("⏳ جایزه روزانه قبلاً دریافت شده. فردا!", show_alert=True)
         elif data == "menu:invite":
             bot_username = (await ctx.bot.get_me()).username
             await q.edit_message_text(build_referral_text(uid, bot_username), parse_mode=ParseMode.HTML, reply_markup=kb_back())
@@ -876,45 +1365,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if not transactions:
                 text = "📊 <b>تراکنش‌های شما</b>\n\nهنوز تراکنشی ندارید."
             else:
-                text = "📊 <b>آخرین تراکنش‌های شما:</b>\n\n"
+                text = "📊 <b>آخرین تراکنش‌ها:</b>\n\n"
                 for tx in reversed(transactions):
                     text += f"• {tx['description']}\n  📅 {tx['timestamp'][:16]}\n\n"
             await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_back())
         elif data == "menu:help": await q.edit_message_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
         return
     
-    # Create Bot Flow
-    if data.startswith("create:"):
-        template_id = data.split(":")[1]
-        template = AVAILABLE_TEMPLATES.get(template_id)
-        if not template:
-            await q.answer("قالب یافت نشد", show_alert=True)
-            return
-        
-        cost = template.get("cost_gc", 0)
-        u = cloud.get_user(uid)
-        
-        if cost > 0 and u.get("gramcoin_balance", 0) < cost:
-            await q.answer(f"❌ موجودی GC کافی نیست! نیاز به {cost} GC دارید.", show_alert=True)
-            return
-        
-        ctx.user_data["pending_bot_template"] = template_id
-        ctx.user_data["awaiting"] = "bot_token"
-        await q.answer()
-        await q.edit_message_text(
-            f"🤖 <b>ساخت {template['name']}</b>\n\n"
-            f"💰 هزینه: <b>{cost} GC</b>\n\n"
-            f"📝 <b>مراحل:</b>\n"
-            f"۱. به @BotFather در تلگرام مراجعه کنید\n"
-            f"۲. دستور /newbot را بزنید\n"
-            f"۳. نام و یوزرنیم ربات را انتخاب کنید\n"
-            f"۴. توکن دریافتی را اینجا ارسال کنید\n\n"
-            f"🔑 <b>لطفاً توکن ربات را ارسال کنید:</b>\n"
-            f"(برای لغو /cancel بزنید)",
-            parse_mode=ParseMode.HTML)
-        return
-    
-    # Bot Management
+    # ═══════ BOT MANAGEMENT ═══════
     if data.startswith("bot:manage:"):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
@@ -923,42 +1381,217 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         
         await q.answer()
-        template = AVAILABLE_TEMPLATES.get(bot.get("template_type", "echo"), {})
-        status = "🟢 فعال" if bot.get("is_active") else "🔴 غیرفعال"
-        username = f"@{bot.get('bot_username')}" if bot.get("bot_username") else "—"
-        
-        text = (
-            f"⚙️ <b>مدیریت ربات</b>\n\n"
-            f"🤖 <b>نوع:</b> {template.get('name', 'Unknown')}\n"
-            f"🆔 <b>ID:</b> <code>{bot_id}</code>\n"
-            f"📛 <b>یوزرنیم:</b> {username}\n"
-            f"📊 <b>وضعیت:</b> {status}\n\n"
-            f"📨 <b>آمار:</b>\n"
-            f"• پیام‌های دریافتی: {bot.get('stats', {}).get('messages_received', 0)}\n"
-            f"• پیام‌های ارسالی: {bot.get('stats', {}).get('messages_sent', 0)}\n"
-        )
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_bot_management(bot_id, bot.get("is_active", False)))
+        await q.edit_message_text(
+            build_bot_detail_text(bot_id, bot),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_bot_management(bot_id, bot))
         return
     
-    if data.startswith("bot:toggle:"):
+    if data.startswith("bot:subscribe:"):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True)
             return
         
+        await q.answer()
+        is_expired = cloud.check_subscription_expired(bot_id)
+        title = "💎 <b>خرید اشتراک</b>" if is_expired else "🔄 <b>تمدید اشتراک</b>"
+        
+        text = (
+            f"{title}\n\n"
+            f"🤖 ربات: <code>{bot_id[:8]}</code>\n\n"
+            f"💡 <b>با خرید اشتراک:</b>\n"
+            f"• ربات شما فعال می‌شود\n"
+            f"• پلاگین‌های پایه به صورت رایگان فعال می‌شوند\n"
+            f"• امکان خرید پلاگین‌های پرمیوم\n\n"
+            f"یک پلن را انتخاب کنید:"
+        )
+        
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                f"🥉 هفتگی ({SUBSCRIPTION_WEEKLY_DAYS} روز) — {SUBSCRIPTION_WEEKLY_GC} GC",
+                callback_data=f"sub:buy:{bot_id}:weekly"
+            )],
+            [InlineKeyboardButton(
+                f"🥈 ماهانه ({SUBSCRIPTION_MONTHLY_DAYS} روز) — {SUBSCRIPTION_MONTHLY_GC} GC",
+                callback_data=f"sub:buy:{bot_id}:monthly"
+            )],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")],
+        ])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    
+    if data.startswith("sub:buy:"):
+        _, _, bot_id, plan = data.split(":")
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True)
+            return
+        
+        if plan == "weekly":
+            cost = SUBSCRIPTION_WEEKLY_GC
+            days = SUBSCRIPTION_WEEKLY_DAYS
+        else:
+            cost = SUBSCRIPTION_MONTHLY_GC
+            days = SUBSCRIPTION_MONTHLY_DAYS
+        
+        u = cloud.get_user(uid)
+        if u.get("gramcoin_balance", 0) < cost:
+            await q.answer(f"❌ موجودی کافی نیست! نیاز به {cost} GC", show_alert=True)
+            return
+        
+        await q.answer("در حال پردازش...")
+        
+        if cloud.deduct_gramcoin(uid, cost, f"subscription_{plan}_{bot_id}"):
+            new_expiry = cloud.activate_subscription(bot_id, plan, days)
+            cloud.save(force=True)
+            
+            # شروع ربات
+            await bot_factory.restart_bot(bot_id)
+            
+            plan_name = "هفتگی" if plan == "weekly" else "ماهانه"
+            await q.edit_message_text(
+                f"✅ <b>اشتراک {plan_name} فعال شد!</b>\n\n"
+                f"🤖 ربات شما اکنون فعال است\n"
+                f"🧩 پلاگین‌های پایه به صورت خودکار فعال شدند\n"
+                f"📅 <b>انقضا:</b> {new_expiry.strftime('%Y-%m-%d')}\n\n"
+                f"💰 <b>{cost} GC</b> از حساب شما کسر شد.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_back("mybots"))
+        else:
+            await q.edit_message_text("❌ خطا در کسر موجودی.", parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+        return
+    
+    if data.startswith("bot:plugins:"):
+        bot_id = data.split(":")[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True)
+            return
+        
+        if cloud.check_subscription_expired(bot_id):
+            await q.answer("⚠️ اشتراک ربات منقضی شده!", show_alert=True)
+            return
+        
+        await q.answer()
+        await q.edit_message_text(
+            "🧩 <b>مدیریت پلاگین‌ها</b>\n\n"
+            "روی هر پلاگین کلیک کنید تا فعال/غیرفعال شود.\n"
+            "پلاگین‌های پرمیوم باید ابتدا خریداری شوند.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_plugins(bot_id))
+        return
+    
+    if data.startswith("plugin:toggle:"):
+        _, _, bot_id, plugin_id = data.split(":")
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True)
+            return
+        
+        if cloud.check_subscription_expired(bot_id):
+            await q.answer("⚠️ اشتراک ربات منقضی شده!", show_alert=True)
+            return
+        
+        plugin_info = AVAILABLE_PLUGINS.get(plugin_id)
+        if not plugin_info:
+            await q.answer("پلاگین یافت نشد", show_alert=True)
+            return
+        
+        # چک کردن خرید برای پلاگین پرمیوم
+        if plugin_info.get("is_premium") and not cloud.is_plugin_purchased(bot_id, plugin_id):
+            await q.answer("⚠️ این پلاگین پرمیوم است و باید خریداری شود", show_alert=True)
+            return
+        
         await q.answer("در حال تغییر وضعیت...")
-        new_status = cloud.toggle_bot_active(bot_id)
+        
+        if cloud.is_plugin_enabled(bot_id, plugin_id):
+            cloud.disable_plugin(bot_id, plugin_id)
+            msg = f"⏸️ پلاگین {plugin_info['name']} غیرفعال شد"
+        else:
+            cloud.enable_plugin(bot_id, plugin_id)
+            msg = f"✅ پلاگین {plugin_info['name']} فعال شد"
+        
         cloud.save(force=True)
         
-        if new_status:
-            await bot_factory.start_bot(bot_id, bot["bot_token"], bot["template_type"])
-            msg = "✅ ربات فعال شد!"
-        else:
-            await bot_factory.stop_bot(bot_id)
-            msg = "⏹ ربات غیرفعال شد!"
+        # ری‌استارت ربات برای اعمال تغییرات
+        await bot_factory.restart_bot(bot_id)
         
-        await q.edit_message_text(msg, parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+        try:
+            await q.edit_message_reply_markup(reply_markup=kb_plugins(bot_id))
+        except: pass
+        
+        await q.answer(msg, show_alert=True)
+        return
+    
+    if data.startswith("plugin:buy:"):
+        _, _, bot_id, plugin_id = data.split(":")
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True)
+            return
+        
+        if cloud.check_subscription_expired(bot_id):
+            await q.answer("⚠️ اشتراک ربات منقضی شده!", show_alert=True)
+            return
+        
+        plugin_info = AVAILABLE_PLUGINS.get(plugin_id)
+        if not plugin_info:
+            await q.answer("پلاگین یافت نشد", show_alert=True)
+            return
+        
+        cost = plugin_info.get("cost_gc", 0)
+        u = cloud.get_user(uid)
+        
+        if u.get("gramcoin_balance", 0) < cost:
+            await q.answer(f"❌ موجودی کافی نیست! نیاز به {cost} GC", show_alert=True)
+            return
+        
+        await q.answer("در حال خرید...")
+        
+        if cloud.deduct_gramcoin(uid, cost, f"plugin_purchase_{plugin_id}_{bot_id}"):
+            cloud.purchase_plugin(bot_id, plugin_id)
+            cloud.save(force=True)
+            
+            # ری‌استارت ربات
+            await bot_factory.restart_bot(bot_id)
+            
+            try:
+                await q.edit_message_text(
+                    f"✅ <b>پلاگین با موفقیت خریداری شد!</b>\n\n"
+                    f"🧩 {plugin_info['name']}\n"
+                    f"💰 {cost} GC از حساب شما کسر شد\n\n"
+                    f"🎉 پلاگین به صورت خودکار فعال شد.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 بازگشت به پلاگین‌ها", callback_data=f"bot:plugins:{bot_id}")]
+                    ]))
+            except: pass
+        else:
+            await q.edit_message_text("❌ خطا در کسر موجودی.", parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+        return
+    
+    if data.startswith("bot:stats:"):
+        bot_id = data.split(":")[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True)
+            return
+        
+        await q.answer()
+        stats = bot.get("stats", {})
+        users_count = len(bot.get("bot_users", []))
+        
+        text = (
+            f"📊 <b>آمار ربات {bot_id[:8]}</b>\n\n"
+            f"👥 <b>کل کاربران:</b> {users_count}\n"
+            f"📨 <b>پیام‌های دریافتی:</b> {stats.get('messages_received', 0)}\n"
+            f"📤 <b>پیام‌های ارسالی:</b> {stats.get('messages_sent', 0)}\n"
+            f"📅 <b>آخرین فعالیت:</b> {(bot.get('last_activity') or '—')[:16]}\n\n"
+            f"🧩 <b>پلاگین‌های فعال:</b> {len(bot.get('enabled_plugins', []))}"
+        )
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_back(f"bot:manage:{bot_id}"))
         return
     
     if data.startswith("bot:delete:"):
@@ -972,10 +1605,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await bot_factory.stop_bot(bot_id)
         cloud.delete_bot(bot_id, uid)
         cloud.save(force=True)
-        await q.edit_message_text("🗑 ربات با موفقیت حذف شد.", parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+        
+        text, kb = build_mybots_text(uid)
+        await q.edit_message_text("🗑 ربات با موفقیت حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
     
-    # Admin Panel
+    # ═══════ ADMIN ═══════
     if not is_admin(uid):
         await q.answer("⛔️ دسترسی ندارید.", show_alert=True)
         return
@@ -1013,7 +1648,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             name = u.get("full_name", "—")
             gc = u.get("gramcoin_balance", 0)
             text += f"• <b>{name}</b> | <code>{u_id}</code>\n  💰 {gc} GC\n"
-            rows.append([InlineKeyboardButton(f"🎁 +50 GC به {name[:10]}", callback_data=f"admin:givegc:{u_id}:50")])
+            rows.append([InlineKeyboardButton(f"🎁 +50 GC", callback_data=f"admin:givegc:{u_id}:50")])
         
         nav = []
         if page > 0: nav.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"admin:users:{page - 1}"))
@@ -1027,7 +1662,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _, _, u_id, amount = data.split(":")
         cloud.add_gramcoin(int(u_id), int(amount), "admin_grant")
         cloud.save(force=True)
-        await q.answer(f"✅ {amount} GC به کاربر {u_id} اضافه شد.", show_alert=True)
+        await q.answer(f"✅ {amount} GC به کاربر اضافه شد.", show_alert=True)
         return
     
     if data.startswith("admin:bots:"):
@@ -1039,17 +1674,21 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         end = min(start + ADMIN_PAGE_SIZE, total)
         text = f"🤖 <b>لیست ربات‌ها</b> (صفحه {page + 1})\n\n"
         for b in bots[start:end]:
-            status = "🟢" if b.get("is_active") else "🔴"
+            is_expired = cloud.check_subscription_expired(b["bot_id"])
+            if is_expired:
+                status = "🔴"
+            elif b.get("is_active"):
+                status = "🟢"
+            else:
+                status = "⏸️"
             username = f"@{b.get('bot_username')}" if b.get("bot_username") else "—"
-            text += f"{status} <code>{b['bot_id']}</code> | {username}\n  Owner: <code>{b.get('owner_uid')}</code>\n\n"
+            text += f"{status} <code>{b['bot_id'][:8]}</code> | {username}\n  Owner: <code>{b.get('owner_uid')}</code>\n\n"
         
         nav = []
         if page > 0: nav.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"admin:bots:{page - 1}"))
         if end < total: nav.append(InlineKeyboardButton("بعدی ▶️", callback_data=f"admin:bots:{page + 1}"))
-        if nav:
-            rows = [nav]
-        else:
-            rows = []
+        if nav: rows = [nav]
+        else: rows = []
         rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")])
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
         return
@@ -1074,22 +1713,18 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_cancel(update, ctx)
         return
     
-    # User creating bot - receiving token
+    # دریافت توکن ربات جدید
     if awaiting == "bot_token":
-        template_id = ctx.user_data.get("pending_bot_template")
         ctx.user_data.pop("awaiting", None)
-        ctx.user_data.pop("pending_bot_template", None)
         
         bot_token = text_in.strip()
         
-        # اعتبارسنجی توکن
         if not bot_token or ":" not in bot_token or len(bot_token) < 40:
             await update.message.reply_text(
                 "❌ <b>توکن نامعتبر است!</b>\n\n"
                 "توکن باید شبیه این باشد:\n"
-                "<code>1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ</code>\n\n"
-                "برای شروع مجدد، روی دکمه زیر کلیک کنید:",
-                parse_mode=ParseMode.HTML, reply_markup=kb_back("create_bot"))
+                "<code>1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ</code>",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
             return
         
         # تست توکن
@@ -1098,43 +1733,36 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             me = await temp_bot.get_me()
         except InvalidToken:
             await update.message.reply_text(
-                "❌ <b>توکن نامعتبر است!</b>\n\n"
-                "لطفاً از BotFather توکن صحیح را دریافت کنید.",
-                parse_mode=ParseMode.HTML, reply_markup=kb_back("create_bot"))
+                "❌ <b>توکن نامعتبر است!</b>\n\nلطفاً از BotFather توکن صحیح را دریافت کنید.",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
             return
         except Exception as e:
             await update.message.reply_text(
-                f"❌ <b>خطا در بررسی توکن:</b>\n<code>{str(e)[:100]}</code>",
-                parse_mode=ParseMode.HTML, reply_markup=kb_back("create_bot"))
+                f"❌ <b>خطا:</b> <code>{str(e)[:100]}</code>",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
             return
         
-        # کسر هزینه
-        template = AVAILABLE_TEMPLATES.get(template_id, {})
-        cost = template.get("cost_gc", 0)
-        if cost > 0:
-            if not cloud.deduct_gramcoin(uid, cost, f"create_bot_{template_id}"):
-                await update.message.reply_text(
-                    f"❌ <b>موجودی GC کافی نیست!</b>\n\n"
-                    f"💰 هزینه: {cost} GC\n"
-                    f"💼 موجودی شما: {cloud.get_user(uid).get('gramcoin_balance', 0)} GC",
-                    parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
-                return
+        # چک کردن اینکه کاربر ربات نساخته باشد
+        user_bots = cloud.get_user_bots(uid)
+        if len(user_bots) >= 3:  # محدودیت 3 ربات در پلن رایگان
+            await update.message.reply_text(
+                "⚠️ <b>محدودیت تعداد ربات!</b>\n\n"
+                "در پلن رایگان حداکثر ۳ ربات می‌توانید بسازید.\n"
+                "برای ساخت ربات بیشتر، یکی از ربات‌های قبلی را حذف کنید.",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            return
         
-        # ساخت ربات
-        bot_data = cloud.create_bot(uid, bot_token, template_id)
+        # ساخت ربات (هنوز فعال نیست - باید اشتراک بخرد)
+        bot_data = cloud.create_bot(uid, bot_token)
         cloud.save(force=True)
-        
-        # شروع ربات
-        await bot_factory.start_bot(bot_data["bot_id"], bot_token, template_id)
         
         await update.message.reply_text(
             f"✅ <b>ربات با موفقیت ساخته شد!</b>\n\n"
-            f"🤖 <b>نوع:</b> {template.get('name')}\n"
-            f"🆔 <b>ID:</b> <code>{bot_data['bot_id']}</code>\n"
-            f"📛 <b>یوزرنیم:</b> @{me.username}\n"
-            f"🟢 <b>وضعیت:</b> فعال\n\n"
-            f"💰 {cost} GC از حساب شما کسر شد.\n\n"
-            f"🎉 ربات شما اکنون فعال است و می‌توانید از آن استفاده کنید!",
+            f"🤖 <b>یوزرنیم:</b> @{me.username}\n"
+            f"🆔 <b>ID:</b> <code>{bot_data['bot_id']}</code>\n\n"
+            f"⚠️ <b>مرحله بعدی:</b>\n"
+            f"برای فعال‌سازی ربات، باید یک اشتراک خریداری کنید.\n"
+            f"از منوی «ربات‌های من» ربات را مدیریت کنید.",
             parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
         return
     
@@ -1157,40 +1785,38 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════════════════
 # BACKGROUND TASKS
 # ══════════════════════════════════════════════════════════════════════
-async def daily_cost_watcher(app: Application):
-    """کسر هزینه روزانه ربات‌ها"""
+async def subscription_watcher(app: Application):
+    """بررسی انقضای اشتراک ربات‌ها"""
     while True:
         try:
-            await asyncio.sleep(3600)  # هر ساعت چک کن
+            await asyncio.sleep(3600)  # هر ساعت
             
             all_bots = cloud.get_all_bots()
             for bot_data in all_bots:
+                bot_id = bot_data["bot_id"]
+                owner_uid = bot_data["owner_uid"]
+                
                 if not bot_data.get("is_active"): continue
                 
-                owner_uid = bot_data.get("owner_uid")
-                bot_id = bot_data.get("bot_id")
-                
-                # کسر هزینه
-                if not cloud.deduct_gramcoin(owner_uid, BOT_DAILY_COST_GC, f"bot_daily_cost_{bot_id}"):
-                    # موجودی کافی نیست، ربات را غیرفعال کن
-                    cloud.toggle_bot_active(bot_id)
+                if cloud.check_subscription_expired(bot_id):
+                    # غیرفعال کردن ربات
+                    cloud.deactivate_bot(bot_id)
                     await bot_factory.stop_bot(bot_id)
+                    cloud.save(force=True)
                     
                     # اطلاع به مالک
                     try:
                         await app.bot.send_message(
                             chat_id=owner_uid,
-                            text=f"⚠️ <b>ربات شما غیرفعال شد!</b>\n\n"
-                                 f"🤖 ربات <code>{bot_id}</code> به دلیل عدم موجودی کافی متوقف شد.\n"
-                                 f"💰 هزینه روزانه: {BOT_DAILY_COST_GC} GC\n\n"
-                                 f"برای فعال‌سازی مجدد، موجودی خود را شارژ کنید.",
+                            text=f"🔴 <b>اشتراک ربات شما منقضی شد!</b>\n\n"
+                                 f"🤖 ربات <code>{bot_id[:8]}</code> غیرفعال شد.\n\n"
+                                 f"💎 برای فعال‌سازی مجدد، اشتراک را تمدید کنید.",
                             parse_mode=ParseMode.HTML
                         )
                     except: pass
             
-            cloud.save()
         except asyncio.CancelledError: break
-        except Exception as e: log.error(f"daily_cost_watcher error: {e}")
+        except Exception as e: log.error(f"subscription_watcher error: {e}")
 
 async def autosave_loop(app: Application):
     while True:
@@ -1207,12 +1833,11 @@ async def on_startup(app: Application):
         PLATFORM_BOT_USERNAME = me.username or ""
     except: pass
     
-    # شروع همه ربات‌های فعال
     await bot_factory.start_all_active_bots()
     
-    asyncio.create_task(daily_cost_watcher(app))
+    asyncio.create_task(subscription_watcher(app))
     asyncio.create_task(autosave_loop(app))
-    log.info("GramBotSaz Platform ready ✅")
+    log.info("GramBotSaz v2.0 (Plugin Architecture) ready ✅")
 
 async def on_shutdown(app: Application):
     await bot_factory.stop_all_bots()
@@ -1254,7 +1879,7 @@ def main():
         
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index(): return "🤖 GramBotSaz Platform Alive!", 200
+        def index(): return "🤖 GramBotSaz v2.0 Alive!", 200
         @flask_app.route(f"/{PLATFORM_BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
