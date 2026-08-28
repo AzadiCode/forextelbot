@@ -331,6 +331,19 @@ class CloudStorage:
             self._dirty = True
             return True
     
+    def cancel_pending_payment(self, payment_id: str) -> bool:
+        """لغو پرداخت توسط کاربر (مثلاً با /cancel)"""
+        if not payment_id:
+            return False
+        with self._lock:
+            p = self._data["pending_payments"].get(payment_id)
+            if p and p["status"] == "pending":
+                p["status"] = "cancelled"
+                p["cancelled_at"] = now_ir().isoformat()
+                self._dirty = True
+                return True
+            return False
+
     def get_all_pending_payments(self) -> list:
         with self._lock:
             return [{"payment_id": k, **v} for k, v in self._data["pending_payments"].items() if v.get("status") == "pending"]
@@ -545,13 +558,16 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(build_profile_text(user.id, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """لغو هر عملیات در حال انتظار"""
+    """لغو عملیات + حذف سفارش نیمه‌کاره از دیتابیس"""
+    # اگر کاربر در وسط خرید بود، سفارش را لغو کن
+    payment_id = ctx.user_data.get("payment_id")
+    if payment_id:
+        cloud.cancel_pending_payment(payment_id)
+        cloud.save(force=True)
+    
+    # پاک کردن همه state ها
     ctx.user_data.pop("awaiting", None)
     ctx.user_data.pop("payment_id", None)
-    ctx.user_data.pop("senduser_target", None)
-    ctx.user_data.pop("fake_add_name", None)
-    ctx.user_data.pop("fake_edit_id", None)
-    ctx.user_data.pop("setpts_uid", None)
     
     await update.message.reply_text(
         "❌ <b>عملیات لغو شد.</b>",
@@ -603,10 +619,17 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         try: plan = data.split(":")[-1]
         except: await q.answer(); return
         await q.answer()
+        
+        # 🧹 پاکسازی خودکار پرداخت‌های قبلی رها شده این کاربر
+        for pid, pdata in list(cloud._data["pending_payments"].items()):
+            if pdata.get("uid") == uid and pdata.get("status") == "pending":
+                cloud.cancel_pending_payment(pid)
+        
         price_map = {"weekly": PLAN_WEEKLY_USD, "monthly": PLAN_MONTHLY_USD}
         price = price_map.get(plan)
         if not price: return
         payment_id = cloud.create_pending_payment(uid, plan, price)
+
         ctx.user_data["awaiting"] = "payment_receipt"
         ctx.user_data["payment_id"] = payment_id
         await q.edit_message_text(
