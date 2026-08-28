@@ -544,6 +544,21 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = cloud.ensure_user(user.id, user.username or "", f"{user.first_name or ''} {user.last_name or ''}".strip())
     await update.effective_message.reply_text(build_profile_text(user.id, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
 
+async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """لغو هر عملیات در حال انتظار"""
+    ctx.user_data.pop("awaiting", None)
+    ctx.user_data.pop("payment_id", None)
+    ctx.user_data.pop("senduser_target", None)
+    ctx.user_data.pop("fake_add_name", None)
+    ctx.user_data.pop("fake_edit_id", None)
+    ctx.user_data.pop("setpts_uid", None)
+    
+    await update.message.reply_text(
+        "❌ <b>عملیات لغو شد.</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb_main(update.effective_user.id)
+    )
+
 # ══════════════════════════════════════════════════════════════════════
 # CALLBACK HANDLERS
 # ══════════════════════════════════════════════════════════════════════
@@ -965,6 +980,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, on_message))
     app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, on_message))
     app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, on_channel_post))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))  # ← این خط را اضافه کنید
     
     def _sig(s, f): cloud.save(force=True); sys.exit(0)
     signal.signal(signal.SIGTERM, _sig)
