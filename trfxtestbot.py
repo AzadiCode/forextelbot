@@ -49,6 +49,10 @@ PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 40))
 PLAN_WEEKLY_DAYS = 0.0007
 PLAN_MONTHLY_DAYS = 0.0015
 
+# 🎟 سیستم کد تخفیف
+DISCOUNT_CODE = os.environ.get("DISCOUNT_CODE", "AZADI50")
+DISCOUNT_PERCENT = float(os.environ.get("DISCOUNT_PERCENT", 50))
+
 PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
     #"کارت: 6037-9918-XXXX-XXXX\n"
@@ -78,6 +82,12 @@ def _fmt_timedelta(seconds: float) -> str:
     if h or d: parts.append(f"{h} ساعت")
     parts.append(f"{m} دقیقه")
     return " و ".join(parts) if parts else "کمتر از یک دقیقه"
+
+def get_discounted_price(original_price: float) -> float:
+    """محاسبه قیمت با اعمال کد تخفیف"""
+    if DISCOUNT_PERCENT <= 0 or DISCOUNT_PERCENT > 100:
+        return original_price
+    return original_price * (100 - DISCOUNT_PERCENT) / 100
 
 def mention_html(uid: int, name: str, username: str = "") -> str:
     safe_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -532,7 +542,7 @@ def build_welcome_text() -> str:
         " ریوارد های بالای +3 استاپ های زیر 50 پیپ \n"
         "</blockquote>"
         "🔥 <b>50% تخفیف به مدت محدود در پیش ثبتنام اولیه</b>\n"
-        "🔒 <b>کانال متصل به ربات کاملاً خصوصی است</b> و پس از فعال شدن اشتراک فقط با لینک یکبار مصرف قابل ورود است.\n\n"
+        "🔒 <b>کانال متصل به ربات کاملاً خصوصی است</b> و پس از فعال شدن اشتراک فقط با لینک یکبار مصرف اختصاصی قابل ورود است.\n\n"
         "از منوی زیر میتونی همین الان به جمع شکارچیان طلا یپیوندی 👇"
     )
 
@@ -724,17 +734,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         price_map = {"weekly": PLAN_WEEKLY_USD, "monthly": PLAN_MONTHLY_USD}
         price = price_map.get(plan)
         if not price: return
-        payment_id = cloud.create_pending_payment(uid, plan, price)
-
-        ctx.user_data["awaiting"] = "payment_receipt"
-        ctx.user_data["payment_id"] = payment_id
+        
+        # ذخیره اطلاعات موقت (هنوز pending_payment نمی‌سازیم)
+        ctx.user_data["pending_plan"] = plan
+        ctx.user_data["pending_price"] = price
+        ctx.user_data["discount_applied"] = False
+        
+        plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+        plan_name = plan_names.get(plan, plan)
+        
+        discount_hint = ""
+        if DISCOUNT_CODE and DISCOUNT_PERCENT > 0:
+            discount_hint = f"\n🎟 <i>کد تخفیف دارید؟ روی دکمه زیر کلیک کنید!</i>\n"
+        
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎟 اعمال کد تخفیف", callback_data="discount:apply")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:subscribe")],
+        ])
+        
         await q.edit_message_text(
-            f"💳 <b>پرداخت برای پلن {plan}</b>\n\n"
+            f"💳 <b>پرداخت برای پلن {plan_name}</b>\n\n"
             f"💰 مبلغ قابل پرداخت: <b>{price}$</b>\n\n"
-            f"{PAYMENT_INFO}\n\n"
+            f"{PAYMENT_INFO}\n"
+            f"{discount_hint}\n"
             f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
-            f"(برای لغو /cancel بزنید)",
-            parse_mode=ParseMode.HTML)
+            f"<i>(برای لغو /cancel بزنید)</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb)
         return
 
     if data == "activate:subscription":
@@ -780,6 +806,20 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "❌ خطا در فعال‌سازی اشتراک.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=kb_main(uid))
+        return
+
+    if data == "discount:apply":
+        if not DISCOUNT_CODE or DISCOUNT_PERCENT <= 0:
+            await q.answer("⛔️ کد تخفیفی فعال نیست.", show_alert=True)
+            return
+        
+        ctx.user_data["awaiting"] = "discount_code"
+        await q.answer()
+        await q.edit_message_text(
+            f"🎟 <b>اعمال کد تخفیف</b>\n\n"
+            f"لطفاً کد تخفیف خود را ارسال کنید:\n"
+            f"<i>(برای لغو /cancel بزنید)</i>",
+            parse_mode=ParseMode.HTML)
         return
 
     
@@ -970,29 +1010,93 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data.pop("payment_id", None)
         await update.message.reply_text("❌ لغو شد.", reply_markup=kb_main(uid))
         return
+
+    if awaiting == "discount_code":
+        code = text_in.strip()
+        
+        if code == DISCOUNT_CODE:
+            original_price = ctx.user_data.get("pending_price")
+            discounted_price = get_discounted_price(original_price)
+            
+            ctx.user_data["pending_price"] = discounted_price
+            ctx.user_data["discount_applied"] = True
+            ctx.user_data["awaiting"] = "payment_receipt"
+            
+            plan = ctx.user_data.get("pending_plan")
+            plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+            plan_name = plan_names.get(plan, plan)
+            
+            await update.message.reply_text(
+                f"✅ <b>کد تخفیف اعمال شد!</b>\n\n"
+                f"📦 پلن: {plan_name}\n"
+                f"💰 <s>مبلغ قبلی: {original_price}$</s>\n"
+                f"💎 <b>مبلغ جدید: {discounted_price:.2f}$</b>\n"
+                f"🎉 تخفیف: {DISCOUNT_PERCENT:.0f}%\n\n"
+                f"{PAYMENT_INFO}\n\n"
+                f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
+                f"<i>(برای لغو /cancel بزنید)</i>",
+                parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text(
+                "❌ <b>کد تخفیف نامعتبر است!</b>\n\n"
+                "لطفاً دوباره تلاش کنید یا /cancel بزنید.",
+                parse_mode=ParseMode.HTML)
+        return
+
     
     if awaiting == "payment_receipt":
-        payment_id = ctx.user_data.get("payment_id")
+        plan = ctx.user_data.get("pending_plan")
+        price = ctx.user_data.get("pending_price")
+        
+        if not plan or not price:
+            await update.message.reply_text(
+                "❌ اطلاعات پرداخت یافت نشد. لطفاً دوباره تلاش کنید.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_main(uid))
+            ctx.user_data.pop("awaiting", None)
+            ctx.user_data.pop("pending_plan", None)
+            ctx.user_data.pop("pending_price", None)
+            ctx.user_data.pop("discount_applied", None)
+            return
+        
+        # ایجاد pending_payment
+        payment_id = cloud.create_pending_payment(uid, plan, price)
+        
         ctx.user_data.pop("awaiting", None)
-        ctx.user_data.pop("payment_id", None)
+        ctx.user_data.pop("pending_plan", None)
+        ctx.user_data.pop("pending_price", None)
+        ctx.user_data.pop("discount_applied", None)
+        
+        plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+        plan_name = plan_names.get(plan, plan)
+        
         for admin_id in ADMIN_IDS:
             try:
+                discount_info = ""
+                if ctx.user_data.get("discount_applied"):
+                    discount_info = f"\n🎟 تخفیف اعمال شده: {DISCOUNT_PERCENT}%"
+                
                 await ctx.bot.send_message(chat_id=admin_id, parse_mode=ParseMode.HTML,
                     text=f"🚨 <b>پرداخت جدید</b>\n\n"
-                         f"👤 کاربر: {mention_html(uid, update.effective_user.full_name, update.effective_user.username)}\n"
-                         f"🆔 آیدی: <code>{uid}</code>\n"
-                         f"🧾 ID: <code>{payment_id}</code>\n\n"
-                         f"👇 رسید:")
+                        f"👤 کاربر: {mention_html(uid, update.effective_user.full_name, update.effective_user.username)}\n"
+                        f"🆔 آیدی: <code>{uid}</code>\n"
+                        f"📦 پلن: {plan_name}\n"
+                        f"💰 مبلغ: {price}$\n"
+                        f"🧾 ID: <code>{payment_id}</code>\n"
+                        f"{discount_info}\n"
+                        f"👇 رسید:")
                 if update.message.photo:
                     await ctx.bot.forward_message(chat_id=admin_id, from_chat_id=uid, message_id=update.message.message_id)
                 elif update.message.text:
                     await ctx.bot.send_message(chat_id=admin_id, text=update.message.text)
             except Exception as e:
                 log.error(f"Forwarding failed: {e}")
-        await update.message.reply_text("✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی ادمین، اشتراک فعال می‌شود.", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        
+        await update.message.reply_text(
+            "✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی ادمین، اشتراک آماده فعال‌سازی می‌شود.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_main(uid))
         return
-    
-    if not is_admin(uid): return
     
     if awaiting == "admin_archive_text":
         ctx.user_data.pop("awaiting", None)
