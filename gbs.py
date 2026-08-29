@@ -1963,6 +1963,6 @@ def main():
     else:
         log.warning("⚠️ Polling mode")
         app.run_polling(allowed_updates=["message","callback_query"], drop_pending_updates=True)
-
+#
 if __name__ == "__main__":
     main()
