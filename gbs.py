@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GramBotSaz v5.0 FINAL — پلتفرم حرفه‌ای ربات‌ساز تلگرام
+GramBotSaz v4.1 — پلتفرم حرفه‌ای ربات‌ساز تلگرام (تمام باگ‌ها رفع شده)
 ════════════════════════════════════════════════════════════════════
-✅ همه باگ‌ها رفع شده
+✅ رفع باگ عکس welcome (دانلود و آپلود مجدد)
+✅ رفع باگ تکرار پیام کیبورد
 ✅ منوی ۴ دکمه‌ای تمیز
-✅ عکس welcome با file_id معتبر
-✅ کیبورد فقط یک بار هنگام /start
-✅ پاسخ ادمین به تیکت کاملاً کار می‌کند
+✅ بدون دکمه بازگشت الکی
 """
 import os
 import sys
 import time
+import json
 import signal
 import atexit
 import logging
@@ -19,12 +19,12 @@ import hashlib
 import asyncio
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, List, Callable
+from typing import Optional, Dict, List, Any, Callable
 from flask import Flask, request
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot,
-    ReplyKeyboardMarkup, KeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
 )
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, InvalidToken
@@ -47,9 +47,14 @@ log = logging.getLogger("GramBotSaz")
 # ══════════════════════════════════════════════════════════════════════
 PLATFORM_BOT_TOKEN = os.environ.get("PLATFORM_BOT_TOKEN", "8649622614:AAFs3Hoz9EbjBGiFeua3wt8j_XJFRbtMNxA")
 PORT = int(os.environ.get("PORT", 5000))
-ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "605611554").replace(" ", "").split(",") if x.strip()}
+_admin_raw = os.environ.get("ADMIN_IDS", "605611554")
+ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 
+# ══════════════════════════════════════════════════════════════════════
+# ECONOMY
+# ══════════════════════════════════════════════════════════════════════
+GRAMCOIN_SYMBOL = "GC"
 SIGNUP_BONUS_GC = 50
 REFERRAL_BONUS_GC = 50
 DAILY_REWARD_GC = 5
@@ -68,72 +73,104 @@ ADMIN_PAGE_SIZE = 8
 # PLUGINS REGISTRY
 # ══════════════════════════════════════════════════════════════════════
 AVAILABLE_PLUGINS = {
+    # ── پلاگین‌های رایگان ──
     "welcome": {
         "name": "👋 خوش‌آمد پیشرفته",
+        "description": "پیام خوش‌آمد با عکس، متن سفارشی و دکمه‌های چندتایی",
         "cost_gc": 0,
         "is_premium": False,
+        "category": "basic",
         "has_settings": True,
     },
     "support": {
         "name": "🎫 پشتیبانی چت زنده",
+        "description": "سیستم چت زنده حرفه‌ای با سازنده ربات",
         "cost_gc": 0,
         "is_premium": False,
+        "category": "basic",
         "has_settings": True,
     },
     "keyboard": {
         "name": "⌨️ کیبورد اختصاصی",
+        "description": "ساخت دکمه‌های کیبورد زیر صفحه چت ربات شما",
         "cost_gc": 0,
         "is_premium": False,
+        "category": "basic",
         "has_settings": True,
     },
     "echo": {
         "name": "🤖 Echo",
+        "description": "تکرار پیام‌های کاربران",
         "cost_gc": 0,
         "is_premium": False,
+        "category": "basic",
         "has_settings": False,
     },
+    # ── پلاگین‌های پرمیوم ──
     "auto_reply": {
         "name": "💬 پاسخ خودکار",
-        "cost_gc": 80,
-        "is_premium": True,
-        "has_settings": True,
+        "description": "پاسخ به کلمات کلیدی خاص",
+        "cost_gc": 80, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "broadcast": {
         "name": "📢 ارسال همگانی",
-        "cost_gc": 100,
-        "is_premium": True,
-        "has_settings": False,
+        "description": "ارسال به همه کاربران ربات شما",
+        "cost_gc": 100, "is_premium": True, "category": "advanced", "has_settings": False,
+    },
+    "shop": {
+        "name": "🛒 فروشگاه",
+        "description": "فروشگاه آنلاین با سبد خرید",
+        "cost_gc": 150, "is_premium": True, "category": "advanced", "has_settings": True,
+    },
+    "form_builder": {
+        "name": "📝 فرم‌ساز",
+        "description": "ساخت فرم و جمع‌آوری اطلاعات",
+        "cost_gc": 80, "is_premium": True, "category": "advanced", "has_settings": True,
+    },
+    "referral": {
+        "name": "👥 زیرمجموعه‌گیری",
+        "description": "سیستم رفرال برای ربات شما",
+        "cost_gc": 120, "is_premium": True, "category": "advanced", "has_settings": True,
+    },
+    "payment": {
+        "name": "💳 درگاه پرداخت",
+        "description": "دریافت پرداخت از کاربران",
+        "cost_gc": 180, "is_premium": True, "category": "advanced", "has_settings": True,
+    },
+    "stats": {
+        "name": "📊 آمار پیشرفته",
+        "description": "آمار کامل و نموداری",
+        "cost_gc": 50, "is_premium": True, "category": "advanced", "has_settings": False,
     },
 }
 
 TRIAL_DEFAULT_PLUGINS = ["welcome", "support", "keyboard"]
 
-# ══════════════════════════════════════════════════════════════════════
-# HELPERS
-# ══════════════════════════════════════════════════════════════════════
-def now_ir():
+def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
 
-def is_admin(uid: int):
+def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS
 
-def _fmt_timedelta(s):
-    s = max(0, int(s))
-    d, r = divmod(s, 86400)
-    h, r = divmod(r, 3600)
-    m, _ = divmod(r, 60)
-    p = []
-    if d: p.append(f"{d} روز")
-    if h or d: p.append(f"{h} ساعت")
-    p.append(f"{m} دقیقه")
-    return " و ".join(p) if p else "کمتر از یک دقیقه"
+def _fmt_timedelta(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    parts = []
+    if d: parts.append(f"{d} روز")
+    if h or d: parts.append(f"{h} ساعت")
+    parts.append(f"{m} دقیقه")
+    return " و ".join(parts) if parts else "کمتر از یک دقیقه"
 
-def mention_html(uid, name, username=""):
-    n = name.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") or f"کاربر {uid}"
-    return f'<a href="https://t.me/{username}">{n}</a>' if username else f'<a href="tg://user?id={uid}">{n}</a>'
+def mention_html(uid: int, name: str, username: str = "") -> str:
+    safe_name = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if not safe_name.strip(): safe_name = f"کاربر {uid}"
+    if username: return f'<a href="https://t.me/{username}">{safe_name}</a>'
+    return f'<a href="tg://user?id={uid}">{safe_name}</a>'
 
 # ══════════════════════════════════════════════════════════════════════
-# STORAGE (MongoDB)
+# CLOUD STORAGE (MongoDB)
 # ══════════════════════════════════════════════════════════════════════
 try:
     from pymongo import MongoClient
@@ -145,140 +182,162 @@ except ImportError:
 class CloudStorage:
     def __init__(self):
         self._uri = os.environ.get("MONGODB_URI", "")
-        self._client = self._collection = None
+        self._client = None
+        self._collection = None
         self._lock = threading.Lock()
         self._dirty = False
-        self._data = {"users": {}, "bots": {}, "tickets": {}, "transactions": []}
+        self._data = {
+            "users": {},
+            "bots": {},
+            "tickets": {},
+            "transactions": [],
+            "last_updated": None,
+        }
         if self._uri and MONGODB_AVAILABLE:
             try:
-                self._client = MongoClient(self._uri, serverSelectionTimeoutMS=10000)
+                self._client = MongoClient(self._uri, serverSelectionTimeoutMS=10000, connectTimeoutMS=10000)
                 self._client.admin.command('ping')
-                self._collection = self._client.get_database()["grambotsaz_data"]
+                self._db = self._client.get_database()
+                self._collection = self._db["grambotsaz_data"]
                 log.info("MongoDB: اتصال برقرار شد ✅")
             except Exception as e:
-                log.error(f"MongoDB error: {e}")
+                log.error(f"MongoDB اتصال ناموفق: {e}")
     
     def load(self):
-        if not self._uri or not self._collection: return
+        if not self._uri or self._collection is None: return
         try:
             doc = self._collection.find_one({"_id": "main"})
             if doc:
                 with self._lock:
                     doc.pop("_id", None)
                     for k, v in doc.items(): self._data[k] = v
-                    for k in ("users", "bots", "tickets"):
-                        self._data.setdefault(k, {})
+                    self._data.setdefault("users", {})
+                    self._data.setdefault("bots", {})
+                    self._data.setdefault("tickets", {})
                     self._data.setdefault("transactions", [])
+                    for u in self._data["users"].values():
+                        u.setdefault("signup_bonus_claimed", False)
                     for b in self._data["bots"].values():
-                        for f in ("enabled_plugins","purchased_plugins","bot_users"):
-                            b.setdefault(f, [])
+                        b.setdefault("enabled_plugins", [])
+                        b.setdefault("purchased_plugins", [])
                         b.setdefault("plugin_settings", {})
                         b.setdefault("subscription_expiry", None)
+                        b.setdefault("subscription_plan", None)
                         b.setdefault("is_trial", False)
+                        b.setdefault("trial_used", False)
+                        b.setdefault("bot_users", [])
                         b.setdefault("next_ticket_id", 1001)
         except Exception as e:
-            log.error(f"Load error: {e}")
+            log.error(f"MongoDB load error: {e}")
     
-    def save(self, force=False):
-        if not self._uri or not self._collection or (not force and not self._dirty): return
+    def save(self, force: bool = False):
+        if not self._uri or self._collection is None: return
+        if not force and not self._dirty: return
         with self._lock:
-            payload = {"_id": "main", "last_updated": now_ir().isoformat()}
+            self._data["last_updated"] = now_ir().isoformat()
+            payload = {"_id": "main"}
             payload.update(self._data)
             try:
                 self._collection.replace_one({"_id": "main"}, payload, upsert=True)
                 self._dirty = False
             except Exception as e:
-                log.error(f"Save error: {e}")
+                log.error(f"MongoDB save error: {e}")
     
-    # ═══ USER ═══
-    def ensure_user(self, uid, username="", full_name=""):
+    # ═══════ USER MANAGEMENT ═══════
+    def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> tuple:
         key = str(uid)
         is_new = False
         with self._lock:
             if key not in self._data["users"]:
                 is_new = True
+                ref_code = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:8]
                 self._data["users"][key] = {
-                    "uid": uid, "username": username, "full_name": full_name,
+                    "uid": uid, "username": username or "", "full_name": full_name or "",
                     "gramcoin_balance": 0, "total_earned_gc": 0,
-                    "referral_code": hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:8],
-                    "referred_by": None, "created_at": now_ir().isoformat(),
-                    "last_daily_claim": None, "bots_created": [], "signup_bonus_claimed": False,
+                    "referral_code": ref_code, "referred_by": None,
+                    "created_at": now_ir().isoformat(),
+                    "last_daily_claim": None, "bots_created": [],
+                    "signup_bonus_claimed": False,
                 }
                 self._dirty = True
             else:
                 u = self._data["users"][key]
                 if username and u.get("username") != username:
-                    u["username"] = username
-                    self._dirty = True
+                    u["username"] = username; self._dirty = True
                 if full_name and u.get("full_name") != full_name:
-                    u["full_name"] = full_name
-                    self._dirty = True
+                    u["full_name"] = full_name; self._dirty = True
+                u.setdefault("signup_bonus_claimed", False)
             return dict(self._data["users"][key]), is_new
     
-    def claim_signup_bonus(self, uid):
-        k = str(uid)
+    def claim_signup_bonus(self, uid: int) -> bool:
+        key = str(uid)
         with self._lock:
-            u = self._data["users"].get(k)
+            u = self._data["users"].get(key)
             if not u or u.get("signup_bonus_claimed"): return False
             u["signup_bonus_claimed"] = True
             self._dirty = True
         return self.add_gramcoin(uid, SIGNUP_BONUS_GC, "signup_bonus")
     
-    def get_user(self, uid):
+    def get_user(self, uid: int) -> Optional[dict]:
         with self._lock:
             u = self._data["users"].get(str(uid))
             return dict(u) if u else None
     
-    def get_all_users(self):
-        with self._lock:
-            return [{"uid_str": k, **v} for k, v in self._data["users"].items()]
+    def get_all_users(self) -> list:
+        with self._lock: return [{"uid_str": k, **v} for k, v in self._data["users"].items()]
     
-    def add_gramcoin(self, uid, amount, reason):
-        k = str(uid)
+    def add_gramcoin(self, uid: int, amount: int, reason: str) -> bool:
+        key = str(uid)
         with self._lock:
-            if k not in self._data["users"]: return False
-            self._data["users"][k]["gramcoin_balance"] += amount
-            self._data["users"][k]["total_earned_gc"] += amount
-            self._data["transactions"].append({
-                "uid": uid, "amount_gc": amount, "tx_type": reason,
-                "description": f"+{amount} GC ({reason})", "timestamp": now_ir().isoformat(),
-            })
-            self._data["transactions"] = self._data["transactions"][-1000:]
-            self._dirty = True
-            return True
+            if key in self._data["users"]:
+                self._data["users"][key]["gramcoin_balance"] += amount
+                self._data["users"][key]["total_earned_gc"] += amount
+                self._dirty = True
+                tx_id = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:12]
+                self._data["transactions"].append({
+                    "tx_id": tx_id, "uid": uid, "amount_gc": amount,
+                    "tx_type": reason, "description": f"+{amount} GC ({reason})",
+                    "timestamp": now_ir().isoformat(),
+                })
+                self._data["transactions"] = self._data["transactions"][-1000:]
+                return True
+            return False
     
-    def deduct_gramcoin(self, uid, amount, reason):
-        k = str(uid)
+    def deduct_gramcoin(self, uid: int, amount: int, reason: str) -> bool:
+        key = str(uid)
         with self._lock:
-            u = self._data["users"].get(k)
-            if not u or u.get("gramcoin_balance", 0) < amount: return False
-            u["gramcoin_balance"] -= amount
-            self._data["transactions"].append({
-                "uid": uid, "amount_gc": -amount, "tx_type": reason,
-                "description": f"-{amount} GC ({reason})", "timestamp": now_ir().isoformat(),
-            })
-            self._dirty = True
-            return True
+            u = self._data["users"].get(key)
+            if u and u.get("gramcoin_balance", 0) >= amount:
+                u["gramcoin_balance"] -= amount
+                self._dirty = True
+                tx_id = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:12]
+                self._data["transactions"].append({
+                    "tx_id": tx_id, "uid": uid, "amount_gc": -amount,
+                    "tx_type": reason, "description": f"-{amount} GC ({reason})",
+                    "timestamp": now_ir().isoformat(),
+                })
+                return True
+            return False
     
-    def can_claim_daily(self, uid):
+    def can_claim_daily(self, uid: int) -> bool:
         u = self.get_user(uid)
         if not u or not u.get("last_daily_claim"): return True
         try:
-            return (now_ir() - datetime.fromisoformat(u["last_daily_claim"])).days >= 1
-        except:
-            return True
+            last_claim = datetime.fromisoformat(u["last_daily_claim"])
+            return (now_ir() - last_claim).days >= 1
+        except: return True
     
-    def claim_daily_reward(self, uid, amount):
+    def claim_daily_reward(self, uid: int, amount: int) -> bool:
         if not self.can_claim_daily(uid): return False
-        k = str(uid)
+        key = str(uid)
         with self._lock:
-            if k in self._data["users"]:
-                self._data["users"][k]["last_daily_claim"] = now_ir().isoformat()
+            if key in self._data["users"]:
+                self._data["users"][key]["last_daily_claim"] = now_ir().isoformat()
                 self._dirty = True
         return self.add_gramcoin(uid, amount, "daily_reward")
     
-    # ═══ BOT ═══
-    def create_bot(self, owner_uid, bot_token):
+    # ═══════ BOT MANAGEMENT ═══════
+    def create_bot(self, owner_uid: int, bot_token: str) -> Optional[dict]:
         bot_id = hashlib.md5(f"{owner_uid}{bot_token}{time.time()}".encode()).hexdigest()[:12]
         with self._lock:
             trial_expiry = (now_ir() + timedelta(days=TRIAL_DAYS)).isoformat()
@@ -289,20 +348,33 @@ class CloudStorage:
                 "bot_username": "",
                 "is_active": True,
                 "is_trial": True,
+                "trial_used": True,
                 "created_at": now_ir().isoformat(),
                 "last_activity": None,
                 "enabled_plugins": list(TRIAL_DEFAULT_PLUGINS),
                 "purchased_plugins": [],
                 "plugin_settings": {
                     "welcome": {
-                        "message": "👋 <b>سلام! به ربات ما خوش آمدید!</b>\n\n🤖 از اینکه ما را انتخاب کردید سپاسگزاریم.\n\n💡 از دکمه‌های زیر صفحه برای شروع استفاده کنید.",
+                        "message": (
+                            "👋 <b>سلام! به ربات ما خوش آمدید!</b>\n\n"
+                            "🤖 از اینکه ما را انتخاب کردید سپاسگزاریم.\n\n"
+                            "💡 <b>چگونه با ما ارتباط بگیرید:</b>\n"
+                            "• از دکمه‌های زیر صفحه استفاده کنید\n"
+                            "• برای پشتیبانی /support را بزنید\n\n"
+                            "✨ امیدواریم تجربه خوبی داشته باشید!"
+                        ),
                         "photo_file_id": None,
-                        "buttons": [[{"text": "🎫 پشتیبانی", "type": "support"}, {"text": "ℹ️ درباره ما", "type": "text", "value": "ما یک تیم حرفه‌ای هستیم!"}]],
+                        "buttons": [
+                            [
+                                {"text": "🎫 پشتیبانی", "type": "support"},
+                                {"text": "ℹ️ درباره ما", "type": "text", "value": "ما یک تیم حرفه‌ای هستیم!"},
+                            ]
+                        ],
                     },
                     "support": {
-                        "admin_message": "📩 پیام خود را ارسال کنید. در سریع‌ترین زمان پاسخ می‌دهیم.",
-                        "confirm_message": "✅ پیام شما ارسال شد.",
-                        "end_chat_message": "🔚 چت پایان یافت.",
+                        "admin_message": "📩 <b>به پشتیبانی خوش آمدید!</b>\n\nپیام خود را برای تیم پشتیبانی ارسال کنید. در سریع‌ترین زمان ممکن پاسخ می‌دهیم.",
+                        "confirm_message": "✅ <b>پیام شما با موفقیت ارسال شد!</b>\n\nتیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
+                        "end_chat_message": "🔚 <b>چت با پشتیبانی پایان یافت.</b>\n\nبرای شروع مجدد، /support را بزنید.",
                     },
                     "keyboard": {
                         "buttons": [
@@ -320,195 +392,211 @@ class CloudStorage:
                 "next_ticket_id": 1001,
                 "stats": {"messages_received": 0, "messages_sent": 0, "unique_users": 0},
             }
-            uk = str(owner_uid)
-            if uk in self._data["users"]:
-                self._data["users"][uk]["bots_created"].append(bot_id)
+            user_key = str(owner_uid)
+            if user_key in self._data["users"]:
+                self._data["users"][user_key]["bots_created"].append(bot_id)
             self._dirty = True
             return dict(self._data["bots"][bot_id])
     
-    def get_bot(self, bot_id):
+    def get_bot(self, bot_id: str) -> Optional[dict]:
         with self._lock:
             b = self._data["bots"].get(bot_id)
             return dict(b) if b else None
     
-    def get_all_bots(self):
-        with self._lock:
-            return [{"bot_id": k, **v} for k, v in self._data["bots"].items()]
+    def get_all_bots(self) -> list:
+        with self._lock: return [{"bot_id": k, **v} for k, v in self._data["bots"].items()]
     
-    def get_user_bots(self, uid):
+    def get_user_bots(self, uid: int) -> list:
         with self._lock:
-            u = self._data["users"].get(str(uid))
-            if not u: return []
-            return [dict(self._data["bots"][bid]) for bid in u.get("bots_created", []) if bid in self._data["bots"]]
+            user_key = str(uid)
+            user = self._data["users"].get(user_key)
+            if not user: return []
+            bot_ids = user.get("bots_created", [])
+            return [dict(self._data["bots"][bid]) for bid in bot_ids if bid in self._data["bots"]]
     
-    def update_bot_username(self, bot_id, username):
+    def update_bot_username(self, bot_id: str, username: str):
         with self._lock:
             if bot_id in self._data["bots"]:
                 self._data["bots"][bot_id]["bot_username"] = username
                 self._dirty = True
     
-    def delete_bot(self, bot_id, owner_uid):
+    def delete_bot(self, bot_id: str, owner_uid: int) -> bool:
         with self._lock:
             if bot_id in self._data["bots"]:
                 del self._data["bots"][bot_id]
-                uk = str(owner_uid)
-                if uk in self._data["users"] and bot_id in self._data["users"][uk]["bots_created"]:
-                    self._data["users"][uk]["bots_created"].remove(bot_id)
+                user_key = str(owner_uid)
+                if user_key in self._data["users"]:
+                    if bot_id in self._data["users"][user_key]["bots_created"]:
+                        self._data["users"][user_key]["bots_created"].remove(bot_id)
                 self._dirty = True
                 return True
             return False
     
-    def update_bot_stats(self, bot_id, mr=0, ms=0):
+    def update_bot_stats(self, bot_id: str, messages_received: int = 0, messages_sent: int = 0):
         with self._lock:
             if bot_id in self._data["bots"]:
-                self._data["bots"][bot_id]["stats"]["messages_received"] += mr
-                self._data["bots"][bot_id]["stats"]["messages_sent"] += ms
+                self._data["bots"][bot_id]["stats"]["messages_received"] += messages_received
+                self._data["bots"][bot_id]["stats"]["messages_sent"] += messages_sent
                 self._data["bots"][bot_id]["last_activity"] = now_ir().isoformat()
                 self._dirty = True
     
-    def add_bot_user(self, bot_id, user_id, username="", full_name=""):
+    def add_bot_user(self, bot_id: str, user_id: int, username: str = "", full_name: str = ""):
         with self._lock:
-            if bot_id not in self._data["bots"]: return
-            bu = self._data["bots"][bot_id].setdefault("bot_users", [])
-            if any(x["user_id"] == user_id for x in bu): return
-            bu.append({"user_id": user_id, "username": username, "full_name": full_name, "joined_at": now_ir().isoformat()})
-            self._data["bots"][bot_id]["stats"]["unique_users"] = len(bu)
-            self._dirty = True
+            if bot_id in self._data["bots"]:
+                bot_users = self._data["bots"][bot_id].setdefault("bot_users", [])
+                for bu in bot_users:
+                    if bu["user_id"] == user_id: return
+                bot_users.append({
+                    "user_id": user_id, "username": username, "full_name": full_name,
+                    "joined_at": now_ir().isoformat(),
+                })
+                self._data["bots"][bot_id]["stats"]["unique_users"] = len(bot_users)
+                self._dirty = True
     
-    def activate_subscription(self, bot_id, plan, days):
+    # ═══════ SUBSCRIPTION ═══════
+    def activate_subscription(self, bot_id: str, plan: str, days: int) -> Optional[datetime]:
         with self._lock:
             if bot_id not in self._data["bots"]: return None
             bot = self._data["bots"][bot_id]
-            try:
-                cur = datetime.fromisoformat(bot["subscription_expiry"]) if bot.get("subscription_expiry") else now_ir()
-                base = cur if cur > now_ir() else now_ir()
-            except:
-                base = now_ir()
+            if bot.get("subscription_expiry"):
+                try:
+                    current = datetime.fromisoformat(bot["subscription_expiry"])
+                    base = current if current > now_ir() else now_ir()
+                except: base = now_ir()
+            else: base = now_ir()
             new_expiry = base + timedelta(days=days)
             bot["subscription_expiry"] = new_expiry.isoformat()
             bot["subscription_plan"] = plan
             bot["is_active"] = True
             bot["is_trial"] = False
-            for pid, p in AVAILABLE_PLUGINS.items():
-                if not p["is_premium"] and pid not in bot["enabled_plugins"]:
-                    bot["enabled_plugins"].append(pid)
+            free_plugins = [pid for pid, p in AVAILABLE_PLUGINS.items() if not p.get("is_premium")]
+            for plugin in free_plugins:
+                if plugin not in bot["enabled_plugins"]:
+                    bot["enabled_plugins"].append(plugin)
             self._dirty = True
             return new_expiry
     
-    def check_subscription_expired(self, bot_id):
+    def check_subscription_expired(self, bot_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            if not b or not b.get("subscription_expiry"): return True
+            bot = self._data["bots"].get(bot_id)
+            if not bot or not bot.get("subscription_expiry"): return True
             try:
-                return now_ir() >= datetime.fromisoformat(b["subscription_expiry"])
-            except:
-                return True
+                expiry = datetime.fromisoformat(bot["subscription_expiry"])
+                return now_ir() >= expiry
+            except: return True
     
-    def deactivate_bot(self, bot_id):
+    def deactivate_bot(self, bot_id: str):
         with self._lock:
             if bot_id in self._data["bots"]:
                 self._data["bots"][bot_id]["is_active"] = False
                 self._dirty = True
     
-    def enable_plugin(self, bot_id, pid):
+    # ═══════ PLUGINS ═══════
+    def enable_plugin(self, bot_id: str, plugin_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            if not b or pid in b["enabled_plugins"]: return False
-            b["enabled_plugins"].append(pid)
-            self._dirty = True
+            if bot_id not in self._data["bots"]: return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id not in bot.get("enabled_plugins", []):
+                bot.setdefault("enabled_plugins", []).append(plugin_id)
+                self._dirty = True
             return True
     
-    def disable_plugin(self, bot_id, pid):
+    def disable_plugin(self, bot_id: str, plugin_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            if not b or pid not in b["enabled_plugins"]: return False
-            b["enabled_plugins"].remove(pid)
-            self._dirty = True
+            if bot_id not in self._data["bots"]: return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id in bot.get("enabled_plugins", []):
+                bot["enabled_plugins"].remove(plugin_id)
+                self._dirty = True
             return True
     
-    def purchase_plugin(self, bot_id, pid):
+    def purchase_plugin(self, bot_id: str, plugin_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            if not b or pid in b["purchased_plugins"]: return False
-            b["purchased_plugins"].append(pid)
-            if pid not in b["enabled_plugins"]:
-                b["enabled_plugins"].append(pid)
-            self._dirty = True
+            if bot_id not in self._data["bots"]: return False
+            bot = self._data["bots"][bot_id]
+            if plugin_id not in bot.get("purchased_plugins", []):
+                bot.setdefault("purchased_plugins", []).append(plugin_id)
+                if plugin_id not in bot.get("enabled_plugins", []):
+                    bot.setdefault("enabled_plugins", []).append(plugin_id)
+                self._dirty = True
             return True
     
-    def is_plugin_purchased(self, bot_id, pid):
+    def is_plugin_purchased(self, bot_id: str, plugin_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            return b and pid in b.get("purchased_plugins", []) if b else False
+            bot = self._data["bots"].get(bot_id)
+            return bot and plugin_id in bot.get("purchased_plugins", []) if bot else False
     
-    def is_plugin_enabled(self, bot_id, pid):
+    def is_plugin_enabled(self, bot_id: str, plugin_id: str) -> bool:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            return b and pid in b.get("enabled_plugins", []) if b else False
+            bot = self._data["bots"].get(bot_id)
+            return bot and plugin_id in bot.get("enabled_plugins", []) if bot else False
     
-    def update_plugin_settings(self, bot_id, pid, settings):
+    def update_plugin_settings(self, bot_id: str, plugin_id: str, settings: dict):
         with self._lock:
             if bot_id in self._data["bots"]:
-                self._data["bots"][bot_id].setdefault("plugin_settings", {})[pid] = settings
+                self._data["bots"][bot_id].setdefault("plugin_settings", {})[plugin_id] = settings
                 self._dirty = True
     
-    def get_plugin_settings(self, bot_id, pid):
+    def get_plugin_settings(self, bot_id: str, plugin_id: str) -> dict:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            return b.get("plugin_settings", {}).get(pid, {}) if b else {}
+            bot = self._data["bots"].get(bot_id)
+            if not bot: return {}
+            return bot.get("plugin_settings", {}).get(plugin_id, {})
     
-    # ═══ TICKETS ═══
-    def create_ticket(self, bot_id, user_id, username, full_name):
+    # ═══════ TICKETS ═══════
+    def create_ticket(self, bot_id: str, user_id: int, username: str, full_name: str) -> Optional[dict]:
         with self._lock:
-            b = self._data["bots"].get(bot_id)
-            if not b: return None
-            num = b.get("next_ticket_id", 1001)
-            b["next_ticket_id"] = num + 1
-            tid = f"T{num}"
-            self._data["tickets"][tid] = {
-                "ticket_id": tid, "bot_id": bot_id, "user_id": user_id,
-                "username": username, "full_name": full_name, "status": "open",
-                "created_at": now_ir().isoformat(), "closed_at": None,
+            bot = self._data["bots"].get(bot_id)
+            if not bot: return None
+            ticket_num = bot.get("next_ticket_id", 1001)
+            bot["next_ticket_id"] = ticket_num + 1
+            ticket_id = f"T{ticket_num}"
+            self._data["tickets"][ticket_id] = {
+                "ticket_id": ticket_id, "bot_id": bot_id,
+                "user_id": user_id, "username": username, "full_name": full_name,
+                "status": "open",
+                "created_at": now_ir().isoformat(),
+                "closed_at": None,
             }
             self._dirty = True
-            return dict(self._data["tickets"][tid])
+            return dict(self._data["tickets"][ticket_id])
     
-    def close_ticket(self, tid):
+    def close_ticket(self, ticket_id: str):
         with self._lock:
-            t = self._data["tickets"].get(tid)
-            if t and t["status"] == "open":
-                t["status"] = "closed"
-                t["closed_at"] = now_ir().isoformat()
+            ticket = self._data["tickets"].get(ticket_id)
+            if ticket and ticket["status"] == "open":
+                ticket["status"] = "closed"
+                ticket["closed_at"] = now_ir().isoformat()
                 self._dirty = True
     
-    def get_ticket(self, tid):
+    def get_ticket(self, ticket_id: str) -> Optional[dict]:
         with self._lock:
-            t = self._data["tickets"].get(tid)
+            t = self._data["tickets"].get(ticket_id)
             return dict(t) if t else None
     
-    def get_bot_tickets(self, bot_id):
+    def get_bot_tickets(self, bot_id: str) -> list:
         with self._lock:
             return [dict(t) for t in self._data["tickets"].values() if t["bot_id"] == bot_id]
     
-    # ═══ REFERRAL ═══
-    def find_uid_by_referral(self, ref_code):
+    # ═══════ REFERRAL ═══════
+    def find_uid_by_referral(self, ref_code: str) -> Optional[int]:
         with self._lock:
             for uid_str, u in self._data["users"].items():
-                if u.get("referral_code") == ref_code:
-                    return int(uid_str)
+                if u.get("referral_code") == ref_code: return int(uid_str)
             return None
     
-    def apply_referral(self, new_uid, ref_uid):
+    def apply_referral(self, new_uid: int, ref_uid: int) -> bool:
         if new_uid == ref_uid: return False
-        nk, rk = str(new_uid), str(ref_uid)
+        n_key, r_key = str(new_uid), str(ref_uid)
         with self._lock:
             users = self._data["users"]
-            if nk not in users or rk not in users or users[nk].get("referred_by"): return False
-            users[nk]["referred_by"] = rk
+            if n_key not in users or r_key not in users: return False
+            if users[n_key].get("referred_by"): return False
+            users[n_key]["referred_by"] = r_key
             self._dirty = True
-            return True
+        return True
     
-    def get_stats(self):
+    def get_stats(self) -> dict:
         with self._lock:
             return {
                 "total_users": len(self._data["users"]),
@@ -519,23 +607,24 @@ class CloudStorage:
 cloud = CloudStorage()
 
 # ══════════════════════════════════════════════════════════════════════
-# PLUGIN MANAGER
+# PLUGIN SYSTEM
 # ══════════════════════════════════════════════════════════════════════
 class PluginManager:
     def __init__(self):
-        self._handlers: Dict[str, Callable] = {}
-        self._register_all()
+        self._plugin_handlers: Dict[str, Callable] = {}
+        self._register_all_plugins()
     
-    def _register_all(self):
-        self._handlers["echo"] = self._setup_echo
-        self._handlers["welcome"] = self._setup_welcome
-        self._handlers["support"] = self._setup_support
+    def _register_all_plugins(self):
+        self._plugin_handlers["echo"] = self._setup_echo
+        self._plugin_handlers["welcome"] = self._setup_welcome
+        self._plugin_handlers["support"] = self._setup_support
+        self._plugin_handlers["keyboard"] = self._setup_keyboard
     
     def setup_plugins_for_bot(self, app, bot_id):
         bot_data = cloud.get_bot(bot_id)
         if not bot_data: return
         for pid in bot_data.get("enabled_plugins", []):
-            h = self._handlers.get(pid)
+            h = self._plugin_handlers.get(pid)
             if h:
                 try:
                     h(app, bot_id)
@@ -550,46 +639,22 @@ class PluginManager:
                 f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
             try:
                 await update.message.reply_text(update.message.text)
-                cloud.update_bot_stats(bot_id, mr=1, ms=1)
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
             except: pass
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler), group=100)
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler), group=10)
     
+    # ═══════ WELCOME PLUGIN (رفع باگ عکس - فقط inline buttons) ═══════
     def _setup_welcome(self, app, bot_id):
-        """
-        ✅ رفع باگ: کیبورد فقط یک بار هنگام /start
-        ✅ رفع باگ: عکس با file_id معتبر
-        ✅ رفع باگ: دکمه‌های شیشه‌ای چندتایی
-        """
-        def build_keyboard_markup():
-            """ساخت ReplyKeyboard از پلاگین keyboard"""
-            settings = cloud.get_plugin_settings(bot_id, "keyboard")
-            buttons_data = settings.get("buttons", [])
-            bot_data = cloud.get_bot(bot_id)
-            if not bot_data or "keyboard" not in bot_data.get("enabled_plugins", []):
-                return None
-            if not buttons_data: return None
-            rows = []
-            for row in buttons_data:
-                current_row = []
-                for btn in row:
-                    text = btn.get("text", "")
-                    if text:
-                        current_row.append(KeyboardButton(text))
-                if current_row:
-                    rows.append(current_row)
-            if not rows: return None
-            return ReplyKeyboardMarkup(
-                rows,
-                resize_keyboard=settings.get("resize_keyboard", True),
-                one_time_keyboard=settings.get("one_time_keyboard", False),
-                is_persistent=settings.get("persistent", True),
-            )
-        
-        def build_inline_buttons(ctx=None):
-            """ساخت InlineKeyboard"""
+        async def welcome_handler(update, ctx):
             settings = cloud.get_plugin_settings(bot_id, "welcome")
+            message = settings.get("message", "👋 <b>سلام! خوش آمدید!</b>")
+            photo_file_id = settings.get("photo_file_id")
             buttons_data = settings.get("buttons", [])
-            if not buttons_data: return None
+            
+            cloud.add_bot_user(bot_id, update.effective_user.id, update.effective_user.username or "",
+                f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
+            
+            # ساخت دکمه‌های شیشه‌ای (Inline)
             btn_rows = []
             for row in buttons_data:
                 current_row = []
@@ -601,78 +666,44 @@ class PluginManager:
                     if btn_type == "url" and url:
                         current_row.append(InlineKeyboardButton(text, url=url))
                     elif btn_type == "support":
-                        current_row.append(InlineKeyboardButton(text, callback_data=f"sup_btn:{bot_id}"))
+                        current_row.append(InlineKeyboardButton(text, callback_data=f"support_btn:{bot_id}"))
                     elif btn_type == "text":
-                        enc = hashlib.md5(value.encode()).hexdigest()[:8]
-                        if ctx:
-                            ctx.bot_data.setdefault("btn_texts", {})[enc] = value
-                        current_row.append(InlineKeyboardButton(text, callback_data=f"wbtn:{enc}"))
+                        encoded_value = hashlib.md5(value.encode()).hexdigest()[:8]
+                        ctx.bot_data.setdefault("btn_texts", {})[encoded_value] = value
+                        current_row.append(InlineKeyboardButton(text, callback_data=f"wbtn:{encoded_value}"))
+                    elif btn_type == "callback":
+                        cb_data = btn.get("callback", "")[:64]
+                        current_row.append(InlineKeyboardButton(text, callback_data=cb_data))
                 if current_row:
                     btn_rows.append(current_row)
-            return InlineKeyboardMarkup(btn_rows) if btn_rows else None
-        
-        async def welcome_handler(update, ctx):
-            settings = cloud.get_plugin_settings(bot_id, "welcome")
-            message = settings.get("message", "👋 <b>سلام! خوش آمدید!</b>")
-            photo_file_id = settings.get("photo_file_id")
-            
-            cloud.add_bot_user(bot_id, update.effective_user.id, update.effective_user.username or "",
-                f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
-            
-            reply_kb = build_keyboard_markup()
-            inline_kb = build_inline_buttons(ctx)
+            markup = InlineKeyboardMarkup(btn_rows) if btn_rows else None
             
             try:
                 if photo_file_id:
-                    # ✅ ارسال عکس با caption و دکمه شیشه‌ای
                     await update.message.reply_photo(
                         photo=photo_file_id,
                         caption=message,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=inline_kb,
+                        reply_markup=markup,
                     )
-                    # ✅ ارسال کیبورد با پیام موقت و حذف سریع
-                    if reply_kb:
-                        temp_msg = await update.message.reply_text("⌨️", reply_markup=reply_kb)
-                        await asyncio.sleep(0.5)
-                        try:
-                            await temp_msg.delete()
-                        except:
-                            pass
                 else:
-                    # ✅ ارسال متن با دکمه شیشه‌ای
                     await update.message.reply_text(
                         message,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=inline_kb,
+                        reply_markup=markup,
                     )
-                    # ✅ ارسال کیبورد با پیام موقت و حذف سریع
-                    if reply_kb:
-                        temp_msg = await update.message.reply_text("⌨️", reply_markup=reply_kb)
-                        await asyncio.sleep(0.5)
-                        try:
-                            await temp_msg.delete()
-                        except:
-                            pass
-                cloud.update_bot_stats(bot_id, mr=1, ms=1)
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
             except Exception as e:
                 log.warning(f"Welcome failed for {bot_id}: {e}")
-                # ✅ Fallback: اگر عکس خراب بود، متن ساده بفرست
+                # Fallback به متن ساده
                 try:
                     await update.message.reply_text(message, parse_mode=ParseMode.HTML)
-                except:
-                    pass
+                except: pass
         
         async def button_handler(update, ctx):
             q = update.callback_query
             data = q.data or ""
-            if data.startswith("wbtn:"):
-                enc = data.replace("wbtn:", "")
-                text = ctx.bot_data.get("btn_texts", {}).get(enc, "")
-                await q.answer()
-                if text:
-                    await q.message.reply_text(text, parse_mode=ParseMode.HTML)
-            elif data == f"sup_btn:{bot_id}":
+            if data == f"support_btn:{bot_id}":
                 await q.answer()
                 settings = cloud.get_plugin_settings(bot_id, "support")
                 admin_msg = settings.get("admin_message", "📩 پیام خود را ارسال کنید.")
@@ -687,10 +718,77 @@ class PluginManager:
                 await q.message.reply_text(
                     f"{admin_msg}\n\n🎫 <b>تیکت:</b> <code>{ticket['ticket_id']}</code>",
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]]))
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]
+                    ]))
+            elif data.startswith("wbtn:"):
+                encoded = data.replace("wbtn:", "")
+                text = ctx.bot_data.get("btn_texts", {}).get(encoded, "")
+                await q.answer()
+                if text:
+                    await q.message.reply_text(text, parse_mode=ParseMode.HTML)
         
-        async def keyboard_action_handler(update, ctx):
-            """مدیریت کلیک روی دکمه‌های ReplyKeyboard"""
+        app.add_handler(CommandHandler("start", welcome_handler), group=5)
+        app.add_handler(CallbackQueryHandler(button_handler, pattern=r"^support_btn:|^wbtn:"), group=5)
+    
+    # ═══════ KEYBOARD PLUGIN (رفع باگ تکرار پیام) ═══════
+    def _setup_keyboard(self, app, bot_id):
+        async def send_keyboard_on_start(update, ctx):
+            """ارسال کیبورد سفارشی هنگام /start - فقط بار اول پیام نمایش داده می‌شود"""
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            buttons_data = settings.get("buttons", [])
+            resize = settings.get("resize_keyboard", True)
+            one_time = settings.get("one_time_keyboard", False)
+            persistent = settings.get("persistent", True)
+            
+            if not buttons_data: return
+            
+            # ساخت ReplyKeyboard
+            rows = []
+            for row in buttons_data:
+                current_row = []
+                for btn in row:
+                    text = btn.get("text", "")
+                    if text:
+                        current_row.append(KeyboardButton(text))
+                if current_row:
+                    rows.append(current_row)
+            if not rows: return
+            
+            markup = ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=resize,
+                one_time_keyboard=one_time,
+                is_persistent=persistent,
+            )
+            
+            # بررسی آیا قبلاً پیام فعال‌سازی برای این کاربر نمایش داده شده
+            user_id = update.effective_user.id
+            shown_key = f"kb_shown_{bot_id}"
+            
+            if not ctx.user_data.get(shown_key):
+                # بار اول: نمایش پیام کامل
+                try:
+                    await update.message.reply_text(
+                        "⌨️ <b>کیبورد اختصاصی فعال شد!</b>\n\n"
+                        "از دکمه‌های زیر برای تعامل با ربات استفاده کنید.",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=markup,
+                    )
+                    ctx.user_data[shown_key] = True
+                except Exception as e:
+                    log.warning(f"Keyboard send failed for {bot_id}: {e}")
+            else:
+                # دفعات بعد: فقط کیبورد را ارسال کن (بدون پیام)
+                temp_msg = await update.message.reply_text("⌨️", reply_markup=markup)
+                await asyncio.sleep(0.5)
+                try:
+                    await temp_msg.delete()
+                except:
+                    pass
+        
+        async def keyboard_button_handler(update, ctx):
+            """مدیریت کلیک روی دکمه‌های کیبورد"""
             if not update.message or not update.message.text: return
             text = update.message.text
             if text.startswith("/"): return
@@ -715,7 +813,7 @@ class PluginManager:
             try:
                 if btn_action == "text":
                     await update.message.reply_text(btn_value, parse_mode=ParseMode.HTML)
-                    cloud.update_bot_stats(bot_id, mr=1, ms=1)
+                    cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
                 elif btn_action == "command" and btn_value == "/support":
                     settings_sup = cloud.get_plugin_settings(bot_id, "support")
                     admin_msg = settings_sup.get("admin_message", "📩 پیام خود را ارسال کنید.")
@@ -728,19 +826,24 @@ class PluginManager:
                         await update.message.reply_text(
                             f"{admin_msg}\n\n🎫 <b>تیکت:</b> <code>{ticket['ticket_id']}</code>",
                             parse_mode=ParseMode.HTML,
-                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]]))
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]
+                            ]))
                 elif btn_action == "url":
                     await update.message.reply_text(
                         f"🌐 <b>لینک:</b>",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 باز کردن", url=btn_value)]]))
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔗 باز کردن", url=btn_value)]
+                        ]))
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
             except Exception as e:
                 log.warning(f"Keyboard action failed: {e}")
         
-        app.add_handler(CommandHandler("start", welcome_handler), group=5)
-        app.add_handler(CallbackQueryHandler(button_handler, pattern=r"^wbtn:|^sup_btn:"), group=5)
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_action_handler), group=50)
+        app.add_handler(CommandHandler("start", send_keyboard_on_start), group=6)
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_button_handler), group=15)
     
+    # ═══════ SUPPORT PLUGIN ═══════
     def _setup_support(self, app, bot_id):
         async def support_command(update, ctx):
             settings = cloud.get_plugin_settings(bot_id, "support")
@@ -751,14 +854,17 @@ class PluginManager:
             ticket = cloud.create_ticket(bot_id, user.id, user.username or "",
                 f"{user.first_name or ''} {user.last_name or ''}".strip())
             if not ticket:
-                await update.message.reply_text("❌ خطا")
+                await update.message.reply_text("❌ خطا در ایجاد چت.")
                 return
             ctx.user_data[f"chat_{bot_id}"] = {"active": True, "ticket_id": ticket["ticket_id"]}
             cloud.save(force=True)
             await update.message.reply_text(
-                f"{admin_msg}\n\n🎫 <b>تیکت:</b> <code>{ticket['ticket_id']}</code>",
+                f"{admin_msg}\n\n🎫 <b>شماره تیکت:</b> <code>{ticket['ticket_id']}</code>\n\n"
+                f"💬 هر پیامی که بفرستید مستقیماً به پشتیبانی ارسال می‌شود.",
                 parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]]))
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat:{bot_id}")]
+                ]))
         
         async def callback_handler(update, ctx):
             q = update.callback_query
@@ -772,46 +878,45 @@ class PluginManager:
                 settings = cloud.get_plugin_settings(bot_id, "support")
                 end_msg = settings.get("end_chat_message", "🔚 چت پایان یافت.")
                 await q.answer("چت پایان یافت")
-                try:
-                    await q.edit_message_text(end_msg, parse_mode=ParseMode.HTML)
-                except:
-                    await q.message.reply_text(end_msg, parse_mode=ParseMode.HTML)
+                try: await q.edit_message_text(end_msg, parse_mode=ParseMode.HTML)
+                except: await q.message.reply_text(end_msg, parse_mode=ParseMode.HTML)
                 return
             if data.startswith("reply_ticket:"):
-                tid = data.replace("reply_ticket:", "")
-                ticket = cloud.get_ticket(tid)
+                ticket_id = data.replace("reply_ticket:", "")
+                ticket = cloud.get_ticket(ticket_id)
                 if not ticket or ticket["bot_id"] != bot_id:
-                    await q.answer("❌ تیکت یافت نشد")
-                    return
+                    await q.answer("❌ تیکت یافت نشد"); return
                 bot_data = cloud.get_bot(bot_id)
                 if not bot_data or bot_data.get("owner_uid") != q.from_user.id:
-                    await q.answer("❌ دسترسی ندارید")
-                    return
+                    await q.answer("❌ دسترسی ندارید"); return
                 ctx.user_data[f"admin_reply_{bot_id}"] = {
-                    "active": True, "ticket_id": tid, "user_id": ticket["user_id"],
+                    "active": True, "ticket_id": ticket_id, "user_id": ticket["user_id"],
                 }
                 await q.answer()
                 await q.message.reply_text(
-                    f"💬 <b>پاسخ به تیکت {tid}</b>\n👤 {ticket['full_name']}\n\n✍️ پاسخ خود را بنویسید:",
+                    f"💬 <b>در حال پاسخ به تیکت {ticket_id}</b>\n"
+                    f"👤 کاربر: {ticket['full_name']}\n\n"
+                    f"✍️ پاسخ خود را بنویسید و ارسال کنید:\n(/cancel برای لغو)",
                     parse_mode=ParseMode.HTML)
                 return
             if data.startswith("close_ticket:"):
-                tid = data.replace("close_ticket:", "")
-                ticket = cloud.get_ticket(tid)
-                if not ticket or ticket["bot_id"] != bot_id: return
+                ticket_id = data.replace("close_ticket:", "")
+                ticket = cloud.get_ticket(ticket_id)
+                if not ticket or ticket["bot_id"] != bot_id:
+                    await q.answer("❌ تیکت یافت نشد"); return
                 bot_data = cloud.get_bot(bot_id)
-                if not bot_data or bot_data.get("owner_uid") != q.from_user.id: return
-                cloud.close_ticket(tid)
+                if not bot_data or bot_data.get("owner_uid") != q.from_user.id:
+                    await q.answer("❌ دسترسی ندارید"); return
+                cloud.close_ticket(ticket_id)
                 cloud.save(force=True)
                 try:
                     temp_bot = Bot(token=bot_data["bot_token"])
                     await temp_bot.send_message(chat_id=ticket["user_id"],
-                        text=f"🔚 <b>چت شما بسته شد.</b>\n🎫 تیکت: <code>{tid}</code>",
+                        text=f"🔚 <b>چت شما با پشتیبانی بسته شد.</b>\n🎫 تیکت: <code>{ticket_id}</code>",
                         parse_mode=ParseMode.HTML)
                 except: pass
                 await q.answer("تیکت بسته شد")
-                try:
-                    await q.edit_message_text(f"✅ <b>تیکت {tid} بسته شد</b>", parse_mode=ParseMode.HTML)
+                try: await q.edit_message_text(f"✅ <b>تیکت {ticket_id} بسته شد</b>", parse_mode=ParseMode.HTML)
                 except: pass
                 ctx.user_data.pop(f"admin_reply_{bot_id}", None)
         
@@ -833,8 +938,7 @@ class BotFactory:
         async with self._lock:
             if bot_id in self._running: return
             if cloud.check_subscription_expired(bot_id):
-                cloud.deactivate_bot(bot_id)
-                return
+                cloud.deactivate_bot(bot_id); return
             try:
                 app = Application.builder().token(bot_token).build()
                 plugin_manager.setup_plugins_for_bot(app, bot_id)
@@ -898,7 +1002,7 @@ class BotFactory:
 bot_factory = BotFactory()
 
 # ══════════════════════════════════════════════════════════════════════
-# UI
+# MEMBERSHIP & KEYBOARDS
 # ══════════════════════════════════════════════════════════════════════
 async def check_membership(bot, uid):
     if not FORCE_JOIN_CHANNEL: return True
@@ -915,8 +1019,9 @@ def kb_join():
         [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")],
     ])
 
-def kb_main(uid=0):
-    """منوی اصلی ۴ دکمه‌ای تمیز"""
+# ═══ REPLY KEYBOARD ۴ دکمه‌ای تمیز ═══
+def kb_main_reply(uid=0):
+    """منوی اصلی ۴ دکمه‌ای تمیز و حرفه‌ای"""
     rows = [
         [KeyboardButton("🤖 ربات‌های من"), KeyboardButton("👤 حساب کاربری")],
         [KeyboardButton("🎁 جایزه و دعوت"), KeyboardButton("📖 راهنما")],
@@ -926,11 +1031,11 @@ def kb_main(uid=0):
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 REPLY_BUTTONS = {
-    "🤖 ربات‌های من": "mybots",
-    "👤 حساب کاربری": "account",
-    "🎁 جایزه و دعوت": "rewards",
-    "📖 راهنما": "help",
-    "👑 پنل ادمین": "admin",
+    "🤖 ربات‌های من": "menu:mybots",
+    "👤 حساب کاربری": "menu:account",
+    "🎁 جایزه و دعوت": "menu:rewards",
+    "📖 راهنما": "menu:help",
+    "👑 پنل ادمین": "admin:panel:0",
 }
 
 def kb_back(dest="home"):
@@ -943,6 +1048,7 @@ def kb_bot_mgmt(bot_id, bot_data):
     rows.append([InlineKeyboardButton("🧩 پلاگین‌ها", callback_data=f"bot:plugins:{bot_id}")])
     rows.append([InlineKeyboardButton("📊 آمار", callback_data=f"bot:stats:{bot_id}")])
     rows.append([InlineKeyboardButton("🗑 حذف ربات", callback_data=f"bot:del:{bot_id}")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:mybots")])
     return InlineKeyboardMarkup(rows)
 
 def kb_plugins(bot_id):
@@ -954,8 +1060,10 @@ def kb_plugins(bot_id):
     for pid, plugin in AVAILABLE_PLUGINS.items():
         if plugin.get("is_premium"): continue
         is_en = pid in enabled
-        btn_row = [InlineKeyboardButton(f"{'✅' if is_en else '⬜️'} {plugin['name']}", callback_data=f"plg:toggle:{bot_id}:{pid}")]
-        if plugin.get("has_settings") and is_en:
+        status = "✅" if is_en else "⬜️"
+        has_settings = plugin.get("has_settings", False)
+        btn_row = [InlineKeyboardButton(f"{status} {plugin['name']}", callback_data=f"plg:toggle:{bot_id}:{pid}")]
+        if has_settings and is_en:
             btn_row.append(InlineKeyboardButton("⚙️", callback_data=f"plg:set:{bot_id}:{pid}"))
         rows.append(btn_row)
     rows.append([InlineKeyboardButton("─── 💎 پلاگین‌های پرمیوم ───", callback_data="noop")])
@@ -963,9 +1071,11 @@ def kb_plugins(bot_id):
         if not plugin.get("is_premium"): continue
         is_pur = pid in purchased
         is_en = pid in enabled
+        has_settings = plugin.get("has_settings", False)
         if is_pur:
-            btn_row = [InlineKeyboardButton(f"{'✅' if is_en else '⏸️'} {plugin['name']}", callback_data=f"plg:toggle:{bot_id}:{pid}")]
-            if plugin.get("has_settings") and is_en:
+            status = "✅" if is_en else "⏸️"
+            btn_row = [InlineKeyboardButton(f"{status} {plugin['name']}", callback_data=f"plg:toggle:{bot_id}:{pid}")]
+            if has_settings and is_en:
                 btn_row.append(InlineKeyboardButton("⚙️", callback_data=f"plg:set:{bot_id}:{pid}"))
             rows.append(btn_row)
         else:
@@ -975,14 +1085,14 @@ def kb_plugins(bot_id):
 # ══════════════════════════════════════════════════════════════════════
 # TEXT BUILDERS
 # ══════════════════════════════════════════════════════════════════════
-def build_welcome(uid):
+def build_welcome_text(uid):
     u = cloud.get_user(uid)
+    signup_section = ""
     if u and not u.get("signup_bonus_claimed"):
-        bonus = f"\n🎁 <b>شما {SIGNUP_BONUS_GC} GC هدیه ثبت‌نام دریافت کردید!</b>\n\n"
-    else:
-        bonus = ""
+        signup_section = f"\n🎁 <b>شما {SIGNUP_BONUS_GC} GC هدیه ثبت‌نام دریافت کردید!</b>\n\n"
     return (
-        f"🤖✨ <b>به GramBotSaz خوش اومدی!</b> ✨🤖\n\n{bonus}"
+        "🤖✨ <b>به GramBotSaz خوش اومدی!</b> ✨🤖\n\n"
+        f"{signup_section}"
         "پلتفرم حرفه‌ای ساخت ربات تلگرام بدون نیاز به کدنویسی.\n\n"
         "🔥 <b>ویژگی‌ها:</b>\n"
         f"  🆓 ۳ روز اشتراک آزمایشی رایگان\n"
@@ -991,7 +1101,7 @@ def build_welcome(uid):
         "💡 <b>از دکمه‌های زیر شروع کن:</b>"
     )
 
-def build_account(uid):
+def build_account_text(uid):
     u = cloud.get_user(uid)
     if not u: return ""
     full = u.get("full_name") or u.get("username") or "—"
@@ -1017,7 +1127,7 @@ def build_transactions(uid):
         text += f"• {t['description']}\n  📅 {t['timestamp'][:16]}\n\n"
     return text
 
-def build_mybots(uid):
+def build_mybots_text(uid):
     bots = cloud.get_user_bots(uid)
     if not bots:
         return (
@@ -1035,15 +1145,15 @@ def build_mybots(uid):
         elif is_trial: status = "🆓 آزمایشی"
         elif bot.get("is_active"): status = "🟢 فعال"
         else: status = "⏸️ غیرفعال"
-        uname = f"@{bot.get('bot_username')}" if bot.get("bot_username") else "—"
-        text += f"• <b>{bot['bot_id'][:8]}</b> | {uname}\n  {status} | 🧩 {len(bot.get('enabled_plugins', []))} پلاگین\n\n"
+        username = f"@{bot.get('bot_username')}" if bot.get("bot_username") else "—"
+        text += f"• <b>{bot['bot_id'][:8]}</b> | {username}\n  {status} | 🧩 {len(bot.get('enabled_plugins', []))} پلاگین\n\n"
         rows.append([InlineKeyboardButton(f"⚙️ مدیریت {bot['bot_id'][:8]}", callback_data=f"bot:manage:{bot['bot_id']}")])
     if len(bots) < MAX_FREE_BOTS:
         rows.append([InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="create:bot")])
     return text, InlineKeyboardMarkup(rows)
 
-def build_bot_detail(bot_id, bot_data):
-    uname = f"@{bot_data.get('bot_username')}" if bot_data.get("bot_username") else "—"
+def build_bot_detail_text(bot_id, bot_data):
+    username = f"@{bot_data.get('bot_username')}" if bot_data.get("bot_username") else "—"
     expired = cloud.check_subscription_expired(bot_id)
     is_trial = bot_data.get("is_trial", False)
     if expired:
@@ -1059,7 +1169,7 @@ def build_bot_detail(bot_id, bot_data):
     return (
         f"⚙️ <b>مدیریت ربات</b>\n\n"
         f"🆔 <b>ID:</b> <code>{bot_id}</code>\n"
-        f"📛 <b>یوزرنیم:</b> {uname}\n\n"
+        f"📛 <b>یوزرنیم:</b> {username}\n\n"
         f"💎 <b>اشتراک:</b>\n{sub}\n\n"
         f"🧩 <b>پلاگین‌ها:</b> {len(bot_data.get('enabled_plugins', []))} فعال | {len(bot_data.get('purchased_plugins', []))} پرمیوم\n\n"
         f"📊 <b>آمار:</b>\n"
@@ -1068,7 +1178,7 @@ def build_bot_detail(bot_id, bot_data):
         f"• پیام ارسالی: {stats.get('messages_sent', 0)}"
     )
 
-def build_rewards(uid):
+def build_rewards_text(uid):
     u = cloud.ensure_user(uid)[0]
     bot_username = PLATFORM_BOT_USERNAME
     link = f"https://t.me/{bot_username}?start=ref_{u['referral_code']}" if bot_username else "—"
@@ -1084,18 +1194,14 @@ def build_rewards(uid):
         f"💰 <b>کل درآمد از رفرال:</b> {refs * REFERRAL_BONUS_GC} GC"
     )
 
-def build_help():
+def build_help_text():
     return (
         "📖 <b>راهنمای GramBotSaz</b>\n\n"
         "<b>🤖 ساخت ربات:</b>\n"
         "۱. دکمه «🤖 ربات‌های من» را بزنید\n"
         "۲. «➕ ساخت ربات جدید» را بزنید\n"
-        "۳. توکن را از @BotFather بگیرید و ارسال کنید\n"
-        f"۴. ربات شما {TRIAL_DAYS} روز آزمایشی رایگان دارد!\n"
-        "۵. از بخش پلاگین‌ها، قابلیت‌ها را شخصی‌سازی کنید\n\n"
-        "<b>🆓 دوره آزمایشی:</b>\n"
-        f"• {TRIAL_DAYS} روز اشتراک رایگان\n"
-        "• پلاگین‌های welcome, support, keyboard فعال\n\n"
+        "۳. توکن را از @BotFather بگیرید\n"
+        f"۴. ربات شما {TRIAL_DAYS} روز آزمایشی رایگان دارد!\n\n"
         "<b>💰 کسب GramCoin:</b>\n"
         f"• هدیه ثبت‌نام: {SIGNUP_BONUS_GC} GC\n"
         f"• روزانه: {DAILY_REWARD_GC} GC\n"
@@ -1120,8 +1226,9 @@ async def cmd_start(update, ctx):
     user = update.effective_user
     uid = user.id
     u, is_new = cloud.ensure_user(uid, user.username or "", f"{user.first_name or ''} {user.last_name or ''}".strip())
-    
+    signup_bonus_given = False
     if is_new and cloud.claim_signup_bonus(uid):
+        signup_bonus_given = True
         cloud.save(force=True)
     
     if ctx.args:
@@ -1141,17 +1248,24 @@ async def cmd_start(update, ctx):
         await update.effective_message.reply_text("⛔️ عضو کانال شو!", parse_mode=ParseMode.HTML, reply_markup=kb_join())
         return
     
-    await update.effective_message.reply_text(build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+    if signup_bonus_given:
+        welcome_text = f"🎉 <b>به GramBotSaz خوش آمدید!</b>\n\n🎁 شما <b>{SIGNUP_BONUS_GC} GC</b> هدیه ثبت‌نام دریافت کردید!\n💰 موجودی: <code>{cloud.get_user(uid).get('gramcoin_balance', 0)} GC</code>\n\n" + build_welcome_text(uid)
+    else:
+        welcome_text = build_welcome_text(uid)
+    
+    await update.effective_message.reply_text(welcome_text, parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
     cloud.save()
 
 async def cmd_cancel(update, ctx):
+    keys_to_remove = ["awaiting", "pending_ref"]
+    for k in keys_to_remove: ctx.user_data.pop(k, None)
     for k in list(ctx.user_data.keys()):
-        if k.startswith(("await_","welcome_","support_","keyboard_","admin_reply_","pending_","setpts_")):
+        if any(k.startswith(p) for p in ["welcome_", "support_", "keyboard_", "admin_reply_"]):
             ctx.user_data.pop(k, None)
-    await update.message.reply_text("❌ لغو شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main(update.effective_user.id))
+    await update.message.reply_text("❌ لغو شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(update.effective_user.id))
 
 # ══════════════════════════════════════════════════════════════════════
-# CALLBACK HANDLERS (بخش‌های مهم)
+# CALLBACK HANDLERS
 # ══════════════════════════════════════════════════════════════════════
 async def on_callback(update, ctx):
     q = update.callback_query
@@ -1159,14 +1273,11 @@ async def on_callback(update, ctx):
     uid = q.from_user.id
     cloud.ensure_user(uid, q.from_user.username or "", f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
     
-    if data == "noop":
-        await q.answer()
-        return
+    if data == "noop": await q.answer(); return
     
     if data != "check_join" and not await check_membership(q.get_bot(), uid):
         await q.answer()
-        try:
-            await q.edit_message_text("⛔️ عضو کانال شو!", parse_mode=ParseMode.HTML, reply_markup=kb_join())
+        try: await q.edit_message_text("⛔️ عضو کانال شو!", parse_mode=ParseMode.HTML, reply_markup=kb_join())
         except: pass
         return
     
@@ -1179,7 +1290,7 @@ async def on_callback(update, ctx):
                 if ref_uid and cloud.apply_referral(uid, ref_uid):
                     cloud.add_gramcoin(ref_uid, REFERRAL_BONUS_GC, "referral")
                 cloud.save(force=True)
-            await q.edit_message_text(build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await q.edit_message_text(build_welcome_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
         else:
             await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
@@ -1189,23 +1300,23 @@ async def on_callback(update, ctx):
         dest = data.replace("nav:", "")
         await q.answer()
         if dest == "home":
-            await q.edit_message_text(build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await q.edit_message_text(build_welcome_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
         elif dest == "mybots":
-            text, kb = build_mybots(uid)
+            text, kb = build_mybots_text(uid)
             await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         elif dest == "account":
-            await q.edit_message_text(build_account(uid), parse_mode=ParseMode.HTML,
+            await q.edit_message_text(build_account_text(uid), parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📊 تراکنش‌ها", callback_data="nav:txs")]]))
         elif dest == "rewards":
-            await q.edit_message_text(build_rewards(uid), parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎁 دریافت جایزه روزانه", callback_data="daily:claim")]]))
+            await q.edit_message_text(build_rewards_text(uid), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎁 دریافت جایزه", callback_data="daily:claim")]]))
         elif dest == "txs":
             await q.edit_message_text(build_transactions(uid), parse_mode=ParseMode.HTML, reply_markup=kb_back("account"))
         elif dest.startswith("bot:"):
             bot_id = dest.replace("bot:", "")
             bot = cloud.get_bot(bot_id)
             if bot and bot.get("owner_uid") == uid:
-                await q.edit_message_text(build_bot_detail(bot_id, bot), parse_mode=ParseMode.HTML, reply_markup=kb_bot_mgmt(bot_id, bot))
+                await q.edit_message_text(build_bot_detail_text(bot_id, bot), parse_mode=ParseMode.HTML, reply_markup=kb_bot_mgmt(bot_id, bot))
         elif dest.startswith("plugins:"):
             bot_id = dest.replace("plugins:", "")
             await q.edit_message_text("🧩 <b>پلاگین‌ها</b>\n\n💡 ⚙️ = شخصی‌سازی", parse_mode=ParseMode.HTML, reply_markup=kb_plugins(bot_id))
@@ -1216,40 +1327,15 @@ async def on_callback(update, ctx):
         return
     
     # My Bots
-    if data == "mybots":
-        await q.answer()
-        text, kb = build_mybots(uid)
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
-    
     if data == "create:bot":
         user_bots = cloud.get_user_bots(uid)
         if len(user_bots) >= MAX_FREE_BOTS:
-            await q.answer(f"⚠️ حداکثر {MAX_FREE_BOTS} ربات!", show_alert=True)
-            return
-        ctx.user_data["await_"] = "bot_token"
+            await q.answer(f"⚠️ حداکثر {MAX_FREE_BOTS} ربات!", show_alert=True); return
+        ctx.user_data["awaiting"] = "bot_token"
         await q.answer()
         await q.edit_message_text(
-            f"🤖 <b>ساخت ربات جدید</b>\n\n"
-            f"🎁 {TRIAL_DAYS} روز آزمایشی رایگان!\n\n"
-            "🔑 توکن ربات را از @BotFather بگیرید و ارسال کنید:",
+            f"🤖 <b>ساخت ربات جدید</b>\n\n🎁 {TRIAL_DAYS} روز آزمایشی رایگان!\n\n🔑 توکن ربات را از @BotFather بگیرید و ارسال کنید:",
             parse_mode=ParseMode.HTML)
-        return
-    
-    # Account / Rewards
-    if data == "account":
-        await q.answer()
-        await q.edit_message_text(build_account(uid), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📊 تراکنش‌ها", callback_data="nav:txs")],
-                [InlineKeyboardButton("🎁 دریافت جایزه روزانه", callback_data="daily:claim")],
-            ]))
-        return
-    
-    if data == "rewards":
-        await q.answer()
-        await q.edit_message_text(build_rewards(uid), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎁 دریافت جایزه روزانه", callback_data="daily:claim")]]))
         return
     
     if data == "daily:claim":
@@ -1258,20 +1344,10 @@ async def on_callback(update, ctx):
             cloud.save(force=True)
             new_balance = cloud.get_user(uid).get("gramcoin_balance", 0)
             await q.answer(f"✅ +{DAILY_REWARD_GC} GC", show_alert=True)
-            try:
-                await q.edit_message_text(
-                    f"🎁 <b>جایزه روزانه دریافت شد!</b>\n\n"
-                    f"⭐️ <b>+{DAILY_REWARD_GC} GC</b>\n"
-                    f"💰 موجودی: <code>{new_balance} GC</code>",
-                    parse_mode=ParseMode.HTML)
+            try: await q.edit_message_text(f"🎁 <b>جایزه روزانه دریافت شد!</b>\n\n⭐️ <b>+{DAILY_REWARD_GC} GC</b>\n💰 موجودی: <code>{new_balance} GC</code>", parse_mode=ParseMode.HTML)
             except: pass
         else:
             await q.answer("⏳ فردا!", show_alert=True)
-        return
-    
-    if data == "help":
-        await q.answer()
-        await q.edit_message_text(build_help(), parse_mode=ParseMode.HTML, reply_markup=kb_back("home"))
         return
     
     # Bot Management
@@ -1279,41 +1355,35 @@ async def on_callback(update, ctx):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
-        await q.edit_message_text(build_bot_detail(bot_id, bot), parse_mode=ParseMode.HTML, reply_markup=kb_bot_mgmt(bot_id, bot))
+        await q.edit_message_text(build_bot_detail_text(bot_id, bot), parse_mode=ParseMode.HTML, reply_markup=kb_bot_mgmt(bot_id, bot))
         return
     
     if data.startswith("bot:sub:"):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
-        await q.edit_message_text(
-            f"💎 <b>اشتراک ربات {bot_id[:8]}</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(f"🥉 هفتگی — {SUBSCRIPTION_WEEKLY_GC} GC", callback_data=f"sub:buy:{bot_id}:weekly")],
-                [InlineKeyboardButton(f"🥈 ماهانه — {SUBSCRIPTION_MONTHLY_GC} GC", callback_data=f"sub:buy:{bot_id}:monthly")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"nav:bot:{bot_id}")],
-            ]))
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"🥉 هفتگی — {SUBSCRIPTION_WEEKLY_GC} GC", callback_data=f"sub:buy:{bot_id}:weekly")],
+            [InlineKeyboardButton(f"🥈 ماهانه — {SUBSCRIPTION_MONTHLY_GC} GC", callback_data=f"sub:buy:{bot_id}:monthly")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")],
+        ])
+        await q.edit_message_text(f"💎 <b>اشتراک ربات {bot_id[:8]}</b>", parse_mode=ParseMode.HTML, reply_markup=kb)
         return
     
     if data.startswith("sub:buy:"):
         _, _, bot_id, plan = data.split(":")
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         cost = SUBSCRIPTION_WEEKLY_GC if plan == "weekly" else SUBSCRIPTION_MONTHLY_GC
         days = SUBSCRIPTION_WEEKLY_DAYS if plan == "weekly" else SUBSCRIPTION_MONTHLY_DAYS
         u = cloud.get_user(uid)
         if u.get("gramcoin_balance", 0) < cost:
-            await q.answer(f"❌ نیاز به {cost} GC", show_alert=True)
-            return
+            await q.answer(f"❌ نیاز به {cost} GC", show_alert=True); return
         await q.answer("در حال پردازش...")
         if cloud.deduct_gramcoin(uid, cost, f"sub_{plan}_{bot_id}"):
             new_exp = cloud.activate_subscription(bot_id, plan, days)
@@ -1330,11 +1400,9 @@ async def on_callback(update, ctx):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         if cloud.check_subscription_expired(bot_id):
-            await q.answer("⚠️ اشتراک منقضی!", show_alert=True)
-            return
+            await q.answer("⚠️ اشتراک منقضی!", show_alert=True); return
         await q.answer()
         await q.edit_message_text("🧩 <b>پلاگین‌ها</b>\n\n💡 ⚙️ = شخصی‌سازی", parse_mode=ParseMode.HTML, reply_markup=kb_plugins(bot_id))
         return
@@ -1343,29 +1411,21 @@ async def on_callback(update, ctx):
         _, _, bot_id, pid = data.split(":")
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         if cloud.check_subscription_expired(bot_id):
-            await q.answer("⚠️ اشتراک منقضی!", show_alert=True)
-            return
+            await q.answer("⚠️ اشتراک منقضی!", show_alert=True); return
         plugin = AVAILABLE_PLUGINS.get(pid)
-        if not plugin:
-            await q.answer("پلاگین یافت نشد", show_alert=True)
-            return
+        if not plugin: await q.answer("پلاگین یافت نشد", show_alert=True); return
         if plugin.get("is_premium") and not cloud.is_plugin_purchased(bot_id, pid):
-            await q.answer("⚠️ باید خریداری شود", show_alert=True)
-            return
+            await q.answer("⚠️ باید خریداری شود", show_alert=True); return
         await q.answer("در حال تغییر...")
         if cloud.is_plugin_enabled(bot_id, pid):
-            cloud.disable_plugin(bot_id, pid)
-            msg = f"⏸️ {plugin['name']} غیرفعال شد"
+            cloud.disable_plugin(bot_id, pid); msg = f"⏸️ {plugin['name']} غیرفعال شد"
         else:
-            cloud.enable_plugin(bot_id, pid)
-            msg = f"✅ {plugin['name']} فعال شد"
+            cloud.enable_plugin(bot_id, pid); msg = f"✅ {plugin['name']} فعال شد"
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
-        try:
-            await q.edit_message_reply_markup(reply_markup=kb_plugins(bot_id))
+        try: await q.edit_message_reply_markup(reply_markup=kb_plugins(bot_id))
         except: pass
         await q.answer(msg, show_alert=True)
         return
@@ -1374,17 +1434,13 @@ async def on_callback(update, ctx):
         _, _, bot_id, pid = data.split(":")
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         plugin = AVAILABLE_PLUGINS.get(pid)
-        if not plugin:
-            await q.answer("پلاگین یافت نشد", show_alert=True)
-            return
+        if not plugin: await q.answer("پلاگین یافت نشد", show_alert=True); return
         cost = plugin.get("cost_gc", 0)
         u = cloud.get_user(uid)
         if u.get("gramcoin_balance", 0) < cost:
-            await q.answer(f"❌ نیاز به {cost} GC", show_alert=True)
-            return
+            await q.answer(f"❌ نیاز به {cost} GC", show_alert=True); return
         await q.answer("در حال خرید...")
         if cloud.deduct_gramcoin(uid, cost, f"plugin_{pid}_{bot_id}"):
             cloud.purchase_plugin(bot_id, pid)
@@ -1400,8 +1456,7 @@ async def on_callback(update, ctx):
         _, _, bot_id, pid = data.split(":")
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
         await _show_plugin_settings(q, bot_id, pid)
         return
@@ -1410,49 +1465,278 @@ async def on_callback(update, ctx):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
         stats = bot.get("stats", {})
         await q.edit_message_text(
-            f"📊 <b>آمار ربات {bot_id[:8]}</b>\n\n"
-            f"👥 کاربران: {len(bot.get('bot_users', []))}\n"
-            f"📨 دریافتی: {stats.get('messages_received', 0)}\n"
-            f"📤 ارسالی: {stats.get('messages_sent', 0)}",
+            f"📊 <b>آمار ربات {bot_id[:8]}</b>\n\n👥 کاربران: {len(bot.get('bot_users', []))}\n📨 دریافتی: {stats.get('messages_received', 0)}\n📤 ارسالی: {stats.get('messages_sent', 0)}",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"nav:bot:{bot_id}")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
         return
     
     if data.startswith("bot:del:"):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await q.answer("❌ دسترسی ندارید", show_alert=True)
-            return
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer("در حال حذف...")
         await bot_factory.stop_bot(bot_id)
         cloud.delete_bot(bot_id, uid)
         cloud.save(force=True)
-        text, kb = build_mybots(uid)
+        text, kb = build_mybots_text(uid)
         await q.edit_message_text("🗑 ربات حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
     
-    # Plugin Settings (welcome, support, keyboard)
-    # ... (همان کد قبلی که کامل بود)
+    # Plugin Settings
+    if data.startswith("welcome:"):
+        parts = data.split(":")
+        action, bot_id = parts[1], parts[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer()
+        
+        if action == "edit_text":
+            ctx.user_data["awaiting"] = f"welcome_text_{bot_id}"
+            settings = cloud.get_plugin_settings(bot_id, "welcome")
+            await q.edit_message_text(
+                f"✏️ <b>ویرایش متن خوش‌آمد</b>\n\n📝 <b>فعلی:</b>\n<blockquote expandable>{settings.get('message','')}</blockquote>\n\n📤 متن جدید را ارسال کنید:",
+                parse_mode=ParseMode.HTML)
+        elif action == "edit_photo":
+            ctx.user_data["awaiting"] = f"welcome_photo_{bot_id}"
+            settings = cloud.get_plugin_settings(bot_id, "welcome")
+            current = "✅ دارد" if settings.get("photo_file_id") else "❌ ندارد"
+            await q.edit_message_text(
+                f"🖼 <b>تنظیم عکس خوش‌آمد</b>\n\n📊 وضعیت فعلی: {current}\n\n"
+                f"📸 <b>برای تنظیم:</b> یک عکس را مستقیماً ارسال کنید\n"
+                f"🗑 <b>برای حذف:</b> عبارت <code>none</code> را ارسال کنید",
+                parse_mode=ParseMode.HTML)
+        elif action == "edit_buttons":
+            ctx.user_data["awaiting"] = f"welcome_buttons_{bot_id}"
+            settings = cloud.get_plugin_settings(bot_id, "welcome")
+            buttons = settings.get("buttons", [])
+            btn_text = ""
+            for i, row in enumerate(buttons, 1):
+                btns = ", ".join([f"[{b.get('text','')}]" for b in row])
+                btn_text += f"ردیف {i}: {btns}\n"
+            if not btn_text: btn_text = "هیچ دکمه‌ای تعریف نشده"
+            await q.edit_message_text(
+                f"🔘 <b>دکمه‌های شیشه‌ای</b>\n\n📋 فعلی:\n{btn_text}\n\n"
+                f"💡 فرمت: <code>متن|نوع|مقدار</code>\n"
+                f"<code>🌐 وبسایت|url|https://example.com, 🎫 پشتیبانی|support</code>\n\n"
+                f"📝 <code>none</code> برای حذف همه",
+                parse_mode=ParseMode.HTML)
+        elif action == "reset":
+            cloud.update_plugin_settings(bot_id, "welcome", {
+                "message": "👋 <b>سلام! به ربات ما خوش آمدید!</b>\n\n🤖 از اینکه ما را انتخاب کردید سپاسگزاریم.",
+                "photo_file_id": None,
+                "buttons": [[{"text": "🎫 پشتیبانی", "type": "support"}, {"text": "ℹ️ درباره ما", "type": "text", "value": "ما یک تیم حرفه‌ای هستیم!"}]],
+            })
+            cloud.save(force=True); await bot_factory.restart_bot(bot_id)
+            await q.edit_message_text("✅ بازنشانی شد!", parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
+        return
+    
+    if data.startswith("support:"):
+        parts = data.split(":")
+        action, bot_id = parts[1], parts[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer()
+        
+        if action in ("edit_admin", "edit_confirm", "edit_end"):
+            ctx.user_data["awaiting"] = f"support_{action}_{bot_id}"
+            settings = cloud.get_plugin_settings(bot_id, "support")
+            field_map = {"edit_admin": "admin_message", "edit_confirm": "confirm_message", "edit_end": "end_chat_message"}
+            field_name = {"edit_admin": "پیام خوش‌آمد چت", "edit_confirm": "پیام تایید ارسال", "edit_end": "پیام پایان چت"}
+            current = settings.get(field_map[action], "")
+            await q.edit_message_text(
+                f"✏️ <b>{field_name[action]}</b>\n\n📝 فعلی:\n<blockquote>{current}</blockquote>\n\n📤 متن جدید را ارسال کنید:",
+                parse_mode=ParseMode.HTML)
+        elif action == "list_tickets":
+            tickets = cloud.get_bot_tickets(bot_id)
+            open_tickets = [t for t in tickets if t["status"] == "open"]
+            if not open_tickets:
+                await q.edit_message_text("📭 تیکت بازی وجود ندارد.", parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
+                return
+            text = f"📋 <b>تیکت‌های باز ({len(open_tickets)}):</b>\n\n"
+            rows = []
+            for t in open_tickets[-20:]:
+                text += f"• <code>{t['ticket_id']}</code> | {t['full_name']}\n"
+                rows.append([InlineKeyboardButton(f"💬 {t['ticket_id']}", callback_data=f"admin_reply:{t['ticket_id']}")])
+            rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")])
+            await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        elif action == "reset":
+            cloud.update_plugin_settings(bot_id, "support", {
+                "admin_message": "📩 پیام خود را ارسال کنید. در سریع‌ترین زمان پاسخ می‌دهیم.",
+                "confirm_message": "✅ پیام شما ارسال شد.",
+                "end_chat_message": "🔚 چت پایان یافت.",
+            })
+            cloud.save(force=True); await bot_factory.restart_bot(bot_id)
+            await q.edit_message_text("✅ بازنشانی شد!", parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
+        return
+    
+    if data.startswith("admin_reply:"):
+        ticket_id = data.replace("admin_reply:", "")
+        ticket = cloud.get_ticket(ticket_id)
+        if not ticket: await q.answer("❌ تیکت یافت نشد", show_alert=True); return
+        bot = cloud.get_bot(ticket["bot_id"])
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        ctx.user_data[f"admin_reply_{ticket['bot_id']}"] = {"active": True, "ticket_id": ticket_id, "user_id": ticket["user_id"]}
+        ctx.user_data["awaiting"] = f"admin_reply_{ticket['bot_id']}"
+        await q.answer()
+        await q.edit_message_text(f"💬 <b>پاسخ به تیکت {ticket_id}</b>\n👤 {ticket['full_name']}\n\n✍️ پاسخ را بنویسید:", parse_mode=ParseMode.HTML)
+        return
+    
+    if data.startswith("keyboard:"):
+        parts = data.split(":")
+        action, bot_id = parts[1], parts[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer()
+        
+        if action == "edit_buttons":
+            ctx.user_data["awaiting"] = f"keyboard_buttons_{bot_id}"
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            buttons = settings.get("buttons", [])
+            btn_text = ""
+            for i, row in enumerate(buttons, 1):
+                btns = ", ".join([f"[{b.get('text','')}]" for b in row])
+                btn_text += f"ردیف {i}: {btns}\n"
+            if not btn_text: btn_text = "هیچ دکمه‌ای تعریف نشده"
+            await q.edit_message_text(
+                f"⌨️ <b>دکمه‌های کیبورد</b>\n\n📋 فعلی:\n{btn_text}\n\n"
+                f"💡 فرمت: <code>متن|عملکرد|مقدار</code>\n"
+                f"<code>🎫 پشتیبانی|command|/support, ℹ️ درباره|text|ما حرفه‌ای هستیم</code>\n\n"
+                f"📝 <code>none</code> برای حذف همه",
+                parse_mode=ParseMode.HTML)
+        elif action == "edit_settings":
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            resize = settings.get("resize_keyboard", True)
+            one_time = settings.get("one_time_keyboard", False)
+            persistent = settings.get("persistent", True)
+            await q.edit_message_text(
+                f"⚙️ <b>تنظیمات کیبورد</b>\n\nروی هر گزینه کلیک کنید تا تغییر کند:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(f"تغییر اندازه: {'✅' if resize else '❌'}", callback_data=f"keyboard:toggle_resize:{bot_id}")],
+                    [InlineKeyboardButton(f"یکبار مصرف: {'✅' if one_time else '❌'}", callback_data=f"keyboard:toggle_onetime:{bot_id}")],
+                    [InlineKeyboardButton(f"دائمی: {'✅' if persistent else '❌'}", callback_data=f"keyboard:toggle_persistent:{bot_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
+                ]))
+        elif action in ("toggle_resize", "toggle_onetime", "toggle_persistent"):
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            key_map = {"toggle_resize": "resize_keyboard", "toggle_onetime": "one_time_keyboard", "toggle_persistent": "persistent"}
+            key = key_map[action]
+            settings[key] = not settings.get(key, True)
+            cloud.update_plugin_settings(bot_id, "keyboard", settings)
+            cloud.save(force=True); await bot_factory.restart_bot(bot_id)
+            await q.answer("✅ ذخیره شد")
+            resize = settings.get("resize_keyboard", True)
+            one_time = settings.get("one_time_keyboard", False)
+            persistent = settings.get("persistent", True)
+            try:
+                await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(f"تغییر اندازه: {'✅' if resize else '❌'}", callback_data=f"keyboard:toggle_resize:{bot_id}")],
+                    [InlineKeyboardButton(f"یکبار مصرف: {'✅' if one_time else '❌'}", callback_data=f"keyboard:toggle_onetime:{bot_id}")],
+                    [InlineKeyboardButton(f"دائمی: {'✅' if persistent else '❌'}", callback_data=f"keyboard:toggle_persistent:{bot_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
+                ]))
+            except: pass
+        elif action == "reset":
+            cloud.update_plugin_settings(bot_id, "keyboard", {
+                "buttons": [
+                    [{"text": "🎫 پشتیبانی", "action": "command", "value": "/support"}],
+                    [{"text": "ℹ️ درباره ما", "action": "text", "value": "ما یک تیم حرفه‌ای هستیم!"}],
+                ],
+                "resize_keyboard": True, "one_time_keyboard": False, "persistent": True,
+            })
+            cloud.save(force=True); await bot_factory.restart_bot(bot_id)
+            await q.edit_message_text("✅ بازنشانی شد!", parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
+        return
+    
+    # Admin
+    if not is_admin(uid):
+        await q.answer("⛔️ دسترسی ندارید.", show_alert=True); return
+    
+    if data == "admin:panel:0":
+        await q.answer()
+        stats = cloud.get_stats()
+        await q.edit_message_text(
+            f"👑 <b>پنل ادمین</b>\n\n👥 {stats['total_users']} | 🤖 {stats['total_bots']} | 🟢 {stats['active_bots']}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 کاربران", callback_data="admin:users:0")],
+                [InlineKeyboardButton("🤖 ربات‌ها", callback_data="admin:bots:0")],
+                [InlineKeyboardButton("📢 همگانی", callback_data="admin:broadcast")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
+            ]))
+        return
+    
+    if data.startswith("admin:users:"):
+        page = int(data.split(":")[-1])
+        await q.answer()
+        users = sorted(cloud.get_all_users(), key=lambda u: u.get("gramcoin_balance", 0), reverse=True)
+        total = len(users); start = page * ADMIN_PAGE_SIZE; end = min(start+ADMIN_PAGE_SIZE, total)
+        text = f"👥 <b>کاربران</b> ({page+1})\n\n"
+        rows = []
+        for u in users[start:end]:
+            text += f"• <b>{u.get('full_name', '—')}</b> | <code>{u.get('uid')}</code>\n  💰 {u.get('gramcoin_balance', 0)} GC\n"
+            rows.append([InlineKeyboardButton(f"🎁 +50", callback_data=f"admin:givegc:{u.get('uid')}:50")])
+        nav = []
+        if page > 0: nav.append(InlineKeyboardButton("◀️", callback_data=f"admin:users:{page-1}"))
+        if end < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"admin:users:{page+1}"))
+        if nav: rows.append(nav)
+        rows.append([InlineKeyboardButton("🔙", callback_data="admin:panel:0")])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        return
+    
+    if data.startswith("admin:givegc:"):
+        _, _, uid_str, amount = data.split(":")
+        cloud.add_gramcoin(int(uid_str), int(amount), "admin_grant")
+        cloud.save(force=True)
+        await q.answer(f"✅ +{amount} GC", show_alert=True)
+        return
+    
+    if data.startswith("admin:bots:"):
+        page = int(data.split(":")[-1])
+        await q.answer()
+        bots = cloud.get_all_bots(); total = len(bots); start = page * ADMIN_PAGE_SIZE; end = min(start+ADMIN_PAGE_SIZE, total)
+        text = f"🤖 <b>ربات‌ها</b> ({page+1})\n\n"
+        for b in bots[start:end]:
+            exp = cloud.check_subscription_expired(b["bot_id"])
+            status = "🔴" if exp else ("🆓" if b.get("is_trial") else ("🟢" if b.get("is_active") else "⏸️"))
+            text += f"{status} <code>{b['bot_id'][:8]}</code> | Owner: <code>{b.get('owner_uid')}</code>\n\n"
+        nav = []
+        if page > 0: nav.append(InlineKeyboardButton("◀️", callback_data=f"admin:bots:{page-1}"))
+        if end < total: nav.append(InlineKeyboardButton("▶️", callback_data=f"admin:bots:{page+1}"))
+        rows = [nav] if nav else []
+        rows.append([InlineKeyboardButton("🔙", callback_data="admin:panel:0")])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        return
+    
+    if data == "admin:broadcast":
+        ctx.user_data["awaiting"] = "broadcast"
+        await q.answer()
+        await q.edit_message_text("📢 پیام را ارسال کنید:", parse_mode=ParseMode.HTML)
+        return
     
     await q.answer()
 
 async def _show_plugin_settings(q, bot_id, pid):
-    """نمایش صفحه تنظیمات پلاگین"""
     if pid == "welcome":
         settings = cloud.get_plugin_settings(bot_id, "welcome")
         msg = settings.get("message", "")[:200]
         photo = "✅ دارد" if settings.get("photo_file_id") else "❌ ندارد"
         btns = sum(len(r) for r in settings.get("buttons", []))
         await q.edit_message_text(
-            f"⚙️ <b>خوش‌آمد پیشرفته</b>\n\n"
-            f"📝 پیام: <blockquote expandable>{msg}...</blockquote>\n"
-            f"🖼 عکس: {photo}\n🔘 دکمه‌ها: {btns}",
+            f"⚙️ <b>خوش‌آمد پیشرفته</b>\n\n📝 پیام: <blockquote expandable>{msg}...</blockquote>\n🖼 عکس: {photo}\n🔘 دکمه‌ها: {btns}",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✏️ متن", callback_data=f"welcome:edit_text:{bot_id}")],
@@ -1461,145 +1745,467 @@ async def _show_plugin_settings(q, bot_id, pid):
                 [InlineKeyboardButton("♻️ بازنشانی", callback_data=f"welcome:reset:{bot_id}")],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
             ]))
-    # ... (بقیه پلاگین‌ها)
+    elif pid == "support":
+        tickets = cloud.get_bot_tickets(bot_id)
+        open_c = sum(1 for t in tickets if t["status"] == "open")
+        closed_c = sum(1 for t in tickets if t["status"] == "closed")
+        await q.edit_message_text(
+            f"⚙️ <b>پشتیبانی چت زنده</b>\n\n📊 باز: <b>{open_c}</b> | بسته: <b>{closed_c}</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✏️ پیام خوش‌آمد", callback_data=f"support:edit_admin:{bot_id}")],
+                [InlineKeyboardButton("✏️ پیام تایید", callback_data=f"support:edit_confirm:{bot_id}")],
+                [InlineKeyboardButton("✏️ پیام پایان", callback_data=f"support:edit_end:{bot_id}")],
+                [InlineKeyboardButton("📋 تیکت‌ها", callback_data=f"support:list_tickets:{bot_id}")],
+                [InlineKeyboardButton("♻️ بازنشانی", callback_data=f"support:reset:{bot_id}")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
+            ]))
+    elif pid == "keyboard":
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        btns = sum(len(r) for r in settings.get("buttons", []))
+        resize = settings.get("resize_keyboard", True)
+        one_time = settings.get("one_time_keyboard", False)
+        persistent = settings.get("persistent", True)
+        await q.edit_message_text(
+            f"⌨️ <b>کیبورد اختصاصی</b>\n\n🔘 دکمه‌ها: {btns}\n\n💡 این دکمه‌ها زیر صفحه چت ربات شما نمایش داده می‌شوند.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔘 مدیریت دکمه‌ها", callback_data=f"keyboard:edit_buttons:{bot_id}")],
+                [InlineKeyboardButton("⚙️ تنظیمات", callback_data=f"keyboard:edit_settings:{bot_id}")],
+                [InlineKeyboardButton("♻️ بازنشانی", callback_data=f"keyboard:reset:{bot_id}")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
+            ]))
+    else:
+        await q.edit_message_text(
+            f"⚙️ <b>{AVAILABLE_PLUGINS.get(pid, {}).get('name','')}</b>\n\nدر نسخه‌های آینده...",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
 
 # ══════════════════════════════════════════════════════════════════════
-# MESSAGE HANDLER (بخش‌های مهم برای رفع باگ‌ها)
+# MESSAGE HANDLER (با رفع باگ عکس)
 # ══════════════════════════════════════════════════════════════════════
 async def on_message(update, ctx):
     uid = update.effective_user.id
     text_in = (update.message.text or "").strip() if update.message.text else ""
-    awaiting = ctx.user_data.get("await_")
+    awaiting = ctx.user_data.get("awaiting")
     
     if text_in == "/cancel":
-        await cmd_cancel(update, ctx)
-        return
+        await cmd_cancel(update, ctx); return
     
-    # ReplyKeyboard handlers
+    # ═══════ HANDLER پیام‌های ReplyKeyboard ═══════
     if text_in in REPLY_BUTTONS and not awaiting:
         action = REPLY_BUTTONS[text_in]
-        if action == "mybots":
-            text, kb = build_mybots(uid)
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        # ... (بقیه دکمه‌ها)
-        return
-    
-    # Bot token
-    if awaiting == "bot_token":
-        # ... (کد قبلی)
-        return
-    
-    # ✅ رفع باگ عکس welcome
-    if awaiting and awaiting.startswith("welcome_photo:") and update.message.photo:
-        bot_id = awaiting.replace("welcome_photo:", "")
-        ctx.user_data.pop("await_", None)
-        bot = cloud.get_bot(bot_id)
-        if not bot or bot.get("owner_uid") != uid:
-            await update.message.reply_text("❌ دسترسی ندارید.")
-            return
-        # ✅ گرفتن بزرگترین سایز عکس
-        photo = update.message.photo[-1]
-        file_id = photo.file_id
-        # ✅ اعتبارسنجی
-        try:
-            file = await ctx.bot.get_file(file_id)
-            if not file.file_id:
-                raise Exception("Invalid")
-        except Exception as e:
+        if action == "menu:profile":
+            u = cloud.ensure_user(uid)[0]
             await update.message.reply_text(
-                f"❌ <b>عکس معتبر نیست!</b>\n\nلطفاً دوباره عکس را ارسال کنید.",
+                build_profile_text(uid, u), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
+            return
+        elif action == "menu:mybots":
+            text, kb = build_mybots_text(uid)
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        elif action == "menu:create_bot":
+            user_bots = cloud.get_user_bots(uid)
+            if len(user_bots) >= MAX_FREE_BOTS:
+                await update.message.reply_text(
+                    f"⚠️ <b>محدودیت ساخت ربات!</b>\nدر پلن رایگان فقط <b>{MAX_FREE_BOTS} ربات</b> می‌توانید بسازید.",
+                    parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+                return
+            ctx.user_data["awaiting"] = "bot_token"
+            await update.message.reply_text(
+                f"🤖 <b>ساخت ربات جدید</b>\n🎁 <b>هدیه ویژه:</b> ربات شما <b>{TRIAL_DAYS} روز</b> اشتراک آزمایشی رایگان دارد!\n"
+                "🔑 <b>لطفاً توکن ربات را از BotFather دریافت و ارسال کنید:</b>\n(/cancel برای لغو)",
                 parse_mode=ParseMode.HTML)
             return
+        elif action == "menu:daily":
+            if cloud.can_claim_daily(uid):
+                cloud.claim_daily_reward(uid, DAILY_REWARD_GC)
+                cloud.save(force=True)
+                new_balance = cloud.get_user(uid).get("gramcoin_balance", 0)
+                await update.message.reply_text(
+                    f"🎁 <b>جایزه روزانه دریافت شد!</b>\n⭐️ <b>+{DAILY_REWARD_GC} GC</b> اضافه شد.\n💰 موجودی: <code>{new_balance} GC</code>",
+                    parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            else:
+                await update.message.reply_text("⏳ جایزه روزانه قبلاً دریافت شده. فردا!", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:invite":
+            bot_username = (await ctx.bot.get_me()).username
+            await update.message.reply_text(build_referral_text(uid, bot_username), parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:transactions":
+            transactions = [tx for tx in cloud._data.get("transactions", []) if tx.get("uid") == uid][-10:]
+            text = "📊 <b>تراکنش‌های اخیر شما:</b>\n"
+            if transactions:
+                for tx in reversed(transactions):
+                    text += f"• {tx['description']}\n  📅 {tx['timestamp'][:16]}\n\n"
+            else:
+                text += "هنوز تراکنشی ندارید."
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:help":
+            await update.message.reply_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "admin:panel:0" and is_admin(uid):
+            stats = cloud.get_stats()
+            await update.message.reply_text(
+                f"👑 <b>پنل ادمین</b>\n👥 کاربران: {stats['total_users']}\n🤖 ربات‌ها: {stats['total_bots']}\n🟢 فعال: {stats['active_bots']}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
+                    [InlineKeyboardButton("🤖 لیست ربات‌ها", callback_data="admin:bots:0")],
+                    [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
+                ]))
+            return
+    
+    # ═══════ HANDLER توکن ربات جدید ═══════
+    if awaiting == "bot_token":
+        ctx.user_data.pop("awaiting", None)
+        bot_token = text_in.strip()
+        if not bot_token or ":" not in bot_token or len(bot_token) < 40:
+            await update.message.reply_text(
+                "❌ <b>توکن نامعتبر است!</b>\nتوکن باید شبیه این باشد:\n<code>1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ</code>",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        try:
+            temp_bot = Bot(token=bot_token)
+            me = await temp_bot.get_me()
+        except InvalidToken:
+            await update.message.reply_text("❌ توکن نامعتبر!", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        user_bots = cloud.get_user_bots(uid)
+        if len(user_bots) >= MAX_FREE_BOTS:
+            await update.message.reply_text(f"⚠️ حداکثر {MAX_FREE_BOTS} ربات!", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        bot_data = cloud.create_bot(uid, bot_token)
+        cloud.save(force=True)
+        await bot_factory.start_bot(bot_data["bot_id"], bot_token)
+        await update.message.reply_text(
+            f"✅ <b>ربات با موفقیت ساخته شد!</b>\n"
+            f"🤖 <b>یوزرنیم:</b> @{me.username}\n"
+            f"🆔 <b>ID:</b> <code>{bot_data['bot_id']}</code>\n"
+            f"🆓 <b>دوره آزمایشی {TRIAL_DAYS} روزه فعال شد!</b>\n"
+            f"🧩 پلاگین‌های welcome، support و keyboard فعال شدند.\n"
+            f"📅 انقضا: {datetime.fromisoformat(bot_data['subscription_expiry']).strftime('%Y-%m-%d')}\n"
+            f"💡 از بخش «🤖 ربات‌های من» می‌توانید:\n"
+            f"• پیام خوش‌آمدگویی را شخصی‌سازی کنید\n"
+            f"• عکس خوش‌آمد را آپلود کنید\n"
+            f"• دکمه‌های شیشه‌ای چندتایی بسازید\n"
+            f"• کیبورد زیر صفحه ربات را تنظیم کنید\n"
+            f"• سیستم چت زنده را پیکربندی کنید",
+            parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+        return
+    
+    # ═══════ HANDLER آپلود عکس برای welcome ═══════
+    if awaiting and awaiting.startswith("welcome_photo_") and update.message.photo:
+        bot_id = awaiting.replace("welcome_photo_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        photo = update.message.photo[-1]
+        file_id = photo.file_id
         settings = cloud.get_plugin_settings(bot_id, "welcome")
         settings["photo_file_id"] = file_id
         cloud.update_plugin_settings(bot_id, "welcome", settings)
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
         await update.message.reply_text(
-            f"✅ <b>عکس با موفقیت تنظیم شد!</b>\n\n"
-            f"🖼 <b>File ID:</b> <code>{file_id[:30]}...</code>\n"
-            f"🔄 ربات ری‌استارت شد.",
+            f"✅ <b>عکس با موفقیت تنظیم شد!</b>\n"
+            f"🖼 <b>File ID:</b> <code>{file_id[:20]}...</code>\n"
+            f"🔄 ربات ری‌استارت شد.\n"
+            f"💡 حالا وقتی کاربران /start بزنند، این عکس نمایش داده می‌شود.",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"nav:plugin:{bot_id}:welcome")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")]]))
         return
     
-    # ✅ رفع باگ پاسخ ادمین به تیکت
+    # ═══════ HANDLER متن برای حذف عکس welcome ═══════
+    if awaiting and awaiting.startswith("welcome_photo_"):
+        bot_id = awaiting.replace("welcome_photo_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "welcome")
+        if text_in.lower() == "none":
+            settings["photo_file_id"] = None
+            msg = "🖼 <b>عکس حذف شد!</b>"
+        else:
+            await update.message.reply_text(
+                "❌ <b>فرمت نادرست!</b>\n📸 برای تنظیم عکس، یک عکس آپلود کنید.\n🗑 برای حذف عکس، <code>none</code> ارسال کنید.",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        cloud.update_plugin_settings(bot_id, "welcome", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await update.message.reply_text(
+            f"{msg}\n🔄 ربات ری‌استارت شد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")]]))
+        return
+    
+    # ═══════ HANDLER ویرایش متن welcome ═══════
+    if awaiting and awaiting.startswith("welcome_text_"):
+        bot_id = awaiting.replace("welcome_text_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "welcome")
+        has_photo = settings.get("photo_file_id")
+        max_len = 1024 if has_photo else 4096
+        if len(text_in) > max_len:
+            await update.message.reply_text(
+                f"❌ حداکثر {max_len} کاراکتر مجاز است (با عکس: ۱۰۲۴ / بدون عکس: ۴۰۹۶).",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        settings["message"] = text_in
+        cloud.update_plugin_settings(bot_id, "welcome", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await update.message.reply_text(
+            f"✅ <b>متن پیام ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
+                [InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu:home")],
+            ]))
+        return
+    
+    # ═══════ HANDLER دکمه‌های welcome (چندتایی) ═══════
+    if awaiting and awaiting.startswith("welcome_buttons_"):
+        bot_id = awaiting.replace("welcome_buttons_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "welcome")
+        if text_in.lower() == "none":
+            settings["buttons"] = []
+            cloud.update_plugin_settings(bot_id, "welcome", settings)
+            cloud.save(force=True)
+            await bot_factory.restart_bot(bot_id)
+            await update.message.reply_text(
+                f"🗑 <b>همه دکمه‌ها حذف شدند!</b>\n🔄 ربات ری‌استارت شد.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")]]))
+            return
+        new_buttons = []
+        for line in text_in.split("\n"):
+            line = line.strip()
+            if not line: continue
+            btn_texts = [b.strip() for b in line.split(",")]
+            current_row = []
+            for btn_text_full in btn_texts:
+                parts = btn_text_full.split("|")
+                if len(parts) < 2: continue
+                btn_text = parts[0].strip()
+                btn_type = parts[1].strip().lower()
+                btn_value = parts[2].strip() if len(parts) > 2 else ""
+                btn = {"text": btn_text, "type": btn_type}
+                if btn_type == "url": btn["url"] = btn_value
+                elif btn_type == "text": btn["value"] = btn_value
+                elif btn_type == "callback": btn["callback"] = btn_value[:64]
+                elif btn_type == "support": pass
+                current_row.append(btn)
+            if current_row:
+                new_buttons.append(current_row)
+        if not new_buttons:
+            await update.message.reply_text("❌ هیچ دکمه معتبری یافت نشد.", reply_markup=kb_main_reply(uid))
+            return
+        settings["buttons"] = new_buttons
+        cloud.update_plugin_settings(bot_id, "welcome", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        total_buttons = sum(len(r) for r in new_buttons)
+        await update.message.reply_text(
+            f"✅ <b>{total_buttons} دکمه در {len(new_buttons)} ردیف ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")]]))
+        return
+    
+    # ═══════ HANDLER تنظیمات support ═══════
+    if awaiting and awaiting.startswith("support_edit_"):
+        remainder = awaiting.replace("support_edit_", "")
+        parts = remainder.split("_", 1)
+        if len(parts) != 2:
+            ctx.user_data.pop("awaiting", None)
+            return
+        action = parts[0]
+        bot_id = parts[1]
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "support")
+        field_map = {"admin": "admin_message", "confirm": "confirm_message", "end": "end_chat_message"}
+        field = field_map.get(action)
+        if field:
+            settings[field] = text_in
+            cloud.update_plugin_settings(bot_id, "support", settings)
+            cloud.save(force=True)
+            await bot_factory.restart_bot(bot_id)
+            await update.message.reply_text(
+                f"✅ <b>پیام ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:support")]]))
+        return
+    
+    # ═══════ HANDLER دکمه‌های keyboard plugin ═══════
+    if awaiting and awaiting.startswith("keyboard_buttons_"):
+        bot_id = awaiting.replace("keyboard_buttons_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        if text_in.lower() == "none":
+            settings["buttons"] = []
+            cloud.update_plugin_settings(bot_id, "keyboard", settings)
+            cloud.save(force=True)
+            await bot_factory.restart_bot(bot_id)
+            await update.message.reply_text(
+                f"🗑 <b>همه دکمه‌ها حذف شدند!</b>\n🔄 ربات ری‌استارت شد.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:keyboard")]]))
+            return
+        new_buttons = []
+        for line in text_in.split("\n"):
+            line = line.strip()
+            if not line: continue
+            btn_texts = [b.strip() for b in line.split(",")]
+            current_row = []
+            for btn_text_full in btn_texts:
+                parts = btn_text_full.split("|")
+                if len(parts) < 2: continue
+                btn_text = parts[0].strip()
+                btn_action = parts[1].strip().lower()
+                btn_value = parts[2].strip() if len(parts) > 2 else ""
+                btn = {"text": btn_text, "action": btn_action}
+                if btn_action in ("text", "command", "url"):
+                    btn["value"] = btn_value
+                current_row.append(btn)
+            if current_row:
+                new_buttons.append(current_row)
+        if not new_buttons:
+            await update.message.reply_text("❌ هیچ دکمه معتبری یافت نشد.", reply_markup=kb_main_reply(uid))
+            return
+        settings["buttons"] = new_buttons
+        cloud.update_plugin_settings(bot_id, "keyboard", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        total_buttons = sum(len(r) for r in new_buttons)
+        await update.message.reply_text(
+            f"✅ <b>{total_buttons} دکمه در {len(new_buttons)} ردیف ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.\n💡 دکمه‌ها زیر صفحه چت ربات شما نمایش داده می‌شوند.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:keyboard")]]))
+        return
+    
+    # ═══════ ✅ FIX: HANDLER پاسخ ادمین به تیکت (رفع باگ) ═══════
     for key in list(ctx.user_data.keys()):
         if key.startswith("admin_reply_"):
-            state = ctx.user_data.get(key)
-            if not state or not state.get("active"): continue
-            bot_id = key.replace("admin_reply_", "")
-            tid = state.get("ticket_id")
-            target_uid = state.get("user_id")
-            ticket = cloud.get_ticket(tid)
-            if not ticket or ticket["status"] != "open":
-                ctx.user_data.pop(key, None)
-                ctx.user_data.pop("await_", None)
-                await update.message.reply_text("⚠️ تیکت بسته شده است.")
+            reply_state = ctx.user_data.get(key)
+            if reply_state and reply_state.get("active"):
+                bot_id = key.replace("admin_reply_", "")
+                ticket_id = reply_state.get("ticket_id")
+                target_user_id = reply_state.get("user_id")
+                ticket = cloud.get_ticket(ticket_id)
+                if not ticket or ticket["status"] != "open":
+                    ctx.user_data.pop(key, None)
+                    await update.message.reply_text("⚠️ تیکت بسته شده است.", reply_markup=kb_main_reply(uid))
+                    return
+                bot = cloud.get_bot(bot_id)
+                if not bot or bot.get("owner_uid") != uid:
+                    ctx.user_data.pop(key, None)
+                    return
+                try:
+                    temp_bot = Bot(token=bot["bot_token"])
+                    await temp_bot.send_message(
+                        chat_id=target_user_id,
+                        text=f"💬 <b>پاسخ پشتیبانی</b>\n🎫 تیکت: <code>{ticket_id}</code>\n\n{text_in}",
+                        parse_mode=ParseMode.HTML)
+                    await update.message.reply_text(
+                        f"✅ <b>پاسخ ارسال شد!</b>\n👤 به: {ticket['full_name']}\n🎫 تیکت: <code>{ticket_id}</code>\n💬 برای پاسخ دیگر، همینجا بنویسید.\n🔚 برای پایان، /cancel بزنید یا دکمه «بستن تیکت» را بزنید.",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ بستن تیکت", callback_data=f"close_ticket_{ticket_id}")]]))
+                    cloud.update_bot_stats(bot_id, messages_sent=1)
+                except Forbidden:
+                    await update.message.reply_text(f"❌ کاربر ربات را بلاک کرده.")
+                except Exception as e:
+                    await update.message.reply_text(f"❌ خطا: {str(e)[:100]}")
                 return
-            bot = cloud.get_bot(bot_id)
-            if not bot or bot.get("owner_uid") != uid:
-                ctx.user_data.pop(key, None)
-                return
+    
+    if not is_admin(uid): return
+    
+    # Admin broadcast
+    if awaiting == "broadcast_text":
+        ctx.user_data.pop("awaiting", None)
+        users = cloud.get_all_users()
+        sent = 0
+        for u in users:
             try:
-                temp_bot = Bot(token=bot["bot_token"])
-                await temp_bot.send_message(
-                    chat_id=target_uid,
-                    text=f"💬 <b>پاسخ پشتیبانی</b>\n\n🎫 تیکت: <code>{tid}</code>\n\n{text_in}",
-                    parse_mode=ParseMode.HTML)
-                await update.message.reply_text(
-                    f"✅ <b>پاسخ ارسال شد!</b>\n\n👤 به: {ticket['full_name']}\n"
-                    f"💬 برای پاسخ دیگر، همینجا بنویسید.",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ بستن تیکت", callback_data=f"close_ticket:{tid}")]]))
-                cloud.update_bot_stats(bot_id, ms=1)
-            except Forbidden:
-                await update.message.reply_text("❌ کاربر ربات را بلاک کرده.")
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطا: {str(e)[:100]}")
-            return
+                await ctx.bot.send_message(
+                    chat_id=int(u.get("uid_str") or u.get("uid")),
+                    text=text_in, parse_mode=ParseMode.HTML)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except: pass
+        await update.message.reply_text(
+            f"✅ ارسال شد: {sent}/{len(users)}",
+            parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+        return
 
 # ══════════════════════════════════════════════════════════════════════
-# BACKGROUND
+# BACKGROUND TASKS
 # ══════════════════════════════════════════════════════════════════════
-async def subscription_watcher(app):
+async def subscription_watcher(app: Application):
     while True:
         try:
             await asyncio.sleep(3600)
-            for b in cloud.get_all_bots():
-                if not b.get("is_active"): continue
-                if cloud.check_subscription_expired(b["bot_id"]):
-                    cloud.deactivate_bot(b["bot_id"])
-                    await bot_factory.stop_bot(b["bot_id"])
+            for bot_data in cloud.get_all_bots():
+                bot_id = bot_data["bot_id"]
+                if not bot_data.get("is_active"): continue
+                if cloud.check_subscription_expired(bot_id):
+                    cloud.deactivate_bot(bot_id)
+                    await bot_factory.stop_bot(bot_id)
                     cloud.save(force=True)
                     try:
-                        await app.bot.send_message(b["owner_uid"],
-                            f"🔴 <b>اشتراک ربات {b['bot_id'][:8]} منقضی شد!</b>", parse_mode=ParseMode.HTML)
+                        await app.bot.send_message(
+                            chat_id=bot_data["owner_uid"],
+                            text=f"🔴 <b>اشتراک ربات {bot_id[:8]} منقضی شد!</b>\n💎 برای فعال‌سازی مجدد اشتراک بخرید.",
+                            parse_mode=ParseMode.HTML)
                     except: pass
         except asyncio.CancelledError: break
-        except Exception as e: log.error(f"Watcher error: {e}")
+        except Exception as e: log.error(f"subscription_watcher error: {e}")
 
-async def autosave(app):
+async def autosave_loop(app: Application):
     while True:
         try:
             await asyncio.sleep(300)
             cloud.save()
         except asyncio.CancelledError: break
-        except Exception as e: log.error(f"Autosave error: {e}")
+        except Exception as e: log.error(f"autosave_loop error: {e}")
 
-async def on_startup(app):
+async def on_startup(app: Application):
     global PLATFORM_BOT_USERNAME
     try:
         me = await app.bot.get_me()
         PLATFORM_BOT_USERNAME = me.username or ""
     except: pass
-    await bot_factory.start_all()
+    await bot_factory.start_all_active_bots()
     asyncio.create_task(subscription_watcher(app))
-    asyncio.create_task(autosave(app))
-    log.info("GramBotSaz v5.0 FINAL ready ✅")
+    asyncio.create_task(autosave_loop(app))
+    log.info("GramBotSaz v4.0 (Professional Edition) ready ✅")
 
-async def on_shutdown(app):
-    await bot_factory.stop_all()
+async def on_shutdown(app: Application):
+    await bot_factory.stop_all_bots()
     cloud.save(force=True)
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1614,41 +2220,45 @@ def main():
            .post_init(on_startup).post_shutdown(on_shutdown).build())
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("profile", cmd_profile))
     app.add_handler(CallbackQueryHandler(on_callback))
-    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, on_message))
+    app.add_handler(MessageHandler(
+        (filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        on_message))
     
-    def _sig(s, f):
-        cloud.save(force=True)
-        sys.exit(0)
+    def _sig(s, f): cloud.save(force=True); sys.exit(0)
     signal.signal(signal.SIGTERM, _sig)
     signal.signal(signal.SIGINT, _sig)
     atexit.register(lambda: cloud.save(force=True))
     
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
     if webhook_url:
-        log.info("🌐 Flask Webhook")
+        log.info("🌐 Running with Flask Webhook")
         main_loop = asyncio.new_event_loop()
-        def run_loop(loop):
+        def run_event_loop(loop):
             asyncio.set_event_loop(loop)
             loop.run_forever()
-        threading.Thread(target=run_loop, args=(main_loop,), daemon=True).start()
+        threading.Thread(target=run_event_loop, args=(main_loop,), daemon=True).start()
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index():
-            return "🤖 GramBotSaz v5.0 FINAL Alive!", 200
+        def index(): return "🤖 GramBotSaz v4.0 Alive!", 200
         @flask_app.route(f"/{PLATFORM_BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
                 update = Update.de_json(request.get_json(force=True), app.bot)
                 asyncio.run_coroutine_threadsafe(app.process_update(update), main_loop)
-            except Exception as e:
-                log.error(f"Webhook error: {e}")
+            except Exception as e: log.error(f"Webhook error: {e}")
             return "OK", 200
         async def setup():
-            url = webhook_url.rstrip("/") + "/" + PLATFORM_BOT_TOKEN
+            full_url = webhook_url.rstrip("/") + "/" + PLATFORM_BOT_TOKEN
             await app.bot.delete_webhook(drop_pending_updates=True)
             await asyncio.sleep(1)
-            await app.bot.set_webhook(url=url, allowed_updates=["message","callback_query"], drop_pending_updates=True)
+            await app.bot.set_webhook(
+                url=full_url,
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True)
+            log.info(f"✅ Webhook set: {full_url[:60]}...")
         asyncio.run_coroutine_threadsafe(setup(), main_loop).result(timeout=30)
         async def init():
             await app.initialize()
@@ -1657,8 +2267,8 @@ def main():
         asyncio.run_coroutine_threadsafe(init(), main_loop).result(timeout=30)
         flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
     else:
-        log.warning("⚠️ Polling mode")
-        app.run_polling(allowed_updates=["message","callback_query"], drop_pending_updates=True)
+        log.warning("⚠️ Fallback to polling")
+        app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
