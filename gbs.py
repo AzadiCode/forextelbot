@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GramBotSaz v3.0 — پلتفرم ربات‌ساز حرفه‌ای
+GramBotSaz v4.0 — پلتفرم حرفه‌ای ربات‌ساز تلگرام
 ════════════════════════════════════════════════════════════════════
-سیستم دوره آزمایشی + پلاگین‌های پیشرفته (Welcome با عکس و دکمه + Support چت زنده)
+🎯 ویژگی‌های کلیدی:
+• سیستم ReplyKeyboard برای منوی اصلی + InlineKeyboard برای تنظیمات
+• پشتیبانی کامل از آپلود عکس (file_id) در welcome
+• سیستم دکمه‌های چندتایی در هر ردیف welcome
+• پلاگین keyboard_manager برای ساخت کیبورد اختصاصی ربات
+• چت زنده حرفه‌ای با پشتیبانی (رفع باگ پاسخ ادمین)
 """
 import os
 import sys
@@ -19,7 +24,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Any, Callable
 from flask import Flask, request
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+)
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, InvalidToken
 from telegram.ext import (
@@ -51,19 +59,17 @@ FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 # ECONOMY
 # ══════════════════════════════════════════════════════════════════════
 GRAMCOIN_SYMBOL = "GC"
-SIGNUP_BONUS_GC = 50              # 🎁 پاداش ثبت‌نام اولیه
+SIGNUP_BONUS_GC = 50
 REFERRAL_BONUS_GC = 50
 DAILY_REWARD_GC = 5
 
-# اشتراک‌ها
 SUBSCRIPTION_WEEKLY_GC = 50
 SUBSCRIPTION_MONTHLY_GC = 150
 SUBSCRIPTION_WEEKLY_DAYS = 7
 SUBSCRIPTION_MONTHLY_DAYS = 30
 
-# دوره آزمایشی رایگان
-TRIAL_DAYS = 3                    # 🆓 ۳ روز اشتراک رایگان برای هر ربات جدید
-MAX_FREE_BOTS = 1                 # ⚠️ فقط ۱ ربات در پلن رایگان
+TRIAL_DAYS = 3
+MAX_FREE_BOTS = 1
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 PLATFORM_BOT_USERNAME = ""
@@ -73,10 +79,10 @@ ADMIN_PAGE_SIZE = 8
 # PLUGINS REGISTRY
 # ══════════════════════════════════════════════════════════════════════
 AVAILABLE_PLUGINS = {
-    # ── پلاگین‌های رایگان (در دوره آزمایشی هم فعال) ──
+    # ── پلاگین‌های رایگان ──
     "welcome": {
         "name": "👋 خوش‌آمد پیشرفته",
-        "description": "پیام خوش‌آمد با عکس، متن سفارشی و دکمه‌های شیشه‌ای",
+        "description": "پیام خوش‌آمد با عکس، متن سفارشی و دکمه‌های چندتایی",
         "cost_gc": 0,
         "is_premium": False,
         "category": "basic",
@@ -84,14 +90,22 @@ AVAILABLE_PLUGINS = {
     },
     "support": {
         "name": "🎫 پشتیبانی چت زنده",
-        "description": "سیستم چت زنده با سازنده ربات - ارتباط مستقیم و آنی",
+        "description": "سیستم چت زنده حرفه‌ای با سازنده ربات",
+        "cost_gc": 0,
+        "is_premium": False,
+        "category": "basic",
+        "has_settings": True,
+    },
+    "keyboard": {
+        "name": "⌨️ کیبورد اختصاصی",
+        "description": "ساخت دکمه‌های کیبورد زیر صفحه چت ربات شما",
         "cost_gc": 0,
         "is_premium": False,
         "category": "basic",
         "has_settings": True,
     },
     "echo": {
-        "name": "🤖 Echo (تکرار پیام)",
+        "name": "🤖 Echo",
         "description": "تکرار پیام‌های کاربران",
         "cost_gc": 0,
         "is_premium": False,
@@ -102,63 +116,41 @@ AVAILABLE_PLUGINS = {
     "auto_reply": {
         "name": "💬 پاسخ خودکار",
         "description": "پاسخ به کلمات کلیدی خاص",
-        "cost_gc": 80,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": True,
+        "cost_gc": 80, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "broadcast": {
         "name": "📢 ارسال همگانی",
         "description": "ارسال به همه کاربران ربات شما",
-        "cost_gc": 100,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": False,
+        "cost_gc": 100, "is_premium": True, "category": "advanced", "has_settings": False,
     },
     "shop": {
         "name": "🛒 فروشگاه",
         "description": "فروشگاه آنلاین با سبد خرید",
-        "cost_gc": 150,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": True,
+        "cost_gc": 150, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "form_builder": {
         "name": "📝 فرم‌ساز",
         "description": "ساخت فرم و جمع‌آوری اطلاعات",
-        "cost_gc": 80,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": True,
+        "cost_gc": 80, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "referral": {
         "name": "👥 زیرمجموعه‌گیری",
         "description": "سیستم رفرال برای ربات شما",
-        "cost_gc": 120,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": True,
+        "cost_gc": 120, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "payment": {
         "name": "💳 درگاه پرداخت",
         "description": "دریافت پرداخت از کاربران",
-        "cost_gc": 180,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": True,
+        "cost_gc": 180, "is_premium": True, "category": "advanced", "has_settings": True,
     },
     "stats": {
         "name": "📊 آمار پیشرفته",
         "description": "آمار کامل و نموداری",
-        "cost_gc": 50,
-        "is_premium": True,
-        "category": "advanced",
-        "has_settings": False,
+        "cost_gc": 50, "is_premium": True, "category": "advanced", "has_settings": False,
     },
 }
 
-# پلاگین‌های پیش‌فرض فعال در دوره آزمایشی
-TRIAL_DEFAULT_PLUGINS = ["welcome", "support"]
+TRIAL_DEFAULT_PLUGINS = ["welcome", "support", "keyboard"]
 
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
@@ -207,7 +199,6 @@ class CloudStorage:
             "transactions": [],
             "last_updated": None,
         }
-        
         if self._uri and MONGODB_AVAILABLE:
             try:
                 self._client = MongoClient(self._uri, serverSelectionTimeoutMS=10000, connectTimeoutMS=10000)
@@ -230,7 +221,6 @@ class CloudStorage:
                     self._data.setdefault("bots", {})
                     self._data.setdefault("tickets", {})
                     self._data.setdefault("transactions", [])
-                    # مهاجرت
                     for u in self._data["users"].values():
                         u.setdefault("signup_bonus_claimed", False)
                     for b in self._data["bots"].values():
@@ -261,7 +251,6 @@ class CloudStorage:
     
     # ═══════ USER MANAGEMENT ═══════
     def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> tuple:
-        """(dict, is_new_user)"""
         key = str(uid)
         is_new = False
         with self._lock:
@@ -269,37 +258,28 @@ class CloudStorage:
                 is_new = True
                 ref_code = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:8]
                 self._data["users"][key] = {
-                    "uid": uid,
-                    "username": username or "",
-                    "full_name": full_name or "",
-                    "gramcoin_balance": 0,
-                    "total_earned_gc": 0,
-                    "referral_code": ref_code,
-                    "referred_by": None,
+                    "uid": uid, "username": username or "", "full_name": full_name or "",
+                    "gramcoin_balance": 0, "total_earned_gc": 0,
+                    "referral_code": ref_code, "referred_by": None,
                     "created_at": now_ir().isoformat(),
-                    "last_daily_claim": None,
-                    "bots_created": [],
+                    "last_daily_claim": None, "bots_created": [],
                     "signup_bonus_claimed": False,
                 }
                 self._dirty = True
             else:
                 u = self._data["users"][key]
                 if username and u.get("username") != username:
-                    u["username"] = username
-                    self._dirty = True
+                    u["username"] = username; self._dirty = True
                 if full_name and u.get("full_name") != full_name:
-                    u["full_name"] = full_name
-                    self._dirty = True
+                    u["full_name"] = full_name; self._dirty = True
                 u.setdefault("signup_bonus_claimed", False)
             return dict(self._data["users"][key]), is_new
     
     def claim_signup_bonus(self, uid: int) -> bool:
-        """پاداش ۵۰ GC برای ثبت‌نام اولیه"""
         key = str(uid)
         with self._lock:
             u = self._data["users"].get(key)
-            if not u: return False
-            if u.get("signup_bonus_claimed"): return False
+            if not u or u.get("signup_bonus_claimed"): return False
             u["signup_bonus_claimed"] = True
             self._dirty = True
         return self.add_gramcoin(uid, SIGNUP_BONUS_GC, "signup_bonus")
@@ -366,20 +346,18 @@ class CloudStorage:
     def create_bot(self, owner_uid: int, bot_token: str) -> Optional[dict]:
         bot_id = hashlib.md5(f"{owner_uid}{bot_token}{time.time()}".encode()).hexdigest()[:12]
         with self._lock:
-            # محاسبه تاریخ انقضای دوره آزمایشی
             trial_expiry = (now_ir() + timedelta(days=TRIAL_DAYS)).isoformat()
-            
             self._data["bots"][bot_id] = {
                 "bot_id": bot_id,
                 "owner_uid": owner_uid,
                 "bot_token": bot_token,
                 "bot_username": "",
-                "is_active": True,              # فعال به خاطر دوره آزمایشی
-                "is_trial": True,               # 🆓 در دوره آزمایشی
-                "trial_used": True,             # از دوره آزمایشی استفاده شده
+                "is_active": True,
+                "is_trial": True,
+                "trial_used": True,
                 "created_at": now_ir().isoformat(),
                 "last_activity": None,
-                "enabled_plugins": list(TRIAL_DEFAULT_PLUGINS),  # پلاگین‌های پیش‌فرض آزمایشی
+                "enabled_plugins": list(TRIAL_DEFAULT_PLUGINS),
                 "purchased_plugins": [],
                 "plugin_settings": {
                     "welcome": {
@@ -387,19 +365,31 @@ class CloudStorage:
                             "👋 <b>سلام! به ربات ما خوش آمدید!</b>\n\n"
                             "🤖 از اینکه ما را انتخاب کردید سپاسگزاریم.\n\n"
                             "💡 <b>چگونه با ما ارتباط بگیرید:</b>\n"
-                            "• پیام خود را همین‌جا بنویسید\n"
-                            "• از دکمه زیر برای پشتیبانی استفاده کنید\n\n"
+                            "• از دکمه‌های زیر صفحه استفاده کنید\n"
+                            "• برای پشتیبانی /support را بزنید\n\n"
                             "✨ امیدواریم تجربه خوبی داشته باشید!"
                         ),
-                        "photo_url": None,
+                        "photo_file_id": None,
                         "buttons": [
-                            [{"text": "🎫 پشتیبانی", "type": "support"}]
+                            [
+                                {"text": "🎫 پشتیبانی", "type": "support"},
+                                {"text": "ℹ️ درباره ما", "type": "text", "value": "ما یک تیم حرفه‌ای هستیم!"},
+                            ]
                         ],
                     },
                     "support": {
-                        "admin_message": "📩 پیام خود را برای تیم پشتیبانی ارسال کنید. در سریع‌ترین زمان پاسخ می‌دهیم.",
-                        "confirm_message": "✅ پیام شما ارسال شد. تیم پشتیبانی به زودی پاسخ می‌دهد.",
-                        "end_chat_message": "🔚 چت با پشتیبانی پایان یافت. برای شروع مجدد /support را بزنید.",
+                        "admin_message": "📩 <b>به پشتیبانی خوش آمدید!</b>\n\nپیام خود را برای تیم پشتیبانی ارسال کنید. در سریع‌ترین زمان ممکن پاسخ می‌دهیم.",
+                        "confirm_message": "✅ <b>پیام شما با موفقیت ارسال شد!</b>\n\nتیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
+                        "end_chat_message": "🔚 <b>چت با پشتیبانی پایان یافت.</b>\n\nبرای شروع مجدد، /support را بزنید.",
+                    },
+                    "keyboard": {
+                        "buttons": [
+                            [{"text": "🎫 پشتیبانی", "action": "command", "value": "/support"}],
+                            [{"text": "ℹ️ درباره ما", "action": "text", "value": "ما یک تیم حرفه‌ای هستیم!"}],
+                        ],
+                        "resize_keyboard": True,
+                        "one_time_keyboard": False,
+                        "persistent": True,
                     },
                 },
                 "subscription_expiry": trial_expiry,
@@ -408,11 +398,9 @@ class CloudStorage:
                 "next_ticket_id": 1001,
                 "stats": {"messages_received": 0, "messages_sent": 0, "unique_users": 0},
             }
-            
             user_key = str(owner_uid)
             if user_key in self._data["users"]:
                 self._data["users"][user_key]["bots_created"].append(bot_id)
-            
             self._dirty = True
             return dict(self._data["bots"][bot_id])
     
@@ -476,26 +464,21 @@ class CloudStorage:
         with self._lock:
             if bot_id not in self._data["bots"]: return None
             bot = self._data["bots"][bot_id]
-            
             if bot.get("subscription_expiry"):
                 try:
                     current = datetime.fromisoformat(bot["subscription_expiry"])
                     base = current if current > now_ir() else now_ir()
                 except: base = now_ir()
             else: base = now_ir()
-            
             new_expiry = base + timedelta(days=days)
             bot["subscription_expiry"] = new_expiry.isoformat()
             bot["subscription_plan"] = plan
             bot["is_active"] = True
-            bot["is_trial"] = False  # از حالت آزمایشی خارج شد
-            
-            # فعال‌سازی پلاگین‌های رایگان
+            bot["is_trial"] = False
             free_plugins = [pid for pid, p in AVAILABLE_PLUGINS.items() if not p.get("is_premium")]
             for plugin in free_plugins:
                 if plugin not in bot["enabled_plugins"]:
                     bot["enabled_plugins"].append(plugin)
-            
             self._dirty = True
             return new_expiry
     
@@ -513,18 +496,6 @@ class CloudStorage:
             if bot_id in self._data["bots"]:
                 self._data["bots"][bot_id]["is_active"] = False
                 self._dirty = True
-    
-    def has_used_trial(self, uid: int) -> bool:
-        """آیا کاربر قبلاً از دوره آزمایشی استفاده کرده است؟"""
-        with self._lock:
-            user_key = str(uid)
-            user = self._data["users"].get(user_key)
-            if not user: return False
-            for bot_id in user.get("bots_created", []):
-                bot = self._data["bots"].get(bot_id)
-                if bot and bot.get("trial_used"):
-                    return True
-            return False
     
     # ═══════ PLUGINS ═══════
     def enable_plugin(self, bot_id: str, plugin_id: str) -> bool:
@@ -653,6 +624,7 @@ class PluginManager:
         self._plugin_handlers["echo"] = self._setup_echo
         self._plugin_handlers["welcome"] = self._setup_welcome
         self._plugin_handlers["support"] = self._setup_support
+        self._plugin_handlers["keyboard"] = self._setup_keyboard
     
     def setup_plugins_for_bot(self, app: Application, bot_id: str):
         bot_data = cloud.get_bot(bot_id)
@@ -681,19 +653,19 @@ class PluginManager:
             except: pass
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler), group=10)
     
-    # ═══════ WELCOME PLUGIN (پیشرفته با عکس و دکمه) ═══════
+    # ═══════ WELCOME PLUGIN (با عکس آپلود شده و دکمه‌های چندتایی) ═══════
     def _setup_welcome(self, app: Application, bot_id: str):
         async def welcome_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             settings = cloud.get_plugin_settings(bot_id, "welcome")
             message = settings.get("message", "👋 <b>سلام! خوش آمدید!</b>")
-            photo_url = settings.get("photo_url")
+            photo_file_id = settings.get("photo_file_id")
             buttons_data = settings.get("buttons", [])
             
             cloud.add_bot_user(bot_id, update.effective_user.id,
                 update.effective_user.username or "",
                 f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
             
-            # ساخت دکمه‌ها
+            # ساخت دکمه‌ها (هر ردیف می‌تواند چندین دکمه داشته باشد)
             btn_rows = []
             for row in buttons_data:
                 current_row = []
@@ -701,14 +673,20 @@ class PluginManager:
                     text = btn.get("text", "")
                     btn_type = btn.get("type", "")
                     url = btn.get("url", "")
+                    value = btn.get("value", "")
                     
                     if btn_type == "url" and url:
                         current_row.append(InlineKeyboardButton(text, url=url))
                     elif btn_type == "support":
-                        # دکمه شیشه‌ای برای پشتیبانی
                         current_row.append(InlineKeyboardButton(text, callback_data=f"support_btn_{bot_id}"))
+                    elif btn_type == "text":
+                        # دکمه‌ای که با کلیک، یک متن خاص را نمایش می‌دهد
+                        encoded_value = hashlib.md5(value.encode()).hexdigest()[:8]
+                        # ذخیره موقت مقدار
+                        ctx.user_data[f"btn_text_{encoded_value}"] = value
+                        current_row.append(InlineKeyboardButton(text, callback_data=f"wbtn_{encoded_value}"))
                     elif btn_type == "callback":
-                        cb_data = btn.get("callback", "")
+                        cb_data = btn.get("callback", "")[:64]  # محدودیت 64 کاراکتر
                         current_row.append(InlineKeyboardButton(text, callback_data=cb_data))
                 if current_row:
                     btn_rows.append(current_row)
@@ -716,16 +694,15 @@ class PluginManager:
             markup = InlineKeyboardMarkup(btn_rows) if btn_rows else None
             
             try:
-                if photo_url:
-                    # ارسال با عکس
+                if photo_file_id:
+                    # ارسال با عکس (از file_id تلگرام)
                     await update.message.reply_photo(
-                        photo=photo_url,
+                        photo=photo_file_id,
                         caption=message,
                         parse_mode=ParseMode.HTML,
                         reply_markup=markup,
                     )
                 else:
-                    # ارسال متن تنها
                     await update.message.reply_text(
                         message,
                         parse_mode=ParseMode.HTML,
@@ -735,352 +712,255 @@ class PluginManager:
             except Exception as e:
                 log.warning(f"Welcome failed for bot {bot_id}: {e}")
         
+        async def welcome_button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            q = update.callback_query
+            data = q.data or ""
+            
+            if data == f"support_btn_{bot_id}":
+                await q.answer()
+                settings = cloud.get_plugin_settings(bot_id, "support")
+                admin_msg = settings.get("admin_message", "📩 پیام خود را ارسال کنید.")
+                user = q.from_user
+                ticket = cloud.create_ticket(
+                    bot_id, user.id, user.username or "",
+                    f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                )
+                if not ticket:
+                    await q.message.reply_text("❌ خطا")
+                    return
+                ctx.user_data[f"chat_active_{bot_id}"] = {
+                    "active": True, "ticket_id": ticket["ticket_id"],
+                }
+                cloud.save(force=True)
+                await q.message.reply_text(
+                    f"{admin_msg}\n\n🎫 <b>تیکت:</b> <code>{ticket['ticket_id']}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat_{bot_id}")]
+                    ]))
+                return
+            
+            if data.startswith("wbtn_"):
+                encoded = data.replace("wbtn_", "")
+                text_value = ctx.user_data.get(f"btn_text_{encoded}", "")
+                await q.answer()
+                if text_value:
+                    await q.message.reply_text(text_value, parse_mode=ParseMode.HTML)
+                return
+        
         app.add_handler(CommandHandler("start", welcome_handler), group=5)
+        app.add_handler(CallbackQueryHandler(welcome_button_handler, pattern=r"^support_btn_|^wbtn_"), group=5)
     
-    # ═══════ SUPPORT PLUGIN (چت زنده حرفه‌ای) ═══════
-    def _setup_support(self, app: Application, bot_id: str):
-        async def support_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            """دستور /support برای شروع چت"""
-            settings = cloud.get_plugin_settings(bot_id, "support")
-            admin_msg = settings.get("admin_message", "📩 پیام خود را ارسال کنید.")
+    # ═══════ KEYBOARD PLUGIN (کیبورد اختصاصی ربات کاربر) ═══════
+    def _setup_keyboard(self, app: Application, bot_id: str):
+        """مدیریت دکمه‌های ReplyKeyboard سفارشی ربات کاربر"""
+        
+        async def send_keyboard_on_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            """ارسال کیبورد سفارشی هنگام /start"""
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            buttons_data = settings.get("buttons", [])
+            resize = settings.get("resize_keyboard", True)
+            one_time = settings.get("one_time_keyboard", False)
+            persistent = settings.get("persistent", True)
+            
+            if not buttons_data:
+                return  # کیبوردی تعریف نشده
+            
+            # ساخت ReplyKeyboard
+            rows = []
+            for row in buttons_data:
+                current_row = []
+                for btn in row:
+                    text = btn.get("text", "")
+                    if text:
+                        current_row.append(KeyboardButton(text))
+                if current_row:
+                    rows.append(current_row)
+            
+            if not rows:
+                return
+            
+            markup = ReplyKeyboardMarkup(
+                rows,
+                resize_keyboard=resize,
+                one_time_keyboard=one_time,
+                is_persistent=persistent,
+            )
+            
+            try:
+                await update.message.reply_text(
+                    "⌨️ <b>کیبورد اختصاصی فعال شد!</b>\n\n"
+                    "از دکمه‌های زیر برای تعامل با ربات استفاده کنید.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=markup,
+                )
+            except Exception as e:
+                log.warning(f"Keyboard send failed for bot {bot_id}: {e}")
+        
+        async def keyboard_button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            """مدیریت کلیک روی دکمه‌های کیبورد"""
+            if not update.message or not update.message.text: return
+            
+            text = update.message.text
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            buttons_data = settings.get("buttons", [])
+            
+            # جستجو برای دکمه‌ای که این متن را دارد
+            btn_action = None
+            btn_value = None
+            for row in buttons_data:
+                for btn in row:
+                    if btn.get("text") == text:
+                        btn_action = btn.get("action", "text")
+                        btn_value = btn.get("value", "")
+                        break
+                if btn_action: break
+            
+            if not btn_action:
+                return  # دکمه‌ای یافت نشد
             
             cloud.add_bot_user(bot_id, update.effective_user.id,
                 update.effective_user.username or "",
                 f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
             
-            # ساخت تیکت جدید
+            try:
+                if btn_action == "text":
+                    await update.message.reply_text(btn_value, parse_mode=ParseMode.HTML)
+                    cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
+                elif btn_action == "command":
+                    # شبیه‌سازی اجرای دستور (مثلاً /support)
+                    if btn_value == "/support":
+                        settings_sup = cloud.get_plugin_settings(bot_id, "support")
+                        admin_msg = settings_sup.get("admin_message", "📩 پیام خود را ارسال کنید.")
+                        user = update.effective_user
+                        ticket = cloud.create_ticket(
+                            bot_id, user.id, user.username or "",
+                            f"{user.first_name or ''} {user.last_name or ''}".strip(),
+                        )
+                        if ticket:
+                            ctx.user_data[f"chat_active_{bot_id}"] = {
+                                "active": True, "ticket_id": ticket["ticket_id"],
+                            }
+                            cloud.save(force=True)
+                            await update.message.reply_text(
+                                f"{admin_msg}\n\n🎫 <b>تیکت:</b> <code>{ticket['ticket_id']}</code>",
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=InlineKeyboardMarkup([
+                                    [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat_{bot_id}")]
+                                ]))
+                    else:
+                        await update.message.reply_text(f"🔘 دستور: <code>{btn_value}</code>", parse_mode=ParseMode.HTML)
+                elif btn_action == "url":
+                    await update.message.reply_text(
+                        f"🌐 <b>لینک:</b>\n{btn_value}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔗 باز کردن لینک", url=btn_value)]
+                        ]))
+                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
+            except Exception as e:
+                log.warning(f"Keyboard action failed: {e}")
+        
+        # Handler برای ارسال کیبورد هنگام /start
+        # group بالاتر یعنی اولویت بیشتر (بعد از welcome اجرا شود)
+        app.add_handler(CommandHandler("start", send_keyboard_on_start), group=6)
+        # Handler برای کلیک روی دکمه‌های کیبورد (فقط متن‌های دقیق)
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_button_handler), group=15)
+    
+    # ═══════ SUPPORT PLUGIN (چت زنده حرفه‌ای - رفع باگ) ═══════
+    def _setup_support(self, app: Application, bot_id: str):
+        async def support_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            settings = cloud.get_plugin_settings(bot_id, "support")
+            admin_msg = settings.get("admin_message", "📩 پیام خود را ارسال کنید.")
+            cloud.add_bot_user(bot_id, update.effective_user.id,
+                update.effective_user.username or "",
+                f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip())
             user = update.effective_user
             ticket = cloud.create_ticket(
-                bot_id, user.id,
-                user.username or "",
+                bot_id, user.id, user.username or "",
                 f"{user.first_name or ''} {user.last_name or ''}".strip(),
             )
-            
             if not ticket:
                 await update.message.reply_text("❌ خطا در ایجاد چت.")
                 return
-            
-            # ذخیره state برای کاربر (حالت چت فعال)
             ctx.user_data[f"chat_active_{bot_id}"] = {
-                "active": True,
-                "ticket_id": ticket["ticket_id"],
+                "active": True, "ticket_id": ticket["ticket_id"],
             }
             cloud.save(force=True)
-            
             await update.message.reply_text(
-                f"{admin_msg}\n\n"
-                f"🎫 <b>شماره تیکت:</b> <code>{ticket['ticket_id']}</code>\n\n"
-                f"💬 هر پیامی که بفرستید مستقیماً به پشتیبانی ارسال می‌شود.\n"
-                f"🔚 برای پایان چت، روی دکمه زیر بزنید:",
+                f"{admin_msg}\n\n🎫 <b>شماره تیکت:</b> <code>{ticket['ticket_id']}</code>\n\n"
+                f"💬 هر پیامی که بفرستید مستقیماً به پشتیبانی ارسال می‌شود.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat_{bot_id}")]
                 ]))
         
         async def support_button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            """مدیریت دکمه‌های پشتیبانی"""
             q = update.callback_query
             data = q.data or ""
             
-            if data == f"support_btn_{bot_id}":
-                await q.answer()
-                # فراخوانی command handler /support
-                settings = cloud.get_plugin_settings(bot_id, "support")
-                admin_msg = settings.get("admin_message", "📩 پیام خود را ارسال کنید.")
-                
-                user = q.from_user
-                ticket = cloud.create_ticket(
-                    bot_id, user.id,
-                    user.username or "",
-                    f"{user.first_name or ''} {user.last_name or ''}".strip(),
-                )
-                
-                if not ticket:
-                    await q.message.reply_text("❌ خطا")
-                    return
-                
-                ctx.user_data[f"chat_active_{bot_id}"] = {
-                    "active": True,
-                    "ticket_id": ticket["ticket_id"],
-                }
-                cloud.save(force=True)
-                
-                await q.message.reply_text(
-                    f"{admin_msg}\n\n"
-                    f"🎫 <b>شماره تیکت:</b> <code>{ticket['ticket_id']}</code>\n\n"
-                    f"💬 هر پیامی که بفرستید مستقیماً به پشتیبانی ارسال می‌شود.\n"
-                    f"🔚 برای پایان چت، روی دکمه زیر بزنید:",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat_{bot_id}")]
-                    ]))
-                return
-            
             if data == f"end_chat_{bot_id}":
-                # پایان چت توسط کاربر
                 chat_state = ctx.user_data.get(f"chat_active_{bot_id}")
                 if chat_state and chat_state.get("active"):
                     ticket_id = chat_state.get("ticket_id")
                     ctx.user_data.pop(f"chat_active_{bot_id}", None)
                     cloud.close_ticket(ticket_id)
                     cloud.save(force=True)
-                
                 settings = cloud.get_plugin_settings(bot_id, "support")
                 end_msg = settings.get("end_chat_message", "🔚 چت پایان یافت.")
-                
                 await q.answer("چت پایان یافت")
-                try:
-                    await q.edit_message_text(end_msg, parse_mode=ParseMode.HTML)
-                except:
-                    await q.message.reply_text(end_msg, parse_mode=ParseMode.HTML)
+                try: await q.edit_message_text(end_msg, parse_mode=ParseMode.HTML)
+                except: await q.message.reply_text(end_msg, parse_mode=ParseMode.HTML)
                 return
             
             if data.startswith("reply_ticket_"):
-                # سازنده روی دکمه پاسخ کلیک کرده
                 ticket_id = data.replace("reply_ticket_", "")
                 ticket = cloud.get_ticket(ticket_id)
                 if not ticket or ticket["bot_id"] != bot_id:
-                    await q.answer("❌ تیکت یافت نشد")
-                    return
-                
-                # بررسی مالکیت
+                    await q.answer("❌ تیکت یافت نشد"); return
                 bot_data = cloud.get_bot(bot_id)
                 if not bot_data or bot_data.get("owner_uid") != q.from_user.id:
-                    await q.answer("❌ دسترسی ندارید")
-                    return
-                
-                # ذخیره state برای سازنده (در حالت پاسخ)
+                    await q.answer("❌ دسترسی ندارید"); return
+                # ✅ FIX: state را برای on_message اصلی ذخیره می‌کنیم
                 ctx.user_data[f"admin_reply_{bot_id}"] = {
-                    "active": True,
-                    "ticket_id": ticket_id,
+                    "active": True, "ticket_id": ticket_id,
                     "user_id": ticket["user_id"],
                 }
-                
                 await q.answer()
                 await q.message.reply_text(
                     f"💬 <b>در حال پاسخ به تیکت {ticket_id}</b>\n\n"
                     f"👤 کاربر: {ticket['full_name']}\n\n"
-                    f"✍️ پاسخ خود را بنویسید و ارسال کنید:\n"
-                    f"(برای لغو /cancel)",
+                    f"✍️ پاسخ خود را بنویسید و ارسال کنید:\n(/cancel برای لغو)",
                     parse_mode=ParseMode.HTML)
                 return
-        
-        async def support_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            """مدیریت پیام‌های چت زنده"""
-            if not update.message or not update.message.text: return
-            user = update.effective_user
-            
-            # ── بررسی حالت پاسخ از طرف سازنده ──
-            admin_reply_state = ctx.user_data.get(f"admin_reply_{bot_id}")
-            if admin_reply_state and admin_reply_state.get("active"):
-                # سازنده در حال پاسخ دادن است
-                bot_data = cloud.get_bot(bot_id)
-                if not bot_data or bot_data.get("owner_uid") != user.id:
-                    ctx.user_data.pop(f"admin_reply_{bot_id}", None)
-                    return
-                
-                ticket_id = admin_reply_state.get("ticket_id")
-                target_user_id = admin_reply_state.get("user_id")
-                ticket = cloud.get_ticket(ticket_id)
-                
-                if not ticket or ticket["status"] != "open":
-                    await update.message.reply_text(
-                        "⚠️ تیکت بسته شده است.",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("📋 لیست تیکت‌ها", callback_data=f"tickets_{bot_id}")]
-                        ]))
-                    ctx.user_data.pop(f"admin_reply_{bot_id}", None)
-                    return
-                
-                # ارسال پاسخ به کاربر
-                try:
-                    await ctx.bot.send_message(
-                        chat_id=target_user_id,
-                        text=f"💬 <b>پاسخ پشتیبانی</b>\n\n"
-                             f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
-                             f"{update.message.text}",
-                        parse_mode=ParseMode.HTML)
-                    
-                    await update.message.reply_text(
-                        f"✅ <b>پاسخ ارسال شد!</b>\n\n"
-                        f"👤 به: {ticket['full_name']}\n"
-                        f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
-                        f"💬 برای ارسال پیام دیگر، دوباره بنویسید.\n"
-                        f"🔚 برای پایان، /cancel را بزنید.",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("✅ بستن تیکت", callback_data=f"close_ticket_{ticket_id}")]
-                        ]))
-                    cloud.update_bot_stats(bot_id, messages_sent=1)
-                except Forbidden:
-                    await update.message.reply_text(
-                        f"❌ کاربر <code>{target_user_id}</code> ربات را بلاک کرده است.")
-                except Exception as e:
-                    await update.message.reply_text(f"❌ خطا: {str(e)[:100]}")
-                return
-            
-            # ── بررسی حالت چت از طرف کاربر ──
-            chat_state = ctx.user_data.get(f"chat_active_{bot_id}")
-            if not chat_state or not chat_state.get("active"):
-                return
-            
-            ticket_id = chat_state.get("ticket_id")
-            ticket = cloud.get_ticket(ticket_id)
-            if not ticket or ticket["status"] != "open":
-                ctx.user_data.pop(f"chat_active_{bot_id}", None)
-                await update.message.reply_text(
-                    "⚠️ چت شما بسته شده است. برای شروع مجدد /support را بزنید.")
-                return
-            
-            # ارسال پیام کاربر به سازنده
-            bot_data = cloud.get_bot(bot_id)
-            if not bot_data: return
-            
-            owner_uid = bot_data.get("owner_uid")
-            user_text = update.message.text
-            
-            try:
-                await ctx.bot.send_message(
-                    chat_id=owner_uid,
-                    text=f"🎫 <b>پیام جدید از کاربر</b>\n\n"
-                         f"🎫 تیکت: <code>{ticket_id}</code>\n"
-                         f"👤 {mention_html(user.id, user.full_name, user.username)}\n"
-                         f"🆔 <code>{user.id}</code>\n\n"
-                         f"📝 <b>پیام:</b>\n{user_text}",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("💬 پاسخ", callback_data=f"reply_ticket_{ticket_id}"),
-                            InlineKeyboardButton("✅ بستن", callback_data=f"close_ticket_{ticket_id}"),
-                        ]
-                    ]))
-                
-                settings = cloud.get_plugin_settings(bot_id, "support")
-                confirm_msg = settings.get("confirm_message", "✅ پیام ارسال شد.")
-                
-                await update.message.reply_text(
-                    f"{confirm_msg}\n\n"
-                    f"🎫 تیکت: <code>{ticket_id}</code>\n"
-                    f"💬 برای ارسال پیام دیگر، همینجا تایپ کنید.\n"
-                    f"🔚 برای پایان چت، روی دکمه زیر بزنید.",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔚 پایان چت", callback_data=f"end_chat_{bot_id}")]
-                    ]))
-                
-                cloud.update_bot_stats(bot_id, messages_received=1, messages_sent=1)
-            except Forbidden:
-                await update.message.reply_text("❌ ربات توسط سازنده بلاک شده است.")
-            except Exception as e:
-                log.error(f"Support forward failed: {e}")
-                await update.message.reply_text("❌ خطا در ارسال پیام.")
-        
-        async def close_ticket_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            """بستن تیکت توسط سازنده"""
-            q = update.callback_query
-            data = q.data or ""
             
             if data.startswith("close_ticket_"):
                 ticket_id = data.replace("close_ticket_", "")
                 ticket = cloud.get_ticket(ticket_id)
-                
                 if not ticket or ticket["bot_id"] != bot_id:
-                    await q.answer("❌ تیکت یافت نشد")
-                    return
-                
+                    await q.answer("❌ تیکت یافت نشد"); return
                 bot_data = cloud.get_bot(bot_id)
                 if not bot_data or bot_data.get("owner_uid") != q.from_user.id:
-                    await q.answer("❌ دسترسی ندارید")
-                    return
-                
+                    await q.answer("❌ دسترسی ندارید"); return
                 cloud.close_ticket(ticket_id)
                 cloud.save(force=True)
-                
-                # خارج کردن کاربر از حالت چت
                 try:
                     temp_bot = Bot(token=bot_data["bot_token"])
                     await temp_bot.send_message(
                         chat_id=ticket["user_id"],
-                        text=f"🔚 <b>چت شما با پشتیبانی بسته شد.</b>\n\n"
-                             f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
-                             f"برای شروع چت جدید، /support را بزنید.",
-                        parse_mode=ParseMode.HTML)
-                except Exception as e:
-                    log.warning(f"Notify user failed: {e}")
-                
-                await q.answer("تیکت بسته شد")
-                try:
-                    await q.edit_message_text(
-                        f"✅ <b>تیکت {ticket_id} بسته شد</b>",
+                        text=f"🔚 <b>چت شما با پشتیبانی بسته شد.</b>\n\n🎫 تیکت: <code>{ticket_id}</code>",
                         parse_mode=ParseMode.HTML)
                 except: pass
-                
-                # خارج کردن سازنده از حالت پاسخ
+                await q.answer("تیکت بسته شد")
+                try: await q.edit_message_text(f"✅ <b>تیکت {ticket_id} بسته شد</b>", parse_mode=ParseMode.HTML)
+                except: pass
                 ctx.user_data.pop(f"admin_reply_{bot_id}", None)
                 return
-            
-            if data == f"tickets_{bot_id}":
-                # لیست تیکت‌ها
-                bot_data = cloud.get_bot(bot_id)
-                if not bot_data or bot_data.get("owner_uid") != q.from_user.id:
-                    await q.answer("❌ دسترسی ندارید")
-                    return
-                
-                await q.answer()
-                tickets = cloud.get_bot_tickets(bot_id)
-                open_tickets = [t for t in tickets if t["status"] == "open"]
-                
-                if not open_tickets:
-                    await q.message.reply_text(
-                        "📭 <b>تیکت بازی وجود ندارد.</b>",
-                        parse_mode=ParseMode.HTML)
-                    return
-                
-                text = "📋 <b>تیکت‌های باز:</b>\n\n"
-                rows = []
-                for t in open_tickets[-20:]:
-                    text += f"• <code>{t['ticket_id']}</code> | {t['full_name'][:15]}\n"
-                    rows.append([InlineKeyboardButton(
-                        f"💬 {t['ticket_id']} - {t['full_name'][:15]}",
-                        callback_data=f"reply_ticket_{t['ticket_id']}"
-                    )])
-                
-                await q.message.reply_text(text, parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(rows))
-                return
         
-        async def tickets_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-            """دستور /tickets برای سازنده"""
-            bot_data = cloud.get_bot(bot_id)
-            if not bot_data or bot_data.get("owner_uid") != update.effective_user.id:
-                await update.message.reply_text("⛔️ فقط سازنده ربات دسترسی دارد.")
-                return
-            
-            tickets = cloud.get_bot_tickets(bot_id)
-            open_tickets = [t for t in tickets if t["status"] == "open"]
-            
-            if not open_tickets:
-                await update.message.reply_text("📭 <b>تیکت بازی وجود ندارد.</b>", parse_mode=ParseMode.HTML)
-                return
-            
-            text = f"📋 <b>تیکت‌های باز ({len(open_tickets)}):</b>\n\n"
-            rows = []
-            for t in open_tickets[-20:]:
-                text += f"• <code>{t['ticket_id']}</code> | {t['full_name']}\n"
-                rows.append([InlineKeyboardButton(
-                    f"💬 پاسخ به {t['ticket_id']}",
-                    callback_data=f"reply_ticket_{t['ticket_id']}"
-                )])
-            
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(rows))
-        
-        # ثبت همه handler ها
+        # فقط /support را ثبت می‌کنیم. پیام‌ها در on_message اصلی هندل می‌شوند
         app.add_handler(CommandHandler("support", support_command), group=5)
-        app.add_handler(CommandHandler("tickets", tickets_command), group=5)
-        app.add_handler(CallbackQueryHandler(support_button_handler, pattern=r"^support_btn_|^end_chat_"), group=5)
-        app.add_handler(CallbackQueryHandler(close_ticket_handler, pattern=r"^close_ticket_|^reply_ticket_|^tickets_"), group=5)
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, support_message_handler), group=25)
+        app.add_handler(CallbackQueryHandler(support_button_handler, 
+            pattern=r"^end_chat_|^reply_ticket_|^close_ticket_"), group=5)
 
 plugin_manager = PluginManager()
 
@@ -1097,8 +977,7 @@ class BotFactory:
         async with self._lock:
             if bot_id in self._running_bots: return
             if cloud.check_subscription_expired(bot_id):
-                cloud.deactivate_bot(bot_id)
-                return
+                cloud.deactivate_bot(bot_id); return
             try:
                 bot_app = Application.builder().token(bot_token).build()
                 plugin_manager.setup_plugins_for_bot(bot_app, bot_id)
@@ -1140,9 +1019,7 @@ class BotFactory:
         try:
             await app.start()
             await app.updater.start_polling(
-                allowed_updates=["message", "callback_query"],
-                drop_pending_updates=True,
-            )
+                allowed_updates=["message", "callback_query"], drop_pending_updates=True)
             while True: await asyncio.sleep(60)
         except asyncio.CancelledError: pass
         except Exception as e: log.error(f"Bot {bot_id} polling error: {e}")
@@ -1182,26 +1059,36 @@ def kb_join_required() -> InlineKeyboardMarkup:
         btns.append([InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")])
     return InlineKeyboardMarkup(btns)
 
-def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
+# ═══ REPLY KEYBOARD برای منوی اصلی ═══
+def kb_main_reply(uid: int = 0) -> ReplyKeyboardMarkup:
+    """ReplyKeyboard برای منوی اصلی (دکمه‌های زیر صفحه چت)"""
     rows = [
-        [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
-         InlineKeyboardButton("🤖 ربات‌های من", callback_data="menu:mybots")],
-        [InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="menu:create_bot"),
-         InlineKeyboardButton("🎁 جایزه روزانه", callback_data="menu:daily")],
-        [InlineKeyboardButton("👥 دعوت دوستان", callback_data="menu:invite"),
-         InlineKeyboardButton("📊 تراکنش‌ها", callback_data="menu:transactions")],
-        [InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
+        [KeyboardButton("👤 پروفایل من"), KeyboardButton("🤖 ربات‌های من")],
+        [KeyboardButton("➕ ساخت ربات جدید"), KeyboardButton("🎁 جایزه روزانه")],
+        [KeyboardButton("👥 دعوت دوستان"), KeyboardButton("📊 تراکنش‌ها")],
+        [KeyboardButton("ℹ️ راهنما")],
     ]
     if uid and is_admin(uid):
-        rows.append([InlineKeyboardButton("👑 پنل ادمین", callback_data="admin:panel:0")])
-    return InlineKeyboardMarkup(rows)
+        rows.append([KeyboardButton("👑 پنل ادمین")])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+
+# ═══ متن‌های دکمه‌های ReplyKeyboard ═══
+REPLY_BUTTONS = {
+    "👤 پروفایل من": "menu:profile",
+    "🤖 ربات‌های من": "menu:mybots",
+    "➕ ساخت ربات جدید": "menu:create_bot",
+    "🎁 جایزه روزانه": "menu:daily",
+    "👥 دعوت دوستان": "menu:invite",
+    "📊 تراکنش‌ها": "menu:transactions",
+    "ℹ️ راهنما": "menu:help",
+    "👑 پنل ادمین": "admin:panel:0",
+}
 
 def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"menu:{dest}")]])
 
 def kb_bot_management(bot_id: str, bot_data: dict) -> InlineKeyboardMarkup:
     is_expired = cloud.check_subscription_expired(bot_id)
-    is_trial = bot_data.get("is_trial", False)
     rows = []
     if is_expired:
         rows.append([InlineKeyboardButton("💎 خرید اشتراک", callback_data=f"bot:subscribe:{bot_id}")])
@@ -1218,7 +1105,6 @@ def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
     if not bot_data: return kb_back("mybots")
     enabled = bot_data.get("enabled_plugins", [])
     purchased = bot_data.get("purchased_plugins", [])
-    is_trial = bot_data.get("is_trial", False)
     rows = []
     
     rows.append([InlineKeyboardButton("─── 🆓 پلاگین‌های پایه ───", callback_data="noop")])
@@ -1227,7 +1113,6 @@ def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
         is_enabled = pid in enabled
         status = "✅" if is_enabled else "⬜️"
         has_settings = plugin.get("has_settings", False)
-        
         btn_row = [InlineKeyboardButton(
             f"{status} {plugin['name']}",
             callback_data=f"plugin:toggle:{bot_id}:{pid}"
@@ -1242,7 +1127,6 @@ def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
         is_purchased = pid in purchased
         is_enabled = pid in enabled
         has_settings = plugin.get("has_settings", False)
-        
         if is_purchased:
             status = "✅" if is_enabled else "⏸️"
             btn_row = [InlineKeyboardButton(
@@ -1257,7 +1141,6 @@ def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
                 f"🔒 {plugin['name']} ({plugin['cost_gc']} GC)",
                 callback_data=f"plugin:buy:{bot_id}:{pid}"
             )])
-    
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
     return InlineKeyboardMarkup(rows)
 
@@ -1267,40 +1150,39 @@ def kb_plugins(bot_id: str) -> InlineKeyboardMarkup:
 def build_welcome_text(uid: int) -> str:
     u = cloud.get_user(uid)
     signup_claimed = u.get("signup_bonus_claimed", False) if u else False
-    
     signup_section = ""
     if not signup_claimed:
         signup_section = (
             f"\n🎁 <b>هدیه خوش‌آمدگویی!</b>\n"
             f"شما <b>{SIGNUP_BONUS_GC} GC</b> به عنوان هدیه ثبت‌نام دریافت کردید!\n\n"
         )
-    
     return (
         "🤖✨ <b>به GramBotSaz خوش اومدی!</b> ✨🤖\n\n"
         f"{signup_section}"
         "<blockquote expandable>"
-        "اینجا می‌تونی بدون نیاز به کدنویسی، ربات تلگرام خودت رو بسازی!\n"
+        "پلتفرم حرفه‌ای ساخت ربات تلگرام بدون نیاز به کدنویسی. "
+        "با چند کلیک ساده، ربات اختصاصی خود را بسازید و توسعه دهید!\n"
         "</blockquote>"
         "🔥 <b>ویژگی‌های پلتفرم:</b>\n"
-        "  🆓 <b>۳ روز اشتراک آزمایشی رایگان</b> برای هر ربات\n"
-        "  🧩 پلاگین‌های پیشرفته (چت زنده، دکمه شیشه‌ای)\n"
+        "  🆓 <b>۳ روز اشتراک آزمایشی</b> برای هر ربات\n"
+        "  🧩 پلاگین‌های پیشرفته (چت زنده، کیبورد، دکمه شیشه‌ای)\n"
         "  💰 سیستم اقتصادی با GramCoin\n"
         "  🎁 جایزه روزانه و سیستم رفرال\n\n"
-        "از منوی زیر شروع کن 👇"
+        "💡 <b>از دکمه‌های زیر صفحه برای شروع استفاده کنید:</b> 👇"
     )
 
 def build_profile_text(uid: int, u: dict) -> str:
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     bots_count = len(u.get("bots_created", []))
     daily_status = "✅ قابل دریافت" if cloud.can_claim_daily(uid) else "⏳ فردا"
-    
     return (
         f"👤 <b>پروفایل شما</b>\n\n"
-        f"📛 نام: <b>{full}</b>\n"
-        f"🆔 آیدی: <code>{uid}</code>\n\n"
+        f"📛 <b>نام:</b> {full}\n"
+        f"🆔 <b>آیدی:</b> <code>{uid}</code>\n\n"
         f"💰 <b>موجودی:</b> <code>{u.get('gramcoin_balance', 0)} GC</code>\n"
         f"📈 <b>کل درآمد:</b> <code>{u.get('total_earned_gc', 0)} GC</code>\n\n"
         f"🤖 <b>تعداد ربات‌ها:</b> {bots_count}/{MAX_FREE_BOTS}\n"
+        f"👥 <b>زیرمجموعه‌ها:</b> {sum(1 for x in cloud.get_all_users() if x.get('referred_by') == str(uid))}\n\n"
         f"🎁 <b>جایزه روزانه:</b> {daily_status}"
     )
 
@@ -1310,7 +1192,8 @@ def build_mybots_text(uid: int) -> tuple:
         text = (
             "🤖 <b>ربات‌های شما</b>\n\n"
             "هنوز رباتی نساخته‌اید.\n\n"
-            "💡 <b>اولین ربات شما ۳ روز آزمایشی رایگان دارد!</b>"
+            "💡 <b>اولین ربات شما ۳ روز آزمایشی رایگان دارد!</b>\n\n"
+            "👇 برای ساخت اولین ربات روی دکمه زیر بزنید:"
         )
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="menu:create_bot")],
@@ -1323,35 +1206,23 @@ def build_mybots_text(uid: int) -> tuple:
     for bot in bots:
         is_expired = cloud.check_subscription_expired(bot["bot_id"])
         is_trial = bot.get("is_trial", False)
-        
-        if is_expired:
-            status = "🔴 منقضی"
-        elif is_trial:
-            status = "🆓 آزمایشی"
-        elif bot.get("is_active"):
-            status = "🟢 فعال"
-        else:
-            status = "⏸️ غیرفعال"
-        
+        if is_expired: status = "🔴 منقضی"
+        elif is_trial: status = "🆓 آزمایشی"
+        elif bot.get("is_active"): status = "🟢 فعال"
+        else: status = "⏸️ غیرفعال"
         username = f"@{bot.get('bot_username')}" if bot.get("bot_username") else "—"
         enabled_plugins = len(bot.get("enabled_plugins", []))
-        
         expiry_str = "—"
         if bot.get("subscription_expiry"):
             try:
                 exp = datetime.fromisoformat(bot["subscription_expiry"])
-                if exp > now_ir():
-                    expiry_str = exp.strftime("%Y-%m-%d")
-                else:
-                    expiry_str = "منقضی"
+                expiry_str = exp.strftime("%Y-%m-%d") if exp > now_ir() else "منقضی"
             except: pass
-        
         text += (
             f"• <b>{bot['bot_id'][:8]}</b> | {username}\n"
             f"  {status} | 🧩 {enabled_plugins} پلاگین | 📅 {expiry_str}\n\n"
         )
         rows.append([InlineKeyboardButton(f"⚙️ مدیریت {bot['bot_id'][:8]}", callback_data=f"bot:manage:{bot['bot_id']}")])
-    
     if len(bots) < MAX_FREE_BOTS:
         rows.append([InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="menu:create_bot")])
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")])
@@ -1361,7 +1232,6 @@ def build_bot_detail_text(bot_id: str, bot_data: dict) -> str:
     username = f"@{bot_data.get('bot_username')}" if bot_data.get("bot_username") else "—"
     is_expired = cloud.check_subscription_expired(bot_id)
     is_trial = bot_data.get("is_trial", False)
-    
     if is_expired:
         sub_status = "🔴 <b>منقضی شده</b>\n⚠️ برای فعال‌سازی مجدد اشتراک بخرید."
     elif is_trial:
@@ -1383,19 +1253,16 @@ def build_bot_detail_text(bot_id: str, bot_data: dict) -> str:
         )
     else:
         sub_status = "⏸️ <b>غیرفعال</b>"
-    
     enabled = len(bot_data.get("enabled_plugins", []))
     purchased = len(bot_data.get("purchased_plugins", []))
     stats = bot_data.get("stats", {})
     users_count = len(bot_data.get("bot_users", []))
-    
     return (
         f"⚙️ <b>مدیریت ربات</b>\n\n"
         f"🆔 <b>ID:</b> <code>{bot_id}</code>\n"
         f"📛 <b>یوزرنیم:</b> {username}\n\n"
         f"💎 <b>وضعیت اشتراک:</b>\n{sub_status}\n\n"
-        f"🧩 <b>پلاگین‌های فعال:</b> {enabled}\n"
-        f"💰 <b>پلاگین‌های پرمیوم:</b> {purchased}\n\n"
+        f"🧩 <b>پلاگین‌ها:</b> {enabled} فعال | {purchased} پرمیوم\n\n"
         f"📊 <b>آمار:</b>\n"
         f"• کاربران: {users_count}\n"
         f"• پیام دریافتی: {stats.get('messages_received', 0)}\n"
@@ -1408,25 +1275,37 @@ def build_referral_text(uid: int, bot_username: str) -> str:
     referrals_count = sum(1 for x in cloud.get_all_users() if x.get("referred_by") == str(uid))
     return (
         "🎁 <b>دعوت دوستان و کسب GramCoin</b>\n\n"
-        f"🔗 <b>لینک شما:</b>\n<code>{link}</code>\n\n"
-        f"✅ به ازای هر دعوت: <b>{REFERRAL_BONUS_GC} GC</b>\n\n"
-        f"👥 دعوت‌های موفق: <b>{referrals_count}</b>"
+        f"🔗 <b>لینک اختصاصی شما:</b>\n<code>{link}</code>\n\n"
+        "<blockquote expandable>"
+        f"✅ به ازای هر دوستی که از طریق لینک شما وارد پلتفرم شود، "
+        f"<b>{REFERRAL_BONUS_GC} GC</b> به صورت آنی به حسابتان اضافه می‌شود!\n\n"
+        "💡 <b>نکات مهم:</b>\n"
+        "• فقط کاربرانی که واقعاً در پلتفرم فعالیت کنند پاداش می‌گیرید\n"
+        "• از لینک خود در شبکه‌های اجتماعی استفاده کنید\n"
+        "• با GramCoin می‌توانید اشتراک ربات‌ها را تمدید کنید\n"
+        "</blockquote>"
+        f"👥 <b>دعوت‌های موفق:</b> {referrals_count}\n"
+        f"💰 <b>کل درآمد از رفرال:</b> {referrals_count * REFERRAL_BONUS_GC} GC"
     )
 
 def build_help_text() -> str:
     return (
-        "📖 <b>راهنمای GramBotSaz</b>\n\n"
+        "📖 <b>راهنمای کامل GramBotSaz</b>\n\n"
         "<blockquote expandable>"
         "🤖 <b>مراحل ساخت ربات:</b>\n"
-        "۱. روی «ساخت ربات جدید» کلیک کنید\n"
-        "۲. توکن را از BotFather بگیرید\n"
-        "۳. توکن را وارد کنید\n"
+        "۱. روی دکمه «➕ ساخت ربات جدید» بزنید\n"
+        "۲. از @BotFather توکن بگیرید\n"
+        "۳. توکن را در ربات ارسال کنید\n"
         "۴. ربات شما ۳ روز آزمایشی رایگان دارد!\n"
-        "۵. از پلاگین‌های welcome و support استفاده کنید\n\n"
+        "۵. از بخش پلاگین‌ها، قابلیت‌ها را شخصی‌سازی کنید\n\n"
         "🆓 <b>دوره آزمایشی:</b>\n"
         f"• <b>{TRIAL_DAYS} روز</b> اشتراک رایگان\n"
-        f"• پلاگین‌های welcome و support به صورت رایگان\n"
-        f"• بعد از اتمام، اشتراک هفتگی یا ماهانه بخرید\n\n"
+        "• پلاگین‌های پایه (welcome, support, keyboard) فعال\n"
+        "• پس از اتمام، اشتراک هفتگی یا ماهانه بخرید\n\n"
+        "🎨 <b>پلاگین‌های رایگان:</b>\n"
+        "• 👋 <b>welcome:</b> پیام خوش‌آمد با عکس و دکمه\n"
+        "• 🎫 <b>support:</b> چت زنده با کاربران\n"
+        "• ⌨️ <b>keyboard:</b> کیبورد اختصاصی زیر صفحه\n\n"
         "💰 <b>GramCoin (GC):</b>\n"
         f"• هدیه ثبت‌نام: <b>{SIGNUP_BONUS_GC} GC</b>\n"
         f"• روزانه: <b>{DAILY_REWARD_GC} GC</b>\n"
@@ -1434,7 +1313,8 @@ def build_help_text() -> str:
         "💎 <b>اشتراک‌ها:</b>\n"
         f"• هفتگی: <b>{SUBSCRIPTION_WEEKLY_GC} GC</b>\n"
         f"• ماهانه: <b>{SUBSCRIPTION_MONTHLY_GC} GC</b>\n"
-        "</blockquote>"
+        "</blockquote>\n\n"
+        "❓ سوالی دارید؟ از طریق /support با ما در تماس باشید."
     )
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1455,7 +1335,6 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
     u, is_new = cloud.ensure_user(uid, username, full_name)
     
-    # 🎁 پاداش ثبت‌نام اولیه
     signup_bonus_given = False
     if is_new:
         if cloud.claim_signup_bonus(uid):
@@ -1483,10 +1362,9 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
         return
     
-    # پیام خوش‌آمد
     if signup_bonus_given:
         welcome_text = (
-            f"🎉 <b>خوش آمدید!</b>\n\n"
+            f"🎉 <b>به GramBotSaz خوش آمدید!</b>\n\n"
             f"🎁 شما <b>{SIGNUP_BONUS_GC} GC</b> به عنوان هدیه ثبت‌نام دریافت کردید!\n\n"
             f"💰 موجودی فعلی: <code>{cloud.get_user(uid).get('gramcoin_balance', 0)} GC</code>\n\n"
             + build_welcome_text(uid)
@@ -1494,8 +1372,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         welcome_text = build_welcome_text(uid)
     
+    # ✅ ارسال با ReplyKeyboard
     await update.effective_message.reply_text(
-        welcome_text, parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        welcome_text, parse_mode=ParseMode.HTML,
+        reply_markup=kb_main_reply(uid))
     cloud.save()
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1505,19 +1385,26 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ]
     for k in keys_to_remove: ctx.user_data.pop(k, None)
     for k in list(ctx.user_data.keys()):
-        if k.startswith("welcome_edit_") or k.startswith("support_settings_"):
+        if any(k.startswith(p) for p in ["welcome_", "support_", "keyboard_", "admin_reply_"]):
             ctx.user_data.pop(k, None)
-    await update.message.reply_text("❌ <b>عملیات لغو شد.</b>", parse_mode=ParseMode.HTML, reply_markup=kb_main(update.effective_user.id))
+    await update.message.reply_text(
+        "❌ <b>عملیات لغو شد.</b>\n\n💡 از دکمه‌های زیر صفحه برای ادامه استفاده کنید.",
+        parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(update.effective_user.id))
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await _require_membership(update, ctx.bot): return
-    await update.effective_message.reply_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+    await update.effective_message.reply_text(
+        build_help_text(), parse_mode=ParseMode.HTML,
+        reply_markup=kb_main_reply(update.effective_user.id))
 
 async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not await _require_membership(update, ctx.bot): return
     user = update.effective_user
-    u = cloud.ensure_user(user.id, user.username or "", f"{user.first_name or ''} {user.last_name or ''}".strip())[0]
-    await update.effective_message.reply_text(build_profile_text(user.id, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+    u = cloud.ensure_user(user.id, user.username or "",
+        f"{user.first_name or ''} {user.last_name or ''}".strip())[0]
+    await update.effective_message.reply_text(
+        build_profile_text(user.id, u), parse_mode=ParseMode.HTML,
+        reply_markup=kb_main_reply(user.id))
 
 # ══════════════════════════════════════════════════════════════════════
 # CALLBACK HANDLERS
@@ -1526,17 +1413,18 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     data = q.data or ""
     uid = q.from_user.id
-    cloud.ensure_user(uid, q.from_user.username or "", f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
+    cloud.ensure_user(uid, q.from_user.username or "",
+        f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
     
     if data == "noop":
-        await q.answer()
-        return
+        await q.answer(); return
     
     if data != "check_join":
         if not await check_membership(q.get_bot(), uid):
             await q.answer()
-            try:
-                await q.edit_message_text("⛔️ <b>ابتدا عضو کانال شو!</b>", parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
+            try: await q.edit_message_text(
+                "⛔️ <b>ابتدا عضو کانال شو!</b>",
+                parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
             except: pass
             return
     
@@ -1550,7 +1438,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     cloud.add_gramcoin(ref_uid, REFERRAL_BONUS_GC, "referral_bonus")
                 ctx.user_data.pop("pending_referral", None)
                 cloud.save(force=True)
-            await q.edit_message_text(build_welcome_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await q.edit_message_text(
+                build_welcome_text(uid), parse_mode=ParseMode.HTML,
+                reply_markup=kb_main_reply(uid))
         else:
             await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
@@ -1559,27 +1449,32 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("menu:"):
         await q.answer()
         u = cloud.ensure_user(uid)[0]
-        if data == "menu:home": await q.edit_message_text(build_welcome_text(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
-        elif data == "menu:profile": await q.edit_message_text(build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        if data == "menu:home":
+            await q.edit_message_text(
+                build_welcome_text(uid), parse_mode=ParseMode.HTML,
+                reply_markup=kb_main_reply(uid))
+        elif data == "menu:profile":
+            await q.edit_message_text(
+                build_profile_text(uid, u), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
         elif data == "menu:mybots":
             text, kb = build_mybots_text(uid)
             await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         elif data == "menu:create_bot":
-            # بررسی محدودیت تعداد ربات
             user_bots = cloud.get_user_bots(uid)
             if len(user_bots) >= MAX_FREE_BOTS:
                 await q.edit_message_text(
                     f"⚠️ <b>محدودیت ساخت ربات!</b>\n\n"
                     f"در پلن رایگان فقط <b>{MAX_FREE_BOTS} ربات</b> می‌توانید بسازید.\n\n"
                     f"برای ساخت ربات جدید، یکی از ربات‌های قبلی را حذف کنید.",
-                    parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:mybots")]]))
                 return
-            
             ctx.user_data["awaiting"] = "bot_token"
             await q.edit_message_text(
                 "🤖 <b>ساخت ربات جدید</b>\n\n"
                 f"🎁 <b>هدیه ویژه:</b> ربات شما <b>{TRIAL_DAYS} روز</b> اشتراک آزمایشی رایگان دارد!\n"
-                f"🧩 پلاگین‌های <b>welcome</b> و <b>support</b> به صورت رایگان فعال می‌شوند.\n\n"
+                f"🧩 پلاگین‌های <b>welcome</b>، <b>support</b> و <b>keyboard</b> به صورت رایگان فعال می‌شوند.\n\n"
                 "🔑 <b>لطفاً توکن ربات را از BotFather دریافت و ارسال کنید:</b>\n"
                 "(برای لغو /cancel)",
                 parse_mode=ParseMode.HTML)
@@ -1589,20 +1484,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 cloud.save(force=True)
                 new_balance = cloud.get_user(uid).get("gramcoin_balance", 0)
                 await q.edit_message_text(
-                    f"🎁 <b>جایزه روزانه!</b>\n\n"
-                    f"⭐️ <b>+{DAILY_REWARD_GC} GC</b> اضافه شد.\n"
-                    f"💰 موجودی: <code>{new_balance} GC</code>",
-                    parse_mode=ParseMode.HTML, reply_markup=kb_back())
+                    f"🎁 <b>جایزه روزانه دریافت شد!</b>\n\n"
+                    f"⭐️ <b>+{DAILY_REWARD_GC} GC</b> به موجودی شما اضافه شد.\n"
+                    f"💰 موجودی فعلی: <code>{new_balance} GC</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
             else:
-                await q.answer("⏳ فردا!", show_alert=True)
+                await q.answer("⏳ جایزه روزانه قبلاً دریافت شده. فردا!", show_alert=True)
         elif data == "menu:invite":
             bot_username = (await ctx.bot.get_me()).username
-            await q.edit_message_text(build_referral_text(uid, bot_username), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+            await q.edit_message_text(
+                build_referral_text(uid, bot_username), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
         elif data == "menu:transactions":
             transactions = [tx for tx in cloud._data.get("transactions", []) if tx.get("uid") == uid][-10:]
-            text = "📊 <b>تراکنش‌ها:</b>\n\n" + ("\n".join([f"• {tx['description']}\n  {tx['timestamp'][:16]}" for tx in reversed(transactions)]) if transactions else "هنوز تراکنشی ندارید.")
-            await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_back())
-        elif data == "menu:help": await q.edit_message_text(build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+            text = "📊 <b>تراکنش‌های اخیر شما:</b>\n\n"
+            if transactions:
+                for tx in reversed(transactions):
+                    text += f"• {tx['description']}\n  📅 {tx['timestamp'][:16]}\n\n"
+            else:
+                text += "هنوز تراکنشی ندارید."
+            await q.edit_message_text(
+                text, parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
+        elif data == "menu:help":
+            await q.edit_message_text(
+                build_help_text(), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
         return
     
     # ═══════ BOT MANAGEMENT ═══════
@@ -1612,7 +1520,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
-        await q.edit_message_text(build_bot_detail_text(bot_id, bot), parse_mode=ParseMode.HTML, reply_markup=kb_bot_management(bot_id, bot))
+        await q.edit_message_text(
+            build_bot_detail_text(bot_id, bot),
+            parse_mode=ParseMode.HTML, reply_markup=kb_bot_management(bot_id, bot))
         return
     
     if data.startswith("bot:subscribe:"):
@@ -1628,7 +1538,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(f"🥈 ماهانه — {SUBSCRIPTION_MONTHLY_GC} GC", callback_data=f"sub:buy:{bot_id}:monthly")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")],
         ])
-        await q.edit_message_text(f"<b>{title}</b>", parse_mode=ParseMode.HTML, reply_markup=kb)
+        await q.edit_message_text(
+            f"<b>{title}</b>\n\n🤖 ربات: <code>{bot_id[:8]}</code>",
+            parse_mode=ParseMode.HTML, reply_markup=kb)
         return
     
     if data.startswith("sub:buy:"):
@@ -1648,8 +1560,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await bot_factory.restart_bot(bot_id)
             plan_name = "هفتگی" if plan == "weekly" else "ماهانه"
             await q.edit_message_text(
-                f"✅ <b>اشتراک {plan_name} فعال شد!</b>\n\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n💰 {cost} GC کسر شد.",
-                parse_mode=ParseMode.HTML, reply_markup=kb_back("mybots"))
+                f"✅ <b>اشتراک {plan_name} فعال شد!</b>\n\n"
+                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n"
+                f"💰 {cost} GC کسر شد.\n\n"
+                f"🎉 ربات شما اکنون فعال است!",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:mybots")]]))
         return
     
     if data.startswith("bot:plugins:"):
@@ -1661,7 +1577,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⚠️ اشتراک منقضی!", show_alert=True); return
         await q.answer()
         await q.edit_message_text(
-            "🧩 <b>مدیریت پلاگین‌ها</b>\n\n💡 دکمه ⚙️ برای شخصی‌سازی هر پلاگین.",
+            "🧩 <b>مدیریت پلاگین‌ها</b>\n\n"
+            "💡 دکمه ⚙️ برای شخصی‌سازی هر پلاگین.\n"
+            "🔘 دکمه سمت چپ برای فعال/غیرفعال کردن.",
             parse_mode=ParseMode.HTML, reply_markup=kb_plugins(bot_id))
         return
     
@@ -1710,7 +1628,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await bot_factory.restart_bot(bot_id)
             try:
                 await q.edit_message_text(
-                    f"✅ <b>پلاگین خریداری شد!</b>\n💰 {cost} GC کسر شد",
+                    f"✅ <b>پلاگین {plugin_info['name']} خریداری شد!</b>\n\n"
+                    f"💰 {cost} GC کسر شد.\n"
+                    f"🎉 پلاگین به صورت خودکار فعال شد.",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
             except: pass
@@ -1722,28 +1642,25 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
         await q.answer()
         
         if plugin_id == "welcome":
             settings = cloud.get_plugin_settings(bot_id, "welcome")
             msg_preview = settings.get("message", "")[:200]
-            photo_url = settings.get("photo_url")
+            photo_file_id = settings.get("photo_file_id")
             buttons = settings.get("buttons", [])
-            
-            photo_status = "✅ دارد" if photo_url else "❌ ندارد"
+            photo_status = "✅ دارد" if photo_file_id else "❌ ندارد"
             btn_count = sum(len(row) for row in buttons)
-            
             await q.edit_message_text(
                 f"⚙️ <b>تنظیمات پیام خوش‌آمدگویی</b>\n\n"
                 f"📝 <b>پیام:</b>\n<blockquote expandable>{msg_preview}...</blockquote>\n\n"
                 f"🖼 <b>عکس:</b> {photo_status}\n"
-                f"🔘 <b>تعداد دکمه‌ها:</b> {btn_count}\n\n"
+                f"🔘 <b>تعداد دکمه‌ها:</b> {btn_count} (چندتایی در هر ردیف)\n\n"
                 f"💡 با دکمه‌های زیر هر بخش را شخصی‌سازی کنید.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✏️ ویرایش متن پیام", callback_data=f"welcome:edit_text:{bot_id}")],
-                    [InlineKeyboardButton("🖼 تنظیم عکس", callback_data=f"welcome:edit_photo:{bot_id}")],
+                    [InlineKeyboardButton("🖼 تنظیم/حذف عکس", callback_data=f"welcome:edit_photo:{bot_id}")],
                     [InlineKeyboardButton("🔘 مدیریت دکمه‌ها", callback_data=f"welcome:edit_buttons:{bot_id}")],
                     [InlineKeyboardButton("♻️ بازنشانی پیش‌فرض", callback_data=f"welcome:reset:{bot_id}")],
                     [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
@@ -1755,18 +1672,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             bot_tickets = cloud.get_bot_tickets(bot_id)
             open_count = sum(1 for t in bot_tickets if t["status"] == "open")
             closed_count = sum(1 for t in bot_tickets if t["status"] == "closed")
-            
             await q.edit_message_text(
                 f"⚙️ <b>تنظیمات سیستم پشتیبانی چت زنده</b>\n\n"
                 f"📊 <b>آمار تیکت‌ها:</b>\n"
-                f"• باز: <b>{open_count}</b>\n"
-                f"• بسته: <b>{closed_count}</b>\n\n"
+                f"• باز: <b>{open_count}</b> | بسته: <b>{closed_count}</b>\n\n"
                 f"💡 <b>نحوه کار:</b>\n"
                 f"• کاربران با /support چت را شروع می‌کنند\n"
-                f"• یا با دکمه شیشه‌ای که در welcome ساخته‌اید\n"
+                f"• یا با دکمه شیشه‌ای در welcome\n"
                 f"• هر پیام مستقیماً به شما ارسال می‌شود\n"
-                f"• شما با دکمه «💬 پاسخ» جواب می‌دهید\n"
-                f"• کاربر با دکمه «🔚 پایان چت» چت را می‌بندد\n\n"
+                f"• شما با دکمه «💬 پاسخ» جواب می‌دهید\n\n"
                 f"📱 <b>دستورات سازنده:</b>\n"
                 f"<code>/tickets</code> — لیست تیکت‌های باز",
                 parse_mode=ParseMode.HTML,
@@ -1780,6 +1694,40 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 ]))
             return
         
+        elif plugin_id == "keyboard":
+            settings = cloud.get_plugin_settings(bot_id, "keyboard")
+            buttons = settings.get("buttons", [])
+            resize = settings.get("resize_keyboard", True)
+            one_time = settings.get("one_time_keyboard", False)
+            persistent = settings.get("persistent", True)
+            
+            btn_count = sum(len(row) for row in buttons)
+            buttons_text = ""
+            for i, row in enumerate(buttons, 1):
+                btns = ", ".join([f"[{b.get('text', '')}]" for b in row])
+                buttons_text += f"ردیف {i}: {btns}\n"
+            if not buttons_text: buttons_text = "هیچ دکمه‌ای تعریف نشده"
+            
+            await q.edit_message_text(
+                f"⌨️ <b>تنظیمات کیبورد اختصاصی ربات</b>\n\n"
+                f"🔘 <b>تعداد دکمه‌ها:</b> {btn_count}\n\n"
+                f"📋 <b>دکمه‌های فعلی:</b>\n{buttons_text}\n"
+                f"🎛 <b>تنظیمات:</b>\n"
+                f"• تغییر اندازه: {'✅' if resize else '❌'}\n"
+                f"• کیبورد یکبار مصرف: {'✅' if one_time else '❌'}\n"
+                f"• کیبورد دائمی: {'✅' if persistent else '❌'}\n\n"
+                f"💡 <b>نحوه کار:</b>\n"
+                f"این دکمه‌ها <b>زیر صفحه چت</b> ربات شما نمایش داده می‌شوند.\n"
+                f"کاربران با کلیک روی هر دکمه، عملیات مربوطه را انجام می‌دهند.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔘 مدیریت دکمه‌ها", callback_data=f"keyboard:edit_buttons:{bot_id}")],
+                    [InlineKeyboardButton("⚙️ تنظیمات کیبورد", callback_data=f"keyboard:edit_settings:{bot_id}")],
+                    [InlineKeyboardButton("♻️ بازنشانی پیش‌فرض", callback_data=f"keyboard:reset:{bot_id}")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")],
+                ]))
+            return
+        
         else:
             await q.edit_message_text(
                 f"⚙️ <b>تنظیمات {AVAILABLE_PLUGINS.get(plugin_id, {}).get('name', '')}</b>\n\n"
@@ -1788,7 +1736,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:plugins:{bot_id}")]]))
         return
     
-    # ═══════ WELCOME SETTINGS ACTIONS ═══════
+    # ═══════ WELCOME SETTINGS ═══════
     if data.startswith("welcome:edit_text:"):
         bot_id = data.split(":")[2]
         bot = cloud.get_bot(bot_id)
@@ -1796,19 +1744,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
         ctx.user_data["awaiting"] = f"welcome_text_{bot_id}"
-        
         settings = cloud.get_plugin_settings(bot_id, "welcome")
         current = settings.get("message", "")
-        
         await q.edit_message_text(
             f"✏️ <b>ویرایش متن پیام خوش‌آمدگویی</b>\n\n"
             f"📝 <b>متن فعلی:</b>\n<blockquote expandable>{current}</blockquote>\n\n"
-            f"💡 <b>مثال:</b>\n"
-            f"<blockquote>"
-            f"👋 &lt;b&gt;سلام! خوش آمدید!&lt;/b&gt;\n\n"
-            f"🤖 این ربات من است.\n\n"
-            f"💬 برای پشتیبانی روی دکمه زیر بزنید."
-            f"</blockquote>\n\n"
+            f"💡 <b>نکات:</b>\n"
+            f"• HTML پشتیبانی می‌شود (<code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>)\n"
+            f"• حداکثر ۱۰۲۴ کاراکتر (با عکس) یا ۴۰۹۶ (بدون عکس)\n"
+            f"• ایموجی‌ها پشتیبانی می‌شوند\n\n"
             f"📤 متن جدید را ارسال کنید:\n(/cancel برای لغو)",
             parse_mode=ParseMode.HTML)
         return
@@ -1820,19 +1764,18 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
         ctx.user_data["awaiting"] = f"welcome_photo_{bot_id}"
-        
         settings = cloud.get_plugin_settings(bot_id, "welcome")
-        current = settings.get("photo_url")
-        
-        current_text = f"🖼 <b>عکس فعلی:</b> <code>{current}</code>" if current else "🖼 <b>عکس فعلی:</b> ندارد"
-        
+        current = settings.get("photo_file_id")
+        current_text = "✅ عکس تنظیم شده است" if current else "❌ عکسی تنظیم نشده"
         await q.edit_message_text(
             f"🖼 <b>تنظیم عکس پیام خوش‌آمدگویی</b>\n\n"
-            f"{current_text}\n\n"
-            f"💡 <b>یکی از موارد زیر را ارسال کنید:</b>\n"
-            f"• <b>لینک عکس</b> (https://...)\n"
-            f"• یا تایپ کنید: <code>none</code> برای حذف عکس\n\n"
-            f"📤 حالا لینک عکس را ارسال کنید:\n(/cancel برای لغو)",
+            f"📊 <b>وضعیت فعلی:</b> {current_text}\n\n"
+            f"💡 <b>یکی از موارد زیر را انجام دهید:</b>\n\n"
+            f"📸 <b>برای تنظیم عکس جدید:</b>\n"
+            f"  یک عکس را <b>مستقیماً در چت</b> ارسال کنید (آپلود کنید)\n\n"
+            f"🗑 <b>برای حذف عکس:</b>\n"
+            f"  عبارت <code>none</code> را به صورت متنی ارسال کنید\n\n"
+            f"❌ برای لغو /cancel بزنید.",
             parse_mode=ParseMode.HTML)
         return
     
@@ -1843,31 +1786,28 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
         await q.answer()
         ctx.user_data["awaiting"] = f"welcome_buttons_{bot_id}"
-        
         settings = cloud.get_plugin_settings(bot_id, "welcome")
         buttons = settings.get("buttons", [])
-        
         buttons_text = ""
         for i, row in enumerate(buttons, 1):
             btns = ", ".join([f"[{b.get('text', '')}]" for b in row])
             buttons_text += f"ردیف {i}: {btns}\n"
-        
         if not buttons_text: buttons_text = "هیچ دکمه‌ای تعریف نشده"
-        
         await q.edit_message_text(
             f"🔘 <b>مدیریت دکمه‌های شیشه‌ای</b>\n\n"
             f"📋 <b>دکمه‌های فعلی:</b>\n{buttons_text}\n\n"
-            f"💡 <b>فرمت ارسال دکمه‌ها:</b>\n"
-            f"هر خط = یک ردیف دکمه\n"
-            f"فرمت هر دکمه: <code>متن|نوع|مقدار</code>\n\n"
+            f"💡 <b>فرمت ارسال دکمه‌ها:</b>\n\n"
+            f"• هر خط = یک <b>ردیف</b> از دکمه‌ها\n"
+            f"• برای <b>چند دکمه در یک ردیف</b>، با کاما <code>,</code> جدا کنید\n"
+            f"• فرمت هر دکمه: <code>متن|نوع|مقدار</code>\n\n"
             f"<b>انواع دکمه:</b>\n"
-            f"• <code>url</code> — دکمه لینک‌دار\n"
-            f"• <code>support</code> — اتصال به پشتیبانی\n"
-            f"• <code>callback</code> — دکمه شیشه‌ای (برای توسعه‌های آینده)\n\n"
-            f"<b>مثال:</b>\n"
-            f"<code>🌐 وبسایت|url|https://example.com</code>\n"
-            f"<code>🎫 پشتیبانی|support</code>\n\n"
-            f"📝 <b>برای حذف همه دکمه‌ها، <code>none</code> را ارسال کنید.</b>\n"
+            f"• <code>url</code> — لینک خارجی\n"
+            f"• <code>support</code> — اتصال به پشتیبانی (بدون مقدار)\n"
+            f"• <code>text</code> — نمایش متن با کلیک\n\n"
+            f"<b>مثال‌ها:</b>\n"
+            f"<code>🌐 وبسایت|url|https://example.com, 📱 تماس|url|https://t.me/username</code>\n"
+            f"<code>🎫 پشتیبانی|support, ℹ️ درباره ما|text|ما یک تیم حرفه‌ای هستیم</code>\n\n"
+            f"📝 <b>برای حذف همه دکمه‌ها:</b> <code>none</code> ارسال کنید.\n"
             f"(/cancel برای لغو)",
             parse_mode=ParseMode.HTML)
         return
@@ -1877,34 +1817,34 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
         await q.answer("در حال بازنشانی...")
-        
         default_settings = {
             "message": (
                 "👋 <b>سلام! به ربات ما خوش آمدید!</b>\n\n"
                 "🤖 از اینکه ما را انتخاب کردید سپاسگزاریم.\n\n"
                 "💡 <b>چگونه با ما ارتباط بگیرید:</b>\n"
-                "• پیام خود را همین‌جا بنویسید\n"
-                "• از دکمه زیر برای پشتیبانی استفاده کنید\n\n"
+                "• از دکمه‌های زیر صفحه استفاده کنید\n"
+                "• برای پشتیبانی /support را بزنید\n\n"
                 "✨ امیدواریم تجربه خوبی داشته باشید!"
             ),
-            "photo_url": None,
+            "photo_file_id": None,
             "buttons": [
-                [{"text": "🎫 پشتیبانی", "type": "support"}]
+                [
+                    {"text": "🎫 پشتیبانی", "type": "support"},
+                    {"text": "ℹ️ درباره ما", "type": "text", "value": "ما یک تیم حرفه‌ای هستیم!"},
+                ]
             ],
         }
         cloud.update_plugin_settings(bot_id, "welcome", default_settings)
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
-        
         await q.edit_message_text(
-            f"✅ <b>تنظیمات بازنشانی شد!</b>\n\n🔄 ربات ری‌استارت شد.",
+            f"✅ <b>تنظیمات بازنشانی شد!</b>\n🔄 ربات ری‌استارت شد.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:welcome")]]))
         return
     
-    # ═══════ SUPPORT SETTINGS ACTIONS ═══════
+    # ═══════ SUPPORT SETTINGS ═══════
     if data.startswith("support:edit_"):
         parts = data.split(":")
         action = parts[1]
@@ -1912,12 +1852,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
         await q.answer()
         ctx.user_data["awaiting"] = f"support_{action}_{bot_id}"
-        
         settings = cloud.get_plugin_settings(bot_id, "support")
-        
         if action == "edit_admin":
             current = settings.get("admin_message", "")
             field_name = "پیام خوش‌آمد چت"
@@ -1930,9 +1867,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             current = settings.get("end_chat_message", "")
             field_name = "پیام پایان چت"
             example = "🔚 چت پایان یافت. برای شروع مجدد /support را بزنید."
-        else:
-            return
-        
+        else: return
         await q.edit_message_text(
             f"✏️ <b>ویرایش {field_name}</b>\n\n"
             f"📝 <b>مقدار فعلی:</b>\n<blockquote>{current}</blockquote>\n\n"
@@ -1946,18 +1881,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
         await q.answer()
         tickets = cloud.get_bot_tickets(bot_id)
         open_tickets = [t for t in tickets if t["status"] == "open"]
-        
         if not open_tickets:
             await q.edit_message_text(
                 "📭 <b>تیکت بازی وجود ندارد.</b>",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:support")]]))
             return
-        
         text = f"📋 <b>تیکت‌های باز ({len(open_tickets)}):</b>\n\n"
         rows = []
         for t in open_tickets[-20:]:
@@ -1967,7 +1899,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 callback_data=f"admin_reply_direct_{t['ticket_id']}"
             )])
         rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:support")])
-        
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
         return
     
@@ -1976,19 +1907,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ticket = cloud.get_ticket(ticket_id)
         if not ticket:
             await q.answer("❌ تیکت یافت نشد", show_alert=True); return
-        
         bot = cloud.get_bot(ticket["bot_id"])
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
-        # ذخیره state پاسخ
+        # ✅ FIX: state را ذخیره می‌کنیم
         ctx.user_data[f"admin_reply_{ticket['bot_id']}"] = {
-            "active": True,
-            "ticket_id": ticket_id,
-            "user_id": ticket["user_id"],
+            "active": True, "ticket_id": ticket_id, "user_id": ticket["user_id"],
         }
         ctx.user_data["awaiting"] = f"admin_reply_{ticket['bot_id']}"
-        
         await q.answer()
         await q.edit_message_text(
             f"💬 <b>در حال پاسخ به تیکت {ticket_id}</b>\n\n"
@@ -2002,21 +1928,146 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
             await q.answer("❌ دسترسی ندارید", show_alert=True); return
-        
         await q.answer("در حال بازنشانی...")
         default_settings = {
-            "admin_message": "📩 پیام خود را برای تیم پشتیبانی ارسال کنید. در سریع‌ترین زمان پاسخ می‌دهیم.",
-            "confirm_message": "✅ پیام شما ارسال شد. تیم پشتیبانی به زودی پاسخ می‌دهد.",
-            "end_chat_message": "🔚 چت با پشتیبانی پایان یافت. برای شروع مجدد /support را بزنید.",
+            "admin_message": "📩 <b>به پشتیبانی خوش آمدید!</b>\n\nپیام خود را برای تیم پشتیبانی ارسال کنید. در سریع‌ترین زمان ممکن پاسخ می‌دهیم.",
+            "confirm_message": "✅ <b>پیام شما با موفقیت ارسال شد!</b>\n\nتیم پشتیبانی در اسرع وقت پاسخ خواهد داد.",
+            "end_chat_message": "🔚 <b>چت با پشتیبانی پایان یافت.</b>\n\nبرای شروع مجدد، /support را بزنید.",
         }
         cloud.update_plugin_settings(bot_id, "support", default_settings)
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
-        
         await q.edit_message_text(
             f"✅ <b>تنظیمات بازنشانی شد!</b>\n🔄 ربات ری‌استارت شد.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:support")]]))
+        return
+    
+    # ═══════ KEYBOARD PLUGIN SETTINGS ═══════
+    if data.startswith("keyboard:edit_buttons:"):
+        bot_id = data.split(":")[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer()
+        ctx.user_data["awaiting"] = f"keyboard_buttons_{bot_id}"
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        buttons = settings.get("buttons", [])
+        buttons_text = ""
+        for i, row in enumerate(buttons, 1):
+            btns = ", ".join([f"[{b.get('text', '')}]" for b in row])
+            buttons_text += f"ردیف {i}: {btns}\n"
+        if not buttons_text: buttons_text = "هیچ دکمه‌ای تعریف نشده"
+        await q.edit_message_text(
+            f"⌨️ <b>مدیریت دکمه‌های کیبورد</b>\n\n"
+            f"📋 <b>دکمه‌های فعلی:</b>\n{buttons_text}\n\n"
+            f"💡 <b>فرمت ارسال دکمه‌ها:</b>\n\n"
+            f"• هر خط = یک <b>ردیف</b> از دکمه‌ها\n"
+            f"• برای <b>چند دکمه در یک ردیف</b>، با کاما <code>,</code> جدا کنید\n"
+            f"• فرمت هر دکمه: <code>متن|عملکرد|مقدار</code>\n\n"
+            f"<b>انواع عملکرد:</b>\n"
+            f"• <code>text</code> — نمایش متن با کلیک\n"
+            f"• <code>command</code> — اجرای دستور (مثل /support)\n"
+            f"• <code>url</code> — باز کردن لینک\n\n"
+            f"<b>مثال‌ها:</b>\n"
+            f"<code>🎫 پشتیبانی|command|/support, ℹ️ درباره ما|text|ما یک تیم حرفه‌ای هستیم</code>\n"
+            f"<code>🛒 فروشگاه|command|/shop, 📞 تماس|url|https://t.me/username</code>\n\n"
+            f"📝 <b>برای حذف همه دکمه‌ها:</b> <code>none</code>\n"
+            f"(/cancel برای لغو)",
+            parse_mode=ParseMode.HTML)
+        return
+    
+    if data.startswith("keyboard:edit_settings:"):
+        bot_id = data.split(":")[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer()
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        resize = settings.get("resize_keyboard", True)
+        one_time = settings.get("one_time_keyboard", False)
+        persistent = settings.get("persistent", True)
+        await q.edit_message_text(
+            f"⚙️ <b>تنظیمات کیبورد</b>\n\n"
+            f"روی هر گزینه کلیک کنید تا تغییر کند:\n\n"
+            f"• <b>تغییر اندازه:</b> کیبورد به اندازه متن دکمه‌ها کوچک می‌شود\n"
+            f"• <b>یکبار مصرف:</b> پس از کلیک، کیبورد مخفی می‌شود\n"
+            f"• <b>دائمی:</b> کیبورد همیشه نمایش داده می‌شود",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    f"تغییر اندازه: {'✅ فعال' if resize else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_resize:{bot_id}")],
+                [InlineKeyboardButton(
+                    f"یکبار مصرف: {'✅ فعال' if one_time else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_onetime:{bot_id}")],
+                [InlineKeyboardButton(
+                    f"دائمی: {'✅ فعال' if persistent else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_persistent:{bot_id}")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:keyboard")],
+            ]))
+        return
+    
+    if data.startswith("keyboard:toggle_"):
+        parts = data.split(":")
+        action = parts[1]
+        bot_id = parts[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        if action == "toggle_resize":
+            settings["resize_keyboard"] = not settings.get("resize_keyboard", True)
+        elif action == "toggle_onetime":
+            settings["one_time_keyboard"] = not settings.get("one_time_keyboard", False)
+        elif action == "toggle_persistent":
+            settings["persistent"] = not settings.get("persistent", True)
+        cloud.update_plugin_settings(bot_id, "keyboard", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await q.answer("✅ تنظیمات ذخیره شد")
+        # نمایش مجدد صفحه
+        resize = settings.get("resize_keyboard", True)
+        one_time = settings.get("one_time_keyboard", False)
+        persistent = settings.get("persistent", True)
+        try:
+            await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    f"تغییر اندازه: {'✅ فعال' if resize else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_resize:{bot_id}")],
+                [InlineKeyboardButton(
+                    f"یکبار مصرف: {'✅ فعال' if one_time else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_onetime:{bot_id}")],
+                [InlineKeyboardButton(
+                    f"دائمی: {'✅ فعال' if persistent else '❌ غیرفعال'}",
+                    callback_data=f"keyboard:toggle_persistent:{bot_id}")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:keyboard")],
+            ]))
+        except: pass
+        return
+    
+    if data.startswith("keyboard:reset:"):
+        bot_id = data.split(":")[2]
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await q.answer("❌ دسترسی ندارید", show_alert=True); return
+        await q.answer("در حال بازنشانی...")
+        default_settings = {
+            "buttons": [
+                [{"text": "🎫 پشتیبانی", "action": "command", "value": "/support"}],
+                [{"text": "ℹ️ درباره ما", "action": "text", "value": "ما یک تیم حرفه‌ای هستیم!"}],
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": False,
+            "persistent": True,
+        }
+        cloud.update_plugin_settings(bot_id, "keyboard", default_settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await q.edit_message_text(
+            f"✅ <b>تنظیمات بازنشانی شد!</b>\n🔄 ربات ری‌استارت شد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"plugin:settings:{bot_id}:keyboard")]]))
         return
     
     if data.startswith("bot:stats:"):
@@ -2032,7 +2083,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"👥 کاربران: {users_count}\n"
             f"📨 پیام دریافتی: {stats.get('messages_received', 0)}\n"
             f"📤 پیام ارسالی: {stats.get('messages_sent', 0)}",
-            parse_mode=ParseMode.HTML, reply_markup=kb_back(f"bot:manage:{bot_id}"))
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
         return
     
     if data.startswith("bot:delete:"):
@@ -2050,8 +2102,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ═══════ ADMIN ═══════
     if not is_admin(uid):
-        await q.answer("⛔️ دسترسی ندارید.", show_alert=True)
-        return
+        await q.answer("⛔️ دسترسی ندارید.", show_alert=True); return
     
     if data.startswith("admin:panel:"):
         await q.answer()
@@ -2141,65 +2192,203 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_cancel(update, ctx)
         return
     
-    # دریافت توکن ربات جدید
+    # ═══════ HANDLER پیام‌های ReplyKeyboard ═══════
+    if text_in in REPLY_BUTTONS and not awaiting:
+        action = REPLY_BUTTONS[text_in]
+        # شبیه‌سازی callback
+        if action == "menu:profile":
+            u = cloud.ensure_user(uid)[0]
+            await update.message.reply_text(
+                build_profile_text(uid, u), parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")]]))
+            return
+        elif action == "menu:mybots":
+            text, kb = build_mybots_text(uid)
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        elif action == "menu:create_bot":
+            user_bots = cloud.get_user_bots(uid)
+            if len(user_bots) >= MAX_FREE_BOTS:
+                await update.message.reply_text(
+                    f"⚠️ <b>محدودیت ساخت ربات!</b>\n\n"
+                    f"در پلن رایگان فقط <b>{MAX_FREE_BOTS} ربات</b> می‌توانید بسازید.",
+                    parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+                return
+            ctx.user_data["awaiting"] = "bot_token"
+            await update.message.reply_text(
+                "🤖 <b>ساخت ربات جدید</b>\n\n"
+                f"🎁 <b>هدیه ویژه:</b> ربات شما <b>{TRIAL_DAYS} روز</b> اشتراک آزمایشی رایگان دارد!\n\n"
+                "🔑 <b>لطفاً توکن ربات را از BotFather دریافت و ارسال کنید:</b>\n"
+                "(/cancel برای لغو)",
+                parse_mode=ParseMode.HTML)
+            return
+        elif action == "menu:daily":
+            if cloud.can_claim_daily(uid):
+                cloud.claim_daily_reward(uid, DAILY_REWARD_GC)
+                cloud.save(force=True)
+                new_balance = cloud.get_user(uid).get("gramcoin_balance", 0)
+                await update.message.reply_text(
+                    f"🎁 <b>جایزه روزانه دریافت شد!</b>\n\n"
+                    f"⭐️ <b>+{DAILY_REWARD_GC} GC</b> اضافه شد.\n"
+                    f"💰 موجودی: <code>{new_balance} GC</code>",
+                    parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            else:
+                await update.message.reply_text(
+                    "⏳ جایزه روزانه قبلاً دریافت شده. فردا!",
+                    parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:invite":
+            bot_username = (await ctx.bot.get_me()).username
+            await update.message.reply_text(
+                build_referral_text(uid, bot_username),
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:transactions":
+            transactions = [tx for tx in cloud._data.get("transactions", []) if tx.get("uid") == uid][-10:]
+            text = "📊 <b>تراکنش‌های اخیر شما:</b>\n\n"
+            if transactions:
+                for tx in reversed(transactions):
+                    text += f"• {tx['description']}\n  📅 {tx['timestamp'][:16]}\n\n"
+            else:
+                text += "هنوز تراکنشی ندارید."
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "menu:help":
+            await update.message.reply_text(
+                build_help_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        elif action == "admin:panel:0" and is_admin(uid):
+            stats = cloud.get_stats()
+            await update.message.reply_text(
+                f"👑 <b>پنل ادمین</b>\n\n"
+                f"👥 کاربران: {stats['total_users']}\n"
+                f"🤖 ربات‌ها: {stats['total_bots']}\n"
+                f"🟢 فعال: {stats['active_bots']}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
+                    [InlineKeyboardButton("🤖 لیست ربات‌ها", callback_data="admin:bots:0")],
+                    [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin:broadcast:prompt")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
+                ]))
+            return
+    
+    # ═══════ HANDLER توکن ربات جدید ═══════
     if awaiting == "bot_token":
         ctx.user_data.pop("awaiting", None)
         bot_token = text_in.strip()
         if not bot_token or ":" not in bot_token or len(bot_token) < 40:
-            await update.message.reply_text("❌ توکن نامعتبر!", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await update.message.reply_text(
+                "❌ <b>توکن نامعتبر است!</b>\n\n"
+                "توکن باید شبیه این باشد:\n<code>1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ</code>",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
             return
         try:
             temp_bot = Bot(token=bot_token)
             me = await temp_bot.get_me()
         except InvalidToken:
-            await update.message.reply_text("❌ توکن نامعتبر!", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await update.message.reply_text("❌ توکن نامعتبر!", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
             return
-        
         user_bots = cloud.get_user_bots(uid)
         if len(user_bots) >= MAX_FREE_BOTS:
-            await update.message.reply_text(f"⚠️ حداکثر {MAX_FREE_BOTS} ربات!", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            await update.message.reply_text(f"⚠️ حداکثر {MAX_FREE_BOTS} ربات!", parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
             return
-        
         bot_data = cloud.create_bot(uid, bot_token)
         cloud.save(force=True)
-        
-        # شروع ربات
         await bot_factory.start_bot(bot_data["bot_id"], bot_token)
-        
         await update.message.reply_text(
             f"✅ <b>ربات با موفقیت ساخته شد!</b>\n\n"
             f"🤖 <b>یوزرنیم:</b> @{me.username}\n"
             f"🆔 <b>ID:</b> <code>{bot_data['bot_id']}</code>\n\n"
             f"🆓 <b>دوره آزمایشی {TRIAL_DAYS} روزه فعال شد!</b>\n"
-            f"🧩 پلاگین‌های welcome و support فعال شدند.\n"
+            f"🧩 پلاگین‌های welcome، support و keyboard فعال شدند.\n"
             f"📅 انقضا: {datetime.fromisoformat(bot_data['subscription_expiry']).strftime('%Y-%m-%d')}\n\n"
-            f"💡 از منوی «ربات‌های من» می‌توانید:\n"
+            f"💡 از بخش «🤖 ربات‌های من» می‌توانید:\n"
             f"• پیام خوش‌آمدگویی را شخصی‌سازی کنید\n"
-            f"• دکمه پشتیبانی شیشه‌ای بسازید\n"
-            f"• چت زنده با کاربران داشته باشید",
-            parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+            f"• عکس خوش‌آمد را آپلود کنید\n"
+            f"• دکمه‌های شیشه‌ای چندتایی بسازید\n"
+            f"• کیبورد زیر صفحه ربات را تنظیم کنید\n"
+            f"• سیستم چت زنده را پیکربندی کنید",
+            parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
         return
     
-    # ═══════ WELCOME TEXT EDIT ═══════
+    # ═══════ HANDLER آپلود عکس برای welcome ═══════
+    if awaiting and awaiting.startswith("welcome_photo_") and update.message.photo:
+        bot_id = awaiting.replace("welcome_photo_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        # گرفتن بزرگترین سایز عکس
+        photo = update.message.photo[-1]
+        file_id = photo.file_id
+        settings = cloud.get_plugin_settings(bot_id, "welcome")
+        settings["photo_file_id"] = file_id
+        cloud.update_plugin_settings(bot_id, "welcome", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await update.message.reply_text(
+            f"✅ <b>عکس با موفقیت تنظیم شد!</b>\n\n"
+            f"🖼 <b>File ID:</b> <code>{file_id[:20]}...</code>\n"
+            f"🔄 ربات ری‌استارت شد.\n\n"
+            f"💡 حالا وقتی کاربران /start بزنند، این عکس نمایش داده می‌شود.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
+            ]))
+        return
+    
+    # ═══════ HANDLER متن برای حذف عکس welcome ═══════
+    if awaiting and awaiting.startswith("welcome_photo_"):
+        bot_id = awaiting.replace("welcome_photo_", "")
+        ctx.user_data.pop("awaiting", None)
+        bot = cloud.get_bot(bot_id)
+        if not bot or bot.get("owner_uid") != uid:
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
+            return
+        settings = cloud.get_plugin_settings(bot_id, "welcome")
+        if text_in.lower() == "none":
+            settings["photo_file_id"] = None
+            msg = "🖼 <b>عکس حذف شد!</b>"
+        else:
+            await update.message.reply_text(
+                "❌ <b>فرمت نادرست!</b>\n\n"
+                "📸 برای تنظیم عکس، یک عکس آپلود کنید.\n"
+                "🗑 برای حذف عکس، <code>none</code> ارسال کنید.",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
+        cloud.update_plugin_settings(bot_id, "welcome", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        await update.message.reply_text(
+            f"{msg}\n🔄 ربات ری‌استارت شد.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
+            ]))
+        return
+    
+    # ═══════ HANDLER ویرایش متن welcome ═══════
     if awaiting and awaiting.startswith("welcome_text_"):
         bot_id = awaiting.replace("welcome_text_", "")
         ctx.user_data.pop("awaiting", None)
-        
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await update.message.reply_text("❌ دسترسی ندارید.")
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
             return
-        
-        if len(text_in) > 4096:
-            await update.message.reply_text(f"❌ حداکثر ۴۰۹۶ کاراکتر!", parse_mode=ParseMode.HTML)
-            return
-        
         settings = cloud.get_plugin_settings(bot_id, "welcome")
+        has_photo = settings.get("photo_file_id")
+        max_len = 1024 if has_photo else 4096
+        if len(text_in) > max_len:
+            await update.message.reply_text(
+                f"❌ حداکثر {max_len} کاراکتر مجاز است (با عکس: ۱۰۲۴ / بدون عکس: ۴۰۹۶).",
+                parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
+            return
         settings["message"] = text_in
         cloud.update_plugin_settings(bot_id, "welcome", settings)
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
-        
         await update.message.reply_text(
             f"✅ <b>متن پیام ذخیره شد!</b>\n\n"
             f"🔄 ربات ری‌استارت شد.",
@@ -2210,52 +2399,15 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ]))
         return
     
-    # ═══════ WELCOME PHOTO EDIT ═══════
-    if awaiting and awaiting.startswith("welcome_photo_"):
-        bot_id = awaiting.replace("welcome_photo_", "")
-        ctx.user_data.pop("awaiting", None)
-        
-        bot = cloud.get_bot(bot_id)
-        if not bot or bot.get("owner_uid") != uid:
-            await update.message.reply_text("❌ دسترسی ندارید.")
-            return
-        
-        settings = cloud.get_plugin_settings(bot_id, "welcome")
-        
-        if text_in.lower() == "none":
-            settings["photo_url"] = None
-            msg = "🖼 <b>عکس حذف شد!</b>"
-        elif text_in.startswith("http"):
-            settings["photo_url"] = text_in
-            msg = "🖼 <b>عکس تنظیم شد!</b>"
-        else:
-            await update.message.reply_text("❌ لینک باید با http شروع شود یا 'none' برای حذف.", reply_markup=kb_main(uid))
-            return
-        
-        cloud.update_plugin_settings(bot_id, "welcome", settings)
-        cloud.save(force=True)
-        await bot_factory.restart_bot(bot_id)
-        
-        await update.message.reply_text(
-            f"{msg}\n\n🔄 ربات ری‌استارت شد.",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
-            ]))
-        return
-    
-    # ═══════ WELCOME BUTTONS EDIT ═══════
+    # ═══════ HANDLER دکمه‌های welcome (چندتایی) ═══════
     if awaiting and awaiting.startswith("welcome_buttons_"):
         bot_id = awaiting.replace("welcome_buttons_", "")
         ctx.user_data.pop("awaiting", None)
-        
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await update.message.reply_text("❌ دسترسی ندارید.")
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
             return
-        
         settings = cloud.get_plugin_settings(bot_id, "welcome")
-        
         if text_in.lower() == "none":
             settings["buttons"] = []
             cloud.update_plugin_settings(bot_id, "welcome", settings)
@@ -2268,60 +2420,60 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
                 ]))
             return
-        
-        # parse دکمه‌ها
+        # parse دکمه‌ها (با کاما برای چند دکمه در یک ردیف)
         new_buttons = []
         for line in text_in.split("\n"):
             line = line.strip()
             if not line: continue
-            parts = line.split("|")
-            if len(parts) < 2: continue
-            
-            btn_text = parts[0].strip()
-            btn_type = parts[1].strip().lower()
-            btn_value = parts[2].strip() if len(parts) > 2 else ""
-            
-            btn = {"text": btn_text, "type": btn_type}
-            if btn_type == "url":
-                btn["url"] = btn_value
-            elif btn_type == "callback":
-                btn["callback"] = btn_value
-            elif btn_type == "support":
-                pass  # فقط type
-            
-            new_buttons.append([btn])
-        
+            # تقسیم خط با کاما برای چند دکمه
+            btn_texts = [b.strip() for b in line.split(",")]
+            current_row = []
+            for btn_text_full in btn_texts:
+                parts = btn_text_full.split("|")
+                if len(parts) < 2: continue
+                btn_text = parts[0].strip()
+                btn_type = parts[1].strip().lower()
+                btn_value = parts[2].strip() if len(parts) > 2 else ""
+                btn = {"text": btn_text, "type": btn_type}
+                if btn_type == "url": btn["url"] = btn_value
+                elif btn_type == "text": btn["value"] = btn_value
+                elif btn_type == "callback": btn["callback"] = btn_value[:64]
+                elif btn_type == "support": pass
+                current_row.append(btn)
+            if current_row:
+                new_buttons.append(current_row)
         if not new_buttons:
-            await update.message.reply_text("❌ هیچ دکمه معتبری یافت نشد.", reply_markup=kb_main(uid))
+            await update.message.reply_text("❌ هیچ دکمه معتبری یافت نشد.", reply_markup=kb_main_reply(uid))
             return
-        
         settings["buttons"] = new_buttons
         cloud.update_plugin_settings(bot_id, "welcome", settings)
         cloud.save(force=True)
         await bot_factory.restart_bot(bot_id)
-        
+        total_buttons = sum(len(r) for r in new_buttons)
         await update.message.reply_text(
-            f"✅ <b>{len(new_buttons)} دکمه ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.",
+            f"✅ <b>{total_buttons} دکمه در {len(new_buttons)} ردیف ذخیره شد!</b>\n🔄 ربات ری‌استارت شد.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:welcome")],
             ]))
         return
     
-    # ═══════ SUPPORT SETTINGS EDIT ═══════
+    # ═══════ HANDLER تنظیمات support ═══════
     if awaiting and awaiting.startswith("support_edit_"):
-        parts = awaiting.replace("support_edit_", "").split("_")
+        # فرمت: support_edit_{action}_{bot_id}
+        remainder = awaiting.replace("support_edit_", "")
+        parts = remainder.split("_", 1)
+        if len(parts) != 2:
+            ctx.user_data.pop("awaiting", None)
+            return
         action = parts[0]
-        bot_id = parts[1] if len(parts) > 1 else ""
+        bot_id = parts[1]
         ctx.user_data.pop("awaiting", None)
-        
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            await update.message.reply_text("❌ دسترسی ندارید.")
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
             return
-        
         settings = cloud.get_plugin_settings(bot_id, "support")
-        
         field_map = {
             "admin": "admin_message",
             "confirm": "confirm_message",
@@ -2341,56 +2493,110 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 ]))
         return
     
-    # ═══════ ADMIN REPLY HANDLER ═══════
-    if awaiting and awaiting.startswith("admin_reply_"):
-        bot_id = awaiting.replace("admin_reply_", "")
-        reply_state = ctx.user_data.get(f"admin_reply_{bot_id}")
-        
-        if not reply_state or not reply_state.get("active"):
-            ctx.user_data.pop("awaiting", None)
-            return
-        
+    # ═══════ HANDLER دکمه‌های keyboard plugin ═══════
+    if awaiting and awaiting.startswith("keyboard_buttons_"):
+        bot_id = awaiting.replace("keyboard_buttons_", "")
         ctx.user_data.pop("awaiting", None)
-        # state را نگه دار تا بتواند پاسخ‌های بعدی هم بدهد
-        
-        ticket_id = reply_state.get("ticket_id")
-        target_user_id = reply_state.get("user_id")
-        ticket = cloud.get_ticket(ticket_id)
-        
-        if not ticket or ticket["status"] != "open":
-            ctx.user_data.pop(f"admin_reply_{bot_id}", None)
-            await update.message.reply_text("⚠️ تیکت بسته شده است.")
-            return
-        
         bot = cloud.get_bot(bot_id)
         if not bot or bot.get("owner_uid") != uid:
-            ctx.user_data.pop(f"admin_reply_{bot_id}", None)
+            await update.message.reply_text("❌ دسترسی ندارید.", reply_markup=kb_main_reply(uid))
             return
-        
-        try:
-            temp_bot = Bot(token=bot["bot_token"])
-            await temp_bot.send_message(
-                chat_id=target_user_id,
-                text=f"💬 <b>پاسخ پشتیبانی</b>\n\n"
-                     f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
-                     f"{text_in}",
-                parse_mode=ParseMode.HTML)
+        settings = cloud.get_plugin_settings(bot_id, "keyboard")
+        if text_in.lower() == "none":
+            settings["buttons"] = []
+            cloud.update_plugin_settings(bot_id, "keyboard", settings)
+            cloud.save(force=True)
+            await bot_factory.restart_bot(bot_id)
             await update.message.reply_text(
-                f"✅ <b>پاسخ ارسال شد!</b>\n\n"
-                f"👤 به: {ticket['full_name']}\n"
-                f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
-                f"💬 برای پاسخ دیگر، همینجا بنویسید.\n"
-                f"🔚 برای پایان، /cancel را بزنید.",
+                f"🗑 <b>همه دکمه‌ها حذف شدند!</b>\n🔄 ربات ری‌استارت شد.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ بستن تیکت", callback_data=f"close_ticket_{ticket_id}")]
+                    [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:keyboard")],
                 ]))
-            cloud.update_bot_stats(bot_id, messages_sent=1)
-        except Forbidden:
-            await update.message.reply_text(f"❌ کاربر ربات را بلاک کرده.")
-        except Exception as e:
-            await update.message.reply_text(f"❌ خطا: {str(e)[:100]}")
+            return
+        new_buttons = []
+        for line in text_in.split("\n"):
+            line = line.strip()
+            if not line: continue
+            btn_texts = [b.strip() for b in line.split(",")]
+            current_row = []
+            for btn_text_full in btn_texts:
+                parts = btn_text_full.split("|")
+                if len(parts) < 2: continue
+                btn_text = parts[0].strip()
+                btn_action = parts[1].strip().lower()
+                btn_value = parts[2].strip() if len(parts) > 2 else ""
+                btn = {"text": btn_text, "action": btn_action}
+                if btn_action in ("text", "command", "url"):
+                    btn["value"] = btn_value
+                current_row.append(btn)
+            if current_row:
+                new_buttons.append(current_row)
+        if not new_buttons:
+            await update.message.reply_text("❌ هیچ دکمه معتبری یافت نشد.", reply_markup=kb_main_reply(uid))
+            return
+        settings["buttons"] = new_buttons
+        cloud.update_plugin_settings(bot_id, "keyboard", settings)
+        cloud.save(force=True)
+        await bot_factory.restart_bot(bot_id)
+        total_buttons = sum(len(r) for r in new_buttons)
+        await update.message.reply_text(
+            f"✅ <b>{total_buttons} دکمه در {len(new_buttons)} ردیف ذخیره شد!</b>\n"
+            f"🔄 ربات ری‌استارت شد.\n\n"
+            f"💡 دکمه‌ها زیر صفحه چت ربات شما نمایش داده می‌شوند.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚙️ تنظیمات بیشتر", callback_data=f"plugin:settings:{bot_id}:keyboard")],
+            ]))
         return
+    
+    # ═══════ ✅ FIX: HANDLER پاسخ ادمین به تیکت (رفع باگ) ═══════
+    # بررسی همه state های admin_reply_{bot_id}
+    for key in list(ctx.user_data.keys()):
+        if key.startswith("admin_reply_"):
+            reply_state = ctx.user_data.get(key)
+            if reply_state and reply_state.get("active"):
+                bot_id = key.replace("admin_reply_", "")
+                ticket_id = reply_state.get("ticket_id")
+                target_user_id = reply_state.get("user_id")
+                ticket = cloud.get_ticket(ticket_id)
+                
+                if not ticket or ticket["status"] != "open":
+                    ctx.user_data.pop(key, None)
+                    await update.message.reply_text(
+                        "⚠️ تیکت بسته شده است.",
+                        reply_markup=kb_main_reply(uid))
+                    return
+                
+                bot = cloud.get_bot(bot_id)
+                if not bot or bot.get("owner_uid") != uid:
+                    ctx.user_data.pop(key, None)
+                    return
+                
+                try:
+                    temp_bot = Bot(token=bot["bot_token"])
+                    await temp_bot.send_message(
+                        chat_id=target_user_id,
+                        text=f"💬 <b>پاسخ پشتیبانی</b>\n\n"
+                             f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
+                             f"{text_in}",
+                        parse_mode=ParseMode.HTML)
+                    await update.message.reply_text(
+                        f"✅ <b>پاسخ ارسال شد!</b>\n\n"
+                        f"👤 به: {ticket['full_name']}\n"
+                        f"🎫 تیکت: <code>{ticket_id}</code>\n\n"
+                        f"💬 برای پاسخ دیگر، همینجا بنویسید.\n"
+                        f"🔚 برای پایان، /cancel بزنید یا دکمه «بستن تیکت» را بزنید.",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ بستن تیکت", callback_data=f"close_ticket_{ticket_id}")]
+                        ]))
+                    cloud.update_bot_stats(bot_id, messages_sent=1)
+                except Forbidden:
+                    await update.message.reply_text(f"❌ کاربر ربات را بلاک کرده.")
+                except Exception as e:
+                    await update.message.reply_text(f"❌ خطا: {str(e)[:100]}")
+                return
     
     if not is_admin(uid): return
     
@@ -2401,11 +2607,15 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sent = 0
         for u in users:
             try:
-                await ctx.bot.send_message(chat_id=int(u.get("uid_str") or u.get("uid")), text=text_in, parse_mode=ParseMode.HTML)
+                await ctx.bot.send_message(
+                    chat_id=int(u.get("uid_str") or u.get("uid")),
+                    text=text_in, parse_mode=ParseMode.HTML)
                 sent += 1
                 await asyncio.sleep(0.05)
             except: pass
-        await update.message.reply_text(f"✅ ارسال شد: {sent}/{len(users)}", parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
+        await update.message.reply_text(
+            f"✅ ارسال شد: {sent}/{len(users)}",
+            parse_mode=ParseMode.HTML, reply_markup=kb_main_reply(uid))
         return
 
 # ══════════════════════════════════════════════════════════════════════
@@ -2448,7 +2658,7 @@ async def on_startup(app: Application):
     await bot_factory.start_all_active_bots()
     asyncio.create_task(subscription_watcher(app))
     asyncio.create_task(autosave_loop(app))
-    log.info("GramBotSaz v3.0 (Trial + Advanced Plugins) ready ✅")
+    log.info("GramBotSaz v4.0 (Professional Edition) ready ✅")
 
 async def on_shutdown(app: Application):
     await bot_factory.stop_all_bots()
@@ -2461,7 +2671,6 @@ def main():
     if not PLATFORM_BOT_TOKEN:
         log.critical("PLATFORM_BOT_TOKEN تنظیم نشده!")
         sys.exit(1)
-    
     cloud.load()
     app = (Application.builder().token(PLATFORM_BOT_TOKEN)
            .post_init(on_startup).post_shutdown(on_shutdown).build())
@@ -2471,7 +2680,10 @@ def main():
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("profile", cmd_profile))
     app.add_handler(CallbackQueryHandler(on_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, on_message))
+    # ✅ handler برای متن و عکس (شامل آپلود عکس welcome)
+    app.add_handler(MessageHandler(
+        (filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        on_message))
     
     def _sig(s, f): cloud.save(force=True); sys.exit(0)
     signal.signal(signal.SIGTERM, _sig)
@@ -2489,7 +2701,7 @@ def main():
         
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index(): return "🤖 GramBotSaz v3.0 Alive!", 200
+        def index(): return "🤖 GramBotSaz v4.0 Alive!", 200
         @flask_app.route(f"/{PLATFORM_BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
@@ -2502,7 +2714,10 @@ def main():
             full_url = webhook_url.rstrip("/") + "/" + PLATFORM_BOT_TOKEN
             await app.bot.delete_webhook(drop_pending_updates=True)
             await asyncio.sleep(1)
-            await app.bot.set_webhook(url=full_url, allowed_updates=["message", "callback_query"], drop_pending_updates=True)
+            await app.bot.set_webhook(
+                url=full_url,
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True)
             log.info(f"✅ Webhook set: {full_url[:60]}...")
         asyncio.run_coroutine_threadsafe(setup(), main_loop).result(timeout=30)
         
