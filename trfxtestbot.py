@@ -114,6 +114,7 @@ class CloudStorage:
         self._data = {
             "users": {},
             "pending_payments": {},
+            "pending_subscriptions": {},  # ← اشتراک‌های آماده فعال‌سازی
             "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط ادمین ثبت نشده است.",
             "stats": {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0},
             "last_updated": None,
@@ -138,6 +139,7 @@ class CloudStorage:
                     for k, v in doc.items(): self._data[k] = v
                     self._data.setdefault("users", {})
                     self._data.setdefault("pending_payments", {})
+                    self._data.setdefault("pending_subscriptions", {})  # ← اضافه شود
                     self._data.setdefault("archive_text", "📊 نتایج هفته جاری")
                     self._data.setdefault("stats", {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0})
                     for k, u in self._data["users"].items():
@@ -311,17 +313,33 @@ class CloudStorage:
             if not p or p["status"] != "pending": return None
             p["status"] = "approved"
             p["approved_at"] = now_ir().isoformat()
-            u = self._data["users"].get(str(p["uid"]))
-            if u:
-                if p["plan"] == "weekly":
-                    days = PLAN_WEEKLY_DAYS
-                else:
-                    days = PLAN_MONTHLY_DAYS
-                new_expiry = self._activate_vip_internal(u, p["plan"], days)
-                self._data["stats"]["total_revenue_usd"] = self._data["stats"].get("total_revenue_usd", 0) + p["amount_usd"]
-                self._data["stats"]["total_subscriptions"] = self._data["stats"].get("total_subscriptions", 0) + 1
-                return (p["uid"], p["plan"], new_expiry, days)
-            return None
+            
+            # تعیین تعداد روزها
+            if p["plan"] == "weekly":
+                days = PLAN_WEEKLY_DAYS
+            else:
+                days = PLAN_MONTHLY_DAYS
+            
+            # ایجاد اشتراک آماده (به جای فعال‌سازی مستقیم)
+            sub_id = self._create_pending_subscription_internal(p["uid"], p["plan"], days)
+            
+            self._data["stats"]["total_revenue_usd"] = self._data["stats"].get("total_revenue_usd", 0) + p["amount_usd"]
+            self._data["stats"]["total_subscriptions"] = self._data["stats"].get("total_subscriptions", 0) + 1
+            
+            return (p["uid"], p["plan"], days, sub_id)
+
+    def _create_pending_subscription_internal(self, uid: int, plan: str, duration_days: float) -> str:
+        """ایجاد اشتراک آماده (internal)"""
+        sub_id = hashlib.md5(f"{uid}{time.time()}sub".encode()).hexdigest()[:12]
+        self._data["pending_subscriptions"][sub_id] = {
+            "uid": uid,
+            "plan": plan,
+            "duration_days": duration_days,
+            "created_at": now_ir().isoformat(),
+            "status": "ready",
+        }
+        self._dirty = True
+        return sub_id
     
     def reject_payment(self, payment_id: str) -> bool:
         with self._lock:
@@ -330,6 +348,52 @@ class CloudStorage:
             p["status"] = "rejected"
             self._dirty = True
             return True
+
+    def create_pending_subscription(self, uid: int, plan: str, duration_days: float) -> str:
+        """اشتراک آماده فعال‌سازی ایجاد می‌کند"""
+        with self._lock:
+            return self._create_pending_subscription_internal(uid, plan, duration_days)
+
+    def get_user_pending_subscription(self, uid: int) -> Optional[dict]:
+        """دریافت اشتراک آماده کاربر"""
+        with self._lock:
+            for sub_id, sub in self._data["pending_subscriptions"].items():
+                if sub.get("uid") == uid and sub.get("status") == "ready":
+                    return {"sub_id": sub_id, **sub}
+            return None
+
+    def activate_pending_subscription(self, sub_id: str) -> Optional[tuple]:
+        """فعال‌سازی اشتراک آماده"""
+        with self._lock:
+            sub = self._data["pending_subscriptions"].get(sub_id)
+            if not sub or sub["status"] != "ready":
+                return None
+            
+            uid = sub["uid"]
+            u = self._data["users"].get(str(uid))
+            if not u:
+                return None
+            
+            # فعال‌سازی VIP
+            new_expiry = self._activate_vip_internal(
+                u, sub["plan"], sub["duration_days"]
+            )
+            
+            # علامت‌گذاری به عنوان استفاده شده
+            sub["status"] = "activated"
+            sub["activated_at"] = now_ir().isoformat()
+            self._dirty = True
+            
+            return (uid, sub["plan"], new_expiry, sub["duration_days"])
+
+    def get_all_pending_subscriptions(self) -> list:
+        """دریافت همه اشتراک‌های آماده (برای ادمین)"""
+        with self._lock:
+            return [
+                {"sub_id": k, **v} 
+                for k, v in self._data["pending_subscriptions"].items() 
+                if v.get("status") == "ready"
+            ]
     
     def cancel_pending_payment(self, payment_id: str) -> bool:
         """لغو پرداخت توسط کاربر (مثلاً با /cancel)"""
@@ -420,6 +484,13 @@ def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📊 آرشیو نتایج", callback_data="menu:archive"),
          InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
     ]
+    
+    # دکمه فعال‌سازی اگر اشتراک آماده داشته باشد
+    if uid:
+        pending = cloud.get_user_pending_subscription(uid)
+        if pending:
+            rows.insert(0, [InlineKeyboardButton("🚀 فعال‌سازی اشتراک آماده", callback_data="activate:subscription")])
+    
     if uid and is_admin(uid):
         rows.append([InlineKeyboardButton("👑 پنل ادمین", callback_data="admin:panel:0")])
     return InlineKeyboardMarkup(rows)
@@ -440,6 +511,14 @@ def kb_renew_now() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu:home")],
     ])
 
+def kb_profile(uid: int) -> InlineKeyboardMarkup:
+    rows = []
+    pending = cloud.get_user_pending_subscription(uid)
+    if pending:
+        rows.append([InlineKeyboardButton("🚀 فعال‌سازی اشتراک", callback_data="activate:subscription")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")])
+    return InlineKeyboardMarkup(rows)
+
 # ══════════════════════════════════════════════════════════════════════
 # TEXT BUILDERS
 # ══════════════════════════════════════════════════════════════════════
@@ -450,7 +529,7 @@ def build_welcome_text() -> str:
         " به کمک این بستر یعنی ربات و کانال پرمیوم  از این پس میتونی پشت دست یک تریدر حرفه ای و اثبات شده ترید کنی! \n"
         " اشتراک گذاری آنی موقعیت ها هم از طریق ربات و هم از طریق کانال \n"
         " نتایج کاملا شفاف و واقعی\n"
-        "  ریوارد های بالای +3 استاپ های زیر 50 پیپ \n"
+        " ریوارد های بالای +3 استاپ های زیر 50 پیپ \n"
         "</blockquote>"
         "🔥 <b>50% تخفیف به مدت محدود در پیش ثبتنام اولیه</b>\n"
         "🔒 <b>کانال متصل به ربات کاملاً خصوصی است</b> و پس از فعال شدن اشتراک فقط با لینک یکبار مصرف قابل ورود است.\n\n"
@@ -487,6 +566,22 @@ def build_profile_text(uid: int, u: dict) -> str:
     
     full = u.get("full_name", "").strip() or u.get("username", "") or "—"
     
+    # بررسی اشتراک آماده فعال‌سازی
+    pending_sub = cloud.get_user_pending_subscription(uid)
+    pending_section = ""
+    if pending_sub:
+        plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+        plan_name = plan_names.get(pending_sub.get("plan", ""), "VIP")
+        created_at = datetime.fromisoformat(pending_sub["created_at"])
+        pending_section = (
+            f"\n━━━━━━━━━━━━━━━━\n"
+            f"🎁 <b>اشتراک آماده فعال‌سازی</b>\n"
+            f"📦 پلن: {plan_name}\n"
+            f"⏳ مدت: {pending_sub['duration_days']} روز\n"
+            f"📅 آماده از: {created_at.strftime('%Y-%m-%d')}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+        )
+    
     link_section = ""
     if u.get("last_link"):
         has_access = False
@@ -504,6 +599,7 @@ def build_profile_text(uid: int, u: dict) -> str:
         f"🆔 آیدی: <code>{uid}</code>\n\n"
         f"💎 <b>وضعیت اشتراک VIP:</b> {status}\n"
         f"⏳ <b>زمان باقی‌مانده:</b> {time_left}\n"
+        f"{pending_section}"
         f"{link_section}"
     )
 
@@ -604,7 +700,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         u = cloud.ensure_user(uid)
         if data == "menu:home": await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
-        elif data == "menu:profile": await q.edit_message_text(build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_back())
+        elif data == "menu:profile": await q.edit_message_text(build_profile_text(uid, u), parse_mode=ParseMode.HTML, reply_markup=kb_profile(uid))
         elif data == "menu:subscribe":
             await q.edit_message_text(
                 "💎 <b>پلن‌های اشتراک VIP Azadi</b>\n\n"
@@ -640,6 +736,52 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"(برای لغو /cancel بزنید)",
             parse_mode=ParseMode.HTML)
         return
+
+    if data == "activate:subscription":
+        uid = q.from_user.id
+        await q.answer("در حال فعال‌سازی...")
+        
+        pending = cloud.get_user_pending_subscription(uid)
+        if not pending:
+            await q.edit_message_text(
+                "❌ اشتراک آماده‌ای برای فعال‌سازی وجود ندارد.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_main(uid))
+            return
+        
+        result = cloud.activate_pending_subscription(pending["sub_id"])
+        cloud.save(force=True)
+        
+        if result:
+            p_uid, p_plan, new_expiry, days = result
+            
+            # تولید لینک VIP
+            link = None
+            if VIP_CHANNEL_ID:
+                link = await generate_vip_invite_link(ctx.bot, p_uid, p_plan, new_expiry)
+            
+            link_section = ""
+            if link:
+                link_section = f"\n\n🔐 <b>لینک اختصاصی ورود به کانال VIP:</b>\n{link}"
+            
+            plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+            plan_name = plan_names.get(p_plan, "VIP")
+            
+            await q.edit_message_text(
+                f"✅ <b>اشتراک فعال شد!</b>\n\n"
+                f"📦 پلن: {plan_name}\n"
+                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n"
+                f"⏳ مدت: {days} روز"
+                f"{link_section}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_main(uid))
+        else:
+            await q.edit_message_text(
+                "❌ خطا در فعال‌سازی اشتراک.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_main(uid))
+        return
+
     
     # ═══════ ADMIN ACTIONS ═══════
     if not is_admin(uid):
@@ -697,21 +839,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         result = cloud.approve_payment(payment_id)
         cloud.save(force=True)
         if result:
-            p_uid, p_plan, new_expiry, days = result
+            p_uid, p_plan, days, sub_id = result
+            
             await q.edit_message_text(
-                f"✅ <b>پرداخت تایید و اشتراک فعال شد.</b>\n\n"
+                f"✅ <b>پرداخت تایید شد</b>\n\n"
                 f"👤 کاربر: <code>{p_uid}</code>\n📦 پلن: {p_plan}\n"
-                f"📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n"
-                f"⏳ مدت: {days} روز",
+                f"⏳ مدت: {days} روز\n\n"
+                f"💎 اشتراک آماده فعال‌سازی شد.\n"
+                f"📲 کاربر باید از دکمه فعال‌سازی استفاده کند.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:panel:0")]]))
+            
+            # اطلاع‌رسانی به کاربر
             try:
-                msg_to_user = f"🎉 <b>پرداخت شما تایید شد!</b>\n\nاشتراک {p_plan} شما فعال گردید.\n📅 انقضا: {new_expiry.strftime('%Y-%m-%d')}\n⏳ مدت: {days} روز"
-                if VIP_CHANNEL_ID:
-                    link = await generate_vip_invite_link(ctx.bot, p_uid, p_plan, new_expiry)
-                    if link:
-                        msg_to_user += f"\n\n🔐 <b>لینک اختصاصی ورود به کانال VIP:</b>\n{link}"
-                await ctx.bot.send_message(chat_id=p_uid, text=msg_to_user, parse_mode=ParseMode.HTML)
+                plan_names = {"weekly": "هفتگی", "monthly": "ماهانه"}
+                plan_name = plan_names.get(p_plan, "VIP")
+                await ctx.bot.send_message(
+                    chat_id=p_uid,
+                    parse_mode=ParseMode.HTML,
+                    text=f"🎉 <b>پرداخت شما تایید شد!</b>\n\n"
+                        f"اشتراک {plan_name} شما آماده فعال‌سازی است.\n\n"
+                        f"📦 پلن: {plan_name}\n"
+                        f"⏳ مدت: {days} روز\n\n"
+                        f"👇 برای فعال‌سازی و دریافت لینک VIP، از دکمه زیر استفاده کنید:",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🚀 فعال‌سازی اشتراک", callback_data="activate:subscription")
+                    ]])
+                )
             except Exception as e:
                 log.error(f"Failed to notify user {p_uid}: {e}")
         else:
