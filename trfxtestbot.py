@@ -47,7 +47,7 @@ PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 20))
 PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 60))
 
 PLAN_WEEKLY_DAYS = 0.0007
-PLAN_MONTHLY_DAYS = 0.0015
+PLAN_MONTHLY_DAYS = 30
 
 # 🎟 سیستم کد تخفیف
 DISCOUNT_CODE = os.environ.get("DISCOUNT_CODE", "AZADI50")
@@ -64,7 +64,7 @@ BOT_USERNAME = ""
 ADMIN_PAGE_SIZE = 8
 
 # ⏱ زمان چک کردن انقضا (هر ۶۰ ثانیه)
-EXPIRY_CHECK_INTERVAL = 60
+EXPIRY_CHECK_INTERVAL = 600
 
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
@@ -125,7 +125,7 @@ class CloudStorage:
             "users": {},
             "pending_payments": {},
             "pending_subscriptions": {},  # ← اشتراک‌های آماده فعال‌سازی
-            "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط ادمین ثبت نشده است.",
+            "archive_text": "📊 <b>نتایج هفته جاری</b>\n\nهنوز نتیجه‌ای توسط سیستم ثبت نشده است.",
             "stats": {"total_signals_sent": 0, "total_revenue_usd": 0, "total_subscriptions": 0},
             "last_updated": None,
         }
@@ -489,7 +489,7 @@ def kb_join_required() -> InlineKeyboardMarkup:
 
 def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton("🎫پنل من", callback_data="menu:profile"),
+        [InlineKeyboardButton("🎫پنل کاربری", callback_data="menu:profile"),
          InlineKeyboardButton("💎 خرید/تمدید اشتراک", callback_data="menu:subscribe")],
         [InlineKeyboardButton("📊 آرشیو نتایج", callback_data="menu:archive"),
          InlineKeyboardButton("❗️ درباره", callback_data="menu:help")],
@@ -534,14 +534,15 @@ def kb_profile(uid: int) -> InlineKeyboardMarkup:
 # ══════════════════════════════════════════════════════════════════════
 def build_welcome_text() -> str:
     return (
-        " <b>به سیستم پرمیوم لایو سیگنال Azadi خوش اومدی⚡️</b> \n\n"
+        " <b>به سیستم ویژه لایو سیگنال Azadi خوش اومدی⚡️</b> \n\n"
         "<blockquote expandable>"
-        " به کمک این بستر یعنی ربات و کانال پرمیوم  از این پس میتونی پشت دست یک تریدر حرفه ای و اثبات شده ترید کنی! \n"
-        " اشتراک گذاری آنی موقعیت ها هم از طریق ربات و هم از طریق کانال \n"
-        " نتایج کاملا شفاف و واقعی\n"
+        " به کمک بستر هوشمند ربات و کانال پرمیوم از این پس میتونی پشت دست یک تریدر حرفه ای و اثبات شده ترید کنی! \n"
+        " اشتراک گذاری آنی و مدیریت موقعیت ها هم از طریق ربات و هم از طریق کانال \n"
+        " نتایج کاملا شفاف و واقعی قابل ترید\n"
+        " \n"
         " ریوارد های بالای +3 استاپ های زیر 50 پیپ \n"
         "</blockquote>"
-        "🔥 <b>50% تخفیف به مدت محدود در پیش ثبتنام اولیه</b>\n"
+        "🔥 <b>50% کد تخفیف فعال به مدت محدود!</b>\n"
         "🔒 <b>کانال متصل به ربات کاملاً خصوصی است</b> و پس از فعال شدن اشتراک فقط با لینک یکبار مصرف اختصاصی قابل ورود است.\n\n"
         "از منوی زیر میتونی همین الان به جمع شکارچیان طلا یپیوندی 👇"
     )
@@ -604,7 +605,7 @@ def build_profile_text(uid: int, u: dict) -> str:
             link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(یکبار مصرف)</i>\n"
     
     return (
-        f"👤 <b>پنل من🎫</b>\n\n"
+        f"👤 <b>پنل کاربری من🎫</b>\n\n"
         f" نام: <b>{full}</b>\n"
         f" آیدی سیستمی: <code>{uid}</code>\n\n"
         f" <b>وضعیت اشتراک :</b> {status}\n"
@@ -615,19 +616,20 @@ def build_profile_text(uid: int, u: dict) -> str:
 
 def build_help_text() -> str:
     return (
-        "📖 <b>راهنمای استفاده از ربات Azadi</b>\n\n"
+        "📖 <b>راهنما و درباره سیستم </b>\n\n"
         "<blockquote expandable>"
         "💳 <b>نحوه خرید اشتراک:</b>\n"
         "۱. روی «خرید اشتراک» کلیک کنید\n"
         "۲. پلن مورد نظر را انتخاب کنید\n"
-        "۳. مبلغ را واریز کنید\n"
-        "۴. رسید را ارسال کنید\n"
-        "۵. پس از تایید ادمین، اشتراک فعال می‌شود\n\n"
-        "🔐 <b>امنیت کانال VIP:</b>\n"
+        "۳. مبلغ نهایی را به ادرس ولت درج شده واریز کنید\n"
+        "۴. رسید را در همان بخش ارسال کنید\n"
+        "۵. پس از تایید سیستم اشتراک شما به پنلتون اضافه می‌شود\n\n"
+        "🔐 <b>توجه!:</b>\n"
+        "پس از تهییه اشتراک  هر زمان قادر به فعال سازی اشتراک خود از پنل من خواهید بود ! \n"
         "لینک دعوت شما یکبار مصرف است و تا پایان اشتراک اعتبار دارد.\n"
         "</blockquote>"
         "⚖️ <b>سلب مسئولیت:</b>\n"
-        "• بازارهای مالی دارای ریسک هستند.\n"
+        "• بازارهای مالی دارای ریسک هستند و مدیریت سرمایه الزامیست.\n"
     )
 
 # ══════════════════════════════════════════════════════════════════════
@@ -736,6 +738,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not price: return
         
         # ذخیره اطلاعات موقت (هنوز pending_payment نمی‌سازیم)
+        ctx.user_data["awaiting"] = "payment_receipt"  # ← این خط اضافه شود
         ctx.user_data["pending_plan"] = plan
         ctx.user_data["pending_price"] = price
         ctx.user_data["discount_applied"] = False
