@@ -43,8 +43,8 @@ ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")
 
-PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 15))
-PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 40))
+PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 20))
+PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 60))
 
 PLAN_WEEKLY_DAYS = 0.0007
 PLAN_MONTHLY_DAYS = 0.0015
@@ -489,10 +489,10 @@ def kb_join_required() -> InlineKeyboardMarkup:
 
 def kb_main(uid: int = 0) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton("👤 پروفایل من", callback_data="menu:profile"),
+        [InlineKeyboardButton("🎫پنل من", callback_data="menu:profile"),
          InlineKeyboardButton("💎 خرید/تمدید اشتراک", callback_data="menu:subscribe")],
         [InlineKeyboardButton("📊 آرشیو نتایج", callback_data="menu:archive"),
-         InlineKeyboardButton("ℹ️ راهنما", callback_data="menu:help")],
+         InlineKeyboardButton("❗️ درباره", callback_data="menu:help")],
     ]
     
     # دکمه فعال‌سازی اگر اشتراک آماده داشته باشد
@@ -510,14 +510,14 @@ def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
 
 def kb_subscribe() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
-        [InlineKeyboardButton(f"🥈 ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
+        #[InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
+        [InlineKeyboardButton(f" ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
     ])
 
 def kb_renew_now() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 تمدید اشتراک VIP", callback_data="menu:subscribe")],
+        [InlineKeyboardButton("♻️ تمدید اشتراک VIP", callback_data="menu:subscribe")],
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="menu:home")],
     ])
 
@@ -604,11 +604,11 @@ def build_profile_text(uid: int, u: dict) -> str:
             link_section = f"\n🔗 <b>لینک ورود به کانال VIP:</b>\n{u['last_link']}\n<i>(یکبار مصرف)</i>\n"
     
     return (
-        f"👤 <b>پروفایل شما</b>\n\n"
-        f"📛 نام: <b>{full}</b>\n"
-        f"🆔 آیدی: <code>{uid}</code>\n\n"
-        f"💎 <b>وضعیت اشتراک VIP:</b> {status}\n"
-        f"⏳ <b>زمان باقی‌مانده:</b> {time_left}\n"
+        f"👤 <b>پنل من🎫</b>\n\n"
+        f" نام: <b>{full}</b>\n"
+        f" آیدی سیستمی: <code>{uid}</code>\n\n"
+        f" <b>وضعیت اشتراک :</b> {status}\n"
+        f"⏳ <b>زمان باقی‌مانده از اشتراک:</b> {time_left}\n"
         f"{pending_section}"
         f"{link_section}"
     )
