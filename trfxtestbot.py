@@ -40,8 +40,8 @@ PORT = int(os.environ.get("PORT", 5000))
 _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
-VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@GoldLiveHunters")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1003988077931")
 
 PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 20))
 PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 60))
@@ -57,7 +57,7 @@ PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
     #"کارت: 6037-9918-XXXX-XXXX\n"
     #"به نام: Azadi Trading\n\n"
-    "USDT (BSC): TXxxxxxxxxxxxxxxxxxxxxxxx")
+    "USDT BEP20(BSC): <code>0x64a20067a62852b26556c87b5082aaa0c2359640</code>")
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 BOT_USERNAME = ""
@@ -625,7 +625,7 @@ def build_help_text() -> str:
         "۴. رسید را در همان بخش ارسال کنید\n"
         "۵. پس از تایید سیستم اشتراک شما به پنلتون اضافه می‌شود\n\n"
         "🔐 <b>توجه!:</b>\n"
-        "پس از تهییه اشتراک  هر زمان قادر به فعال سازی اشتراک خود از پنل من خواهید بود ! \n"
+        "پس از تهییه اشتراک  هر زمان قادر به فعال سازی اشتراک خود از پنل کاربری خواهید بود ! \n"
         "لینک دعوت شما یکبار مصرف است و تا پایان اشتراک اعتبار دارد.\n"
         "</blockquote>"
         "⚖️ <b>سلب مسئولیت:</b>\n"
@@ -1096,7 +1096,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 log.error(f"Forwarding failed: {e}")
         
         await update.message.reply_text(
-            "✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی ادمین، اشتراک آماده فعال‌سازی می‌شود.",
+            "✅ <b>رسید ثبت شد!</b>\n\nپس از بررسی سیستم اشتراک آماده فعال‌سازی می‌شود.",
             parse_mode=ParseMode.HTML,
             reply_markup=kb_main(uid))
         return
