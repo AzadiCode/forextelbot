@@ -57,7 +57,7 @@ PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
     #"کارت: 6037-9918-XXXX-XXXX\n"
     #"به نام: Azadi Trading\n\n"
-    "USDT BEP20(BSC): <code>0x64a20067a62852b26556c87b5082aaa0c2359640</code>")
+    "USDT BEP20(BSC):\n <code>0x64a20067a62852b26556c87b5082aaa0c2359640</code>")
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 BOT_USERNAME = ""
@@ -539,7 +539,6 @@ def build_welcome_text() -> str:
         " به کمک بستر هوشمند ربات و کانال پرمیوم از این پس میتونی پشت دست یک تریدر حرفه ای و اثبات شده ترید کنی! \n"
         " اشتراک گذاری آنی و مدیریت موقعیت ها هم از طریق ربات و هم از طریق کانال \n"
         " نتایج کاملا شفاف و واقعی قابل ترید\n"
-        " \n"
         " ریوارد های بالای +3 استاپ های زیر 50 پیپ \n"
         "</blockquote>"
         "🔥 <b>50% کد تخفیف فعال به مدت محدود!</b>\n"
@@ -692,15 +691,32 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     cloud.ensure_user(uid, q.from_user.username or "", f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip())
     
-    if data != "check_join":
-        if not await check_membership(q.get_bot(), uid):
-            await q.answer()
-            try:
-                await q.edit_message_text("⛔️ <b>ابتدا عضو کانال شو!</b>", parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
-            except: pass
-            return
+    # ═══════ پاک‌سازی خودکار state در صورت خروج از جریان ═══════
+    awaiting = ctx.user_data.get("awaiting")
+    if awaiting:
+        # لیست callback هایی که state را ادامه می‌دهند (نباید پاک شوند)
+        state_related_callbacks = [
+            "discount:apply",          # ادامه پروسه خرید با کد تخفیف
+            "activate:subscription",   # فعال‌سازی اشتراک
+            "check_join",              # تأیید عضویت کانال
+        ]
+        
+        # بررسی اینکه آیا callback جاری مربوط به ادامه state است
+        is_state_related = any(
+            data == cb or data.startswith(cb) 
+            for cb in state_related_callbacks
+        )
+        
+        # اگر مربوط نیست، state را پاک کن
+        if not is_state_related:
+            ctx.user_data.pop("awaiting", None)
+            ctx.user_data.pop("payment_id", None)
+            ctx.user_data.pop("pending_plan", None)
+            ctx.user_data.pop("pending_price", None)
+            ctx.user_data.pop("discount_applied", None)
+    # ═══════ پایان پاک‌سازی ═══════
     
-    if data == "check_join":
+    if data != "check_join":
         if await check_membership(q.get_bot(), uid):
             await q.answer("✅ تایید شد!")
             await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
