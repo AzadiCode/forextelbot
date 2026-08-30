@@ -717,6 +717,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ═══════ پایان پاک‌سازی ═══════
     
     if data != "check_join":
+        if not await check_membership(q.get_bot(), uid):
+            await q.answer()
+            try:
+                await q.edit_message_text("⛔️ <b>ابتدا عضو کانال شو!</b>", parse_mode=ParseMode.HTML, reply_markup=kb_join_required())
+            except: pass
+            return
+    
+    if data == "check_join":
         if await check_membership(q.get_bot(), uid):
             await q.answer("✅ تایید شد!")
             await q.edit_message_text(build_welcome_text(), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid))
