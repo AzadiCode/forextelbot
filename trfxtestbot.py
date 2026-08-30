@@ -35,7 +35,7 @@ log = logging.getLogger("AzadiSignalBot")
 # ══════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8972429048:AAE57wdflfIRxyiWLjBMol10WZYK_IqfSds")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8633068034:AAFoscJIHj1BWZzJkC_qzLYtAQiQCzcTqNE")
 PORT = int(os.environ.get("PORT", 5000))
 _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
@@ -57,7 +57,7 @@ PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
     #"کارت: 6037-9918-XXXX-XXXX\n"
     #"به نام: Azadi Trading\n\n"
-    "USDT BEP20(BSC):\n <code>0x64a20067a62852b26556c87b5082aaa0c2359640</code>")
+    "USDT BEP20(BSC):\n\n<code>0x64a20067a62852b26556c87b5082aaa0c2359640</code>")
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 BOT_USERNAME = ""
@@ -776,16 +776,18 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("🎟 اعمال کد تخفیف", callback_data="discount:apply")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:subscribe")],
+            [
+                InlineKeyboardButton("🔙 بازگشت", callback_data="menu:subscribe"),
+                InlineKeyboardButton("❌ لغو", callback_data="cancel:action"),
+            ],
         ])
-        
+
         await q.edit_message_text(
             f"💳 <b>پرداخت برای پلن {plan_name}</b>\n\n"
             f"💰 مبلغ قابل پرداخت: <b>{price}$</b>\n\n"
             f"{PAYMENT_INFO}\n"
             f"{discount_hint}\n"
-            f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
-            f"<i>(برای لغو /cancel بزنید)</i>",
+            f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>",
             parse_mode=ParseMode.HTML,
             reply_markup=kb)
         return
@@ -844,12 +846,33 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         await q.edit_message_text(
             f"🎟 <b>اعمال کد تخفیف</b>\n\n"
-            f"لطفاً کد تخفیف خود را ارسال کنید:\n"
-            f"<i>(برای لغو /cancel بزنید)</i>",
-            parse_mode=ParseMode.HTML)
+            f"لطفاً کد تخفیف خود را ارسال کنید:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ لغو", callback_data="cancel:action")]
+            ]))
         return
 
     
+    # ═══════ دکمه لغو عمومی ═══════
+    if data == "cancel:action":
+        await q.answer("❌ عملیات لغو شد")
+        
+        # پاک‌سازی همه state ها
+        ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("payment_id", None)
+        ctx.user_data.pop("pending_plan", None)
+        ctx.user_data.pop("pending_price", None)
+        ctx.user_data.pop("discount_applied", None)
+        
+        # برگشت به منوی اصلی
+        u = cloud.ensure_user(uid)
+        await q.edit_message_text(
+            build_welcome_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_main(uid))
+        return
+
     # ═══════ ADMIN ACTIONS ═══════
     if not is_admin(uid):
         await q.answer("⛔️ دسترسی ندارید.", show_alert=True)
@@ -875,9 +898,21 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     if data == "admin:edit_archive":
+        # پاک‌سازی state قبلی (اگر وجود دارد)
+        ctx.user_data.pop("payment_id", None)
+        ctx.user_data.pop("pending_plan", None)
+        ctx.user_data.pop("pending_price", None)
+        ctx.user_data.pop("discount_applied", None)
+        
         ctx.user_data["awaiting"] = "admin_archive_text"
         await q.answer()
-        await q.edit_message_text("✍️ <b>ویرایش متن آرشیو</b>\n\nمتن جدید را ارسال کنید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        await q.edit_message_text(
+            "✍️ <b>ویرایش متن آرشیو</b>\n\n"
+            "متن جدید را ارسال کنید (می‌توانید از HTML هم استفاده کنید):",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ لغو", callback_data="cancel:action")]
+            ]))
         return
     
     if data == "admin:pending_payments":
@@ -1017,9 +1052,21 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     if data == "admin:broadcast:prompt":
+        # پاک‌سازی state قبلی
+        ctx.user_data.pop("payment_id", None)
+        ctx.user_data.pop("pending_plan", None)
+        ctx.user_data.pop("pending_price", None)
+        ctx.user_data.pop("discount_applied", None)
+        
         ctx.user_data["awaiting"] = "broadcast_text"
         await q.answer()
-        await q.edit_message_text("📢 <b>ارسال همگانی</b>\n\nپیام خود را بنویسید:\n(برای لغو /cancel)", parse_mode=ParseMode.HTML)
+        await q.edit_message_text(
+            "📢 <b>ارسال همگانی</b>\n\n"
+            "پیام خود را بنویسید (می‌توانید از HTML هم استفاده کنید):",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ لغو", callback_data="cancel:action")]
+            ]))
         return
     
     await q.answer()
@@ -1060,14 +1107,22 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"💎 <b>مبلغ جدید: {discounted_price:.2f}$</b>\n"
                 f"🎉 تخفیف: {DISCOUNT_PERCENT:.0f}%\n\n"
                 f"{PAYMENT_INFO}\n\n"
-                f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>\n"
-                f"<i>(برای لغو /cancel بزنید)</i>",
-                parse_mode=ParseMode.HTML)
+                f"📸 <b>لطفاً عکس رسید واریزی یا TXID را همینجا ارسال کنید:</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("❌ لغو", callback_data="cancel:action")]
+                ]))
         else:
             await update.message.reply_text(
                 "❌ <b>کد تخفیف نامعتبر است!</b>\n\n"
-                "لطفاً دوباره تلاش کنید یا /cancel بزنید.",
-                parse_mode=ParseMode.HTML)
+                "لطفاً دوباره تلاش کنید یا از دکمه زیر استفاده کنید.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("🔄 تلاش مجدد", callback_data="discount:apply"),
+                        InlineKeyboardButton("❌ لغو", callback_data="cancel:action"),
+                    ]
+                ]))
         return
 
     
