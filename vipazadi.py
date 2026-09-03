@@ -46,12 +46,12 @@ VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1003988077931")
 PLAN_WEEKLY_USD = float(os.environ.get("PLAN_WEEKLY_USD", 20))
 PLAN_MONTHLY_USD = float(os.environ.get("PLAN_MONTHLY_USD", 60))
 
-PLAN_WEEKLY_DAYS = 0.0007
+PLAN_WEEKLY_DAYS = 7
 PLAN_MONTHLY_DAYS = 30
 
 # 🎟 سیستم کد تخفیف
-DISCOUNT_CODE = os.environ.get("DISCOUNT_CODE", "AZADI50")
-DISCOUNT_PERCENT = float(os.environ.get("DISCOUNT_PERCENT", 50))
+DISCOUNT_CODE = os.environ.get("DISCOUNT_CODE", "AZADI30")
+DISCOUNT_PERCENT = float(os.environ.get("DISCOUNT_PERCENT", 30))
 
 PAYMENT_INFO = os.environ.get("PAYMENT_INFO",
     "💳 <b>اطلاعات پرداخت:</b>\n"
@@ -510,7 +510,7 @@ def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
 
 def kb_subscribe() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        #[InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
+        [InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز +3🎁) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
         [InlineKeyboardButton(f" ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
     ])
