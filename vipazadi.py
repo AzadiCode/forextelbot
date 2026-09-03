@@ -510,7 +510,7 @@ def kb_back(dest: str = "home") -> InlineKeyboardMarkup:
 
 def kb_subscribe() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🥉 هفتگی ({PLAN_WEEKLY_DAYS} روز +3🎁) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
+        [InlineKeyboardButton(f" هفتگی ({PLAN_WEEKLY_DAYS} روز +3🎁) — {PLAN_WEEKLY_USD}$", callback_data="buy:fiat:weekly")],
         [InlineKeyboardButton(f" ماهانه ({PLAN_MONTHLY_DAYS} روز) — {PLAN_MONTHLY_USD}$", callback_data="buy:fiat:monthly")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:home")],
     ])
