@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ExchangeBot v3.0 — ربات تبادل ممبر و لایک (کارت‌های حرفه‌ای)
-✅ کارت‌های متنی حرفه‌ای با جزئیات کامل
-✅ اسکرول تسک‌ها با ویرایش همان پیام
-✅ فیلتر نوع تسک
-✅ امکان نوشتن توضیحات توسط سفارش‌دهنده
+ExchangeBot v3.1 — نسخه دیباگ شده با لاگ‌های کامل
 """
 import os, sys, re, time, json, signal, atexit, logging, hashlib
 import asyncio, threading
@@ -19,7 +15,7 @@ from telegram.error import BadRequest, Forbidden, InvalidToken
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           ContextTypes, filters, MessageHandler, MessageReactionHandler)
 
-logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s — %(message)s", level=logging.INFO, stream=sys.stdout)
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s — %(message)s", level=logging.DEBUG, stream=sys.stdout)
 log = logging.getLogger("ExchangeBot")
 
 # ═══════════════ CONFIG ═══════════════
@@ -38,7 +34,7 @@ REACTION_REWARD = 2
 REACTION_COST_MULT = 2
 ALLOWED_REACTIONS = {"👍", "❤️", "🔥", "👏", "🎉", "🤩"}
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-PENDING_TIMEOUT = 300
+PENDING_TIMEOUT = 600  # 10 دقیقه
 MAX_DESC_LENGTH = 200
 
 # ═══════════════ CLOUD STORAGE ═══════════════
@@ -149,10 +145,11 @@ class CloudStorage:
             order = {"order_id": order_id, "owner_uid": uid, "type": order_type,
                     "target": target, "post_id": post_id, "chat_id": chat_id,
                     "total_count": count, "remaining_count": count, "cost_per_unit": cost_per,
-                    "description": description[:MAX_DESC_LENGTH],  # فیلد توضیحات
+                    "description": description[:MAX_DESC_LENGTH],
                     "created_at": now_ir().isoformat(), "status": "active"}
             self._data["orders"].append(order)
             self._dirty = True
+            log.info(f"✅ Order created: {order_id} | type={order_type} | chat_id={chat_id} | post_id={post_id}")
             return dict(order)
     
     def get_active_orders(self, order_type=None):
@@ -196,6 +193,7 @@ class CloudStorage:
                 "timestamp": time.time(), "expires": time.time() + PENDING_TIMEOUT
             })
             self._dirty = True
+            log.info(f"📌 Pending like added: order={order_id} user={worker_uid}")
     
     def get_pending_for_user(self, worker_uid):
         with self._lock:
@@ -322,7 +320,6 @@ def build_help():
             f"💰 هزینه ممبر: {JOIN_REWARD * JOIN_COST_MULT} {COIN}\n"
             f"💰 هزینه لایک: {REACTION_REWARD * REACTION_COST_MULT} {COIN}\n\n"
             f"⚠️ برای سفارش لایک، ربات باید ادمین کانال شما باشد\n"
-            f"📝 می‌توانید برای هر سفارش، <b>توضیحات</b> بنویسید\n"
             f"✅ لایک شما <b>فقط پس از راستی‌آزمایی واقعی</b> پرداخت می‌شود")
 
 def build_my_orders(uid):
@@ -338,44 +335,35 @@ def build_my_orders(uid):
         text += f"{status} <b>{t}</b>\n🎯 <code>{o['target']}</code>\n{post}{desc}📊 {done}/{o['total_count']}\n\n"
     return text
 
-# ═══════════════ TASK CARD BUILDER (قلب طراحی جدید) ═══════════════
 def build_task_card(order, uid, current_index, total_count, order_type):
-    """ساخت کارت متنی حرفه‌ای برای یک تسک"""
     if order["type"] == "join":
         type_emoji = "👥"
         type_name = "عضویت در کانال"
-        type_desc = "عضویت"
         reward = JOIN_REWARD
         target_url = f"https://t.me/{order['target'].lstrip('@')}"
         target_display = f"📢 <b>کانال:</b> <code>{order['target']}</code>"
     else:
         type_emoji = "❤️"
         type_name = "لایک پست"
-        type_desc = "لایک"
         reward = REACTION_REWARD
         post_id = order.get("post_id")
         target_url = f"https://t.me/{order['target'].lstrip('@')}/{post_id}" if post_id else f"https://t.me/{order['target'].lstrip('@')}"
         target_display = f"📢 <b>کانال:</b> <code>{order['target']}</code>\n📝 <b>شماره پست:</b> <code>{post_id}</code>"
     
-    # وضعیت انجام توسط کاربر فعلی
     key = f"{order['order_id']}_{uid}"
     already_done = key in cloud._data.get("tasks_completed", [])
-    
-    # بررسی pending
     pending = cloud.get_pending_for_user(uid)
     is_pending = any(p["order_id"] == order["order_id"] for p in pending)
     
-    # ساخت متن کارت
     card_text = (
         f"╔════════════════════════╗\n"
         f"║ {type_emoji} <b>{type_name}</b>\n"
         f"╚════════════════════════╝\n\n"
         f"🎁 <b>پاداش:</b> <code>{reward} {COIN}</code>\n"
-        f"📊 <b>ظرفیت:</b> <code>{order['total_count'] - order['remaining_count']}</code>/{order['total_count']} انجام شده\n"
+        f"📊 <b>ظرفیت:</b> <code>{order['total_count'] - order['remaining_count']}</code>/{order['total_count']}\n"
         f"{target_display}\n\n"
     )
     
-    # توضیحات سفارش‌دهنده
     description = order.get("description", "").strip()
     if description:
         card_text += (
@@ -386,34 +374,28 @@ def build_task_card(order, uid, current_index, total_count, order_type):
     else:
         card_text += f"┌─ 📋 <b>توضیحات:</b> <i>ندارد</i>\n└─────────────────────\n\n"
     
-    # راهنمای انجام
     if order["type"] == "join":
         card_text += (
-            f"📌 <b>راهنمای انجام:</b>\n"
-            f"1️⃣ روی دکمه «🔗 عضویت در کانال» بزن\n"
-            f"2️⃣ عضو کانال شو\n"
-            f"3️⃣ دکمه «✅ تایید» را بزن\n\n"
+            f"📌 <b>راهنما:</b>\n"
+            f"1️⃣ عضو کانال شو\n"
+            f"2️⃣ دکمه «✅ تایید» را بزن\n\n"
         )
     else:
         card_text += (
-            f"📌 <b>راهنمای انجام:</b>\n"
-            f"1️⃣ روی دکمه «🔗 باز کردن پست» بزن\n"
-            f"2️⃣ پست را با {', '.join(list(ALLOWED_REACTIONS)[:3])} لایک کن\n"
-            f"3️⃣ پاداش <b>خودکار</b> واریز می‌شود!\n\n"
+            f"📌 <b>راهنما:</b>\n"
+            f"1️⃣ پست را باز کن\n"
+            f"2️⃣ با {' '.join(list(ALLOWED_REACTIONS)[:3])} لایک کن\n"
+            f"3️⃣ پاداش خودکار واریز می‌شود!\n\n"
         )
     
-    # وضعیت کاربر
     if already_done:
-        card_text += f"✅ <b>وضعیت شما:</b> انجام شده و پاداش دریافت کرده‌اید"
+        card_text += f"✅ <b>وضعیت:</b> انجام شده"
     elif is_pending:
-        card_text += f"⏳ <b>وضعیت شما:</b> در انتظار تایید لایک..."
+        card_text += f"⏳ <b>وضعیت:</b> در انتظار تایید لایک..."
     else:
-        card_text += f"⚡ <b>وضعیت شما:</b> آماده برای انجام"
+        card_text += f"⚡ <b>وضعیت:</b> آماده"
     
-    # ساخت کیبورد
     rows = []
-    
-    # دکمه فیلتر (تب‌ها)
     filter_row = []
     if order_type == "all":
         filter_row.append(InlineKeyboardButton("✅ همه", callback_data=f"tasks:filter:all:{current_index}"))
@@ -431,40 +413,38 @@ def build_task_card(order, uid, current_index, total_count, order_type):
     
     rows.append([InlineKeyboardButton(f"─── 🎁 سفارش {current_index + 1} از {total_count} ───", callback_data="noop")])
     
-    # دکمه‌های اصلی
     if already_done:
-        rows.append([InlineKeyboardButton("✅ این تسک قبلاً انجام شده", callback_data="noop")])
+        rows.append([InlineKeyboardButton("✅ انجام شده", callback_data="noop")])
     else:
         if order["type"] == "join":
             rows.append([
-                InlineKeyboardButton("🔗 عضویت در کانال", url=target_url),
+                InlineKeyboardButton("🔗 عضویت", url=target_url),
                 InlineKeyboardButton("✅ تایید", callback_data=f"tasks:verify_join:{order['order_id']}:{order_type}:{current_index}")
             ])
         else:
             rows.append([InlineKeyboardButton("🔗 باز کردن پست", url=target_url)])
             if is_pending:
                 rows.append([InlineKeyboardButton("🔄 بررسی وضعیت", callback_data=f"tasks:check_status:{order['order_id']}:{order_type}:{current_index}")])
+                rows.append([InlineKeyboardButton("✅ لایک کردم - تایید دستی", callback_data=f"tasks:manual_verify:{order['order_id']}:{order_type}:{current_index}")])
             else:
                 rows.append([InlineKeyboardButton("🎯 شروع تسک", callback_data=f"tasks:start_like:{order['order_id']}:{order_type}:{current_index}")])
     
-    # دکمه‌های ناوبری (اسکرول)
     nav_row = []
     if current_index > 0:
         nav_row.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"tasks:page:{current_index-1}:{order_type}"))
     else:
-        nav_row.append(InlineKeyboardButton("⏮️ اولین", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton("⏮️", callback_data="noop"))
     
     if current_index < total_count - 1:
         nav_row.append(InlineKeyboardButton("بعدی ▶️", callback_data=f"tasks:page:{current_index+1}:{order_type}"))
     else:
-        nav_row.append(InlineKeyboardButton("آخرین ⏭️", callback_data="noop"))
+        nav_row.append(InlineKeyboardButton("⏭️", callback_data="noop"))
     rows.append(nav_row)
     
-    rows.append([InlineKeyboardButton("🔙 بازگشت به منو", callback_data="nav:home")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")])
     
     return card_text, InlineKeyboardMarkup(rows)
 
-# ═══════════════ COMMANDS ═══════════════
 async def cmd_start(update, ctx):
     uid = update.effective_user.id
     uname = update.effective_user.username or ""
@@ -493,7 +473,6 @@ async def cmd_cancel(update, ctx):
     for k in ["awaiting", "pending_ref"]: ctx.user_data.pop(k, None)
     await update.message.reply_text("❌ لغو شد.", parse_mode=ParseMode.HTML, reply_markup=kb_main(update.effective_user.id))
 
-# ═══════════════ CALLBACK HANDLER ═══════════════
 async def on_callback(update, ctx):
     q = update.callback_query
     data = q.data or ""
@@ -523,7 +502,6 @@ async def on_callback(update, ctx):
             await q.answer("⛔️ هنوز عضو نشدی!", show_alert=True)
         return
     
-    # NAV
     if data.startswith("nav:"):
         dest = data.replace("nav:", "")
         await q.answer()
@@ -546,7 +524,6 @@ async def on_callback(update, ctx):
                                                    [InlineKeyboardButton("🔙", callback_data="nav:home")]]))
         return
     
-    # MENU
     if data == "menu:profile":
         await q.answer()
         await q.edit_message_text(build_profile(uid), parse_mode=ParseMode.HTML,
@@ -586,7 +563,6 @@ async def on_callback(update, ctx):
             await q.answer("⏳ فردا!", show_alert=True)
         return
     
-    # ═══ EARN - کسب درآمد با کارت ═══
     if data == "menu:earn":
         await q.answer()
         await show_task_card(q, uid, 0, "all")
@@ -609,7 +585,6 @@ async def on_callback(update, ctx):
         return
     
     if data.startswith("tasks:start_like:"):
-        """شروع تسک لایک - اضافه به pending"""
         parts = data.split(":")
         order_id = parts[2]
         order_type = parts[3] if len(parts) > 3 else "all"
@@ -623,12 +598,47 @@ async def on_callback(update, ctx):
         if key in cloud._data.get("tasks_completed", []):
             await q.answer("✅ قبلاً انجام دادی!", show_alert=True); return
         
-        # اضافه کردن به pending
         cloud.add_pending_like(order_id, uid)
         cloud.save(force=True)
         
         await q.answer("⏳ تسک شروع شد! حالا لایک کن", show_alert=True)
-        # نمایش مجدد همان کارت با وضعیت به‌روز
+        await show_task_card(q, uid, current_idx, order_type)
+        return
+    
+    if data.startswith("tasks:manual_verify:"):
+        """تایید دستی لایک توسط کاربر"""
+        parts = data.split(":")
+        order_id = parts[2]
+        order_type = parts[3] if len(parts) > 3 else "all"
+        current_idx = int(parts[4]) if len(parts) > 4 else 0
+        
+        order = cloud.get_order_by_id(order_id)
+        if not order:
+            await q.answer("❌ تسک یافت نشد", show_alert=True); return
+        
+        key = f"{order_id}_{uid}"
+        if key in cloud._data.get("tasks_completed", []):
+            await q.answer("✅ قبلاً انجام دادی!", show_alert=True); return
+        
+        # بررسی اینکه آیا pending است
+        pending = cloud.get_pending_for_user(uid)
+        is_pending = any(p["order_id"] == order_id for p in pending)
+        
+        if not is_pending:
+            await q.answer("⚠️ ابتدا دکمه شروع تسک را بزن!", show_alert=True)
+            return
+        
+        # تایید دستی - فرض می‌کنیم کاربر لایک کرده
+        log.info(f"🔧 Manual verification for order {order_id} by user {uid}")
+        success, msg = cloud.complete_order_unit(order_id, uid)
+        
+        # حذف از pending
+        cloud._data["pending_likes"] = [p for p in cloud._data["pending_likes"]
+                                        if not (p["order_id"] == order_id and p["worker_uid"] == uid)]
+        cloud._dirty = True
+        cloud.save(force=True)
+        
+        await q.answer(msg, show_alert=True)
         await show_task_card(q, uid, current_idx, order_type)
         return
     
@@ -651,7 +661,6 @@ async def on_callback(update, ctx):
         cloud.save(force=True)
         await q.answer(msg, show_alert=True)
         if success:
-            # نمایش مجدد همان کارت با وضعیت جدید
             await show_task_card(q, uid, current_idx, order_type)
         return
     
@@ -676,10 +685,9 @@ async def on_callback(update, ctx):
         if not is_pending:
             await q.answer("⚠️ زمان انتظار تمام شده!", show_alert=True)
         else:
-            await q.answer("⏳ هنوز لایک تایید نشده. مطمئن شو که پست را لایک کردی.", show_alert=True)
+            await q.answer("⏳ هنوز لایک تایید نشده. می‌تونی از تایید دستی استفاده کنی.", show_alert=True)
         return
     
-    # NEW ORDER
     if data == "menu:new_order":
         await q.answer()
         kb = InlineKeyboardMarkup([
@@ -734,7 +742,6 @@ async def on_callback(update, ctx):
                 ]))
         return
     
-    # ADMIN
     if not is_admin(uid):
         await q.answer("⛔️ دسترسی ندارید", show_alert=True); return
     
@@ -758,18 +765,14 @@ async def on_callback(update, ctx):
     
     await q.answer()
 
-# ═══════════════ TASK CARD DISPLAY ═══════════════
 async def show_task_card(q, uid, index, order_type):
-    """نمایش کارت یک تسک خاص با اسکرول"""
-    # گرفتن تسک‌های فیلتر شده و حذف سفارش‌های خود کاربر
     all_orders = cloud.get_active_orders(order_type if order_type != "all" else None)
     orders = [o for o in all_orders if o["owner_uid"] != uid]
     
     if not orders:
         await q.edit_message_text(
             "📭 <b>تسکی موجود نیست!</b>\n\n"
-            "فعلاً سفارش فعالی برای انجام وجود ندارد.\n"
-            "بعداً دوباره چک کنید یا فیلتر را تغییر دهید.",
+            "فعلاً سفارش فعالی برای انجام وجود ندارد.",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 همه تسک‌ها", callback_data="tasks:filter:all:0")],
@@ -779,7 +782,6 @@ async def show_task_card(q, uid, index, order_type):
             ]))
         return
     
-    # بررسی اینکه index معتبر است
     if index < 0 or index >= len(orders):
         index = 0
     
@@ -790,46 +792,91 @@ async def show_task_card(q, uid, index, order_type):
         await q.edit_message_text(card_text, parse_mode=ParseMode.HTML, reply_markup=card_kb)
     except BadRequest as e:
         if "Message is not modified" in str(e):
-            pass  # پیام تغییری نکرده
+            pass
         else:
             raise
 
-# ═══════════════ REACTION HANDLER ═══════════════
 async def on_reaction(update, ctx):
+    """هندلر Reaction - با لاگ‌های کامل برای دیباگ"""
+    log.info(f"🔔 Reaction update received!")
+    
     reaction = update.message_reaction
-    if not reaction or not reaction.user: return
+    if not reaction:
+        log.warning("No reaction in update")
+        return
+    
+    if not reaction.user:
+        log.warning("No user in reaction")
+        return
     
     user_id = reaction.user.id
     chat_id = reaction.chat.id
     message_id = reaction.message_id
     
+    log.info(f"👤 User: {user_id} | 💬 Chat: {chat_id} | 📝 Message: {message_id}")
+    
     new_reactions = reaction.new_reaction_type
-    if not new_reactions: return
+    if not new_reactions:
+        log.warning("No new reactions")
+        return
+    
+    log.info(f"🎭 New reactions: {new_reactions}")
     
     has_valid_reaction = False
     for r in new_reactions:
         emoji = getattr(r, "emoji", None)
+        log.debug(f"Checking reaction: {r}, emoji: {emoji}")
         if emoji and emoji in ALLOWED_REACTIONS:
             has_valid_reaction = True
+            log.info(f"✅ Valid reaction found: {emoji}")
             break
     
-    if not has_valid_reaction: return
+    if not has_valid_reaction:
+        log.info("❌ No valid reaction found")
+        return
+    
+    log.info(f"🔍 Searching for pending likes for user {user_id}...")
     
     with cloud._lock:
+        pending_count = len(cloud._data.get("pending_likes", []))
+        log.info(f"📊 Total pending likes: {pending_count}")
+        
         for p in list(cloud._data.get("pending_likes", [])):
-            if p["worker_uid"] != user_id: continue
-            if time.time() > p["expires"]: continue
+            log.debug(f"Checking pending: order={p['order_id']}, user={p['worker_uid']}, expires={p['expires']}")
+            
+            if p["worker_uid"] != user_id:
+                log.debug(f"❌ User mismatch: {p['worker_uid']} != {user_id}")
+                continue
+            
+            if time.time() > p["expires"]:
+                log.debug(f"⏰ Pending expired")
+                continue
+            
             order = next((o for o in cloud._data["orders"] if o["order_id"] == p["order_id"]), None)
-            if not order or order.get("status") != "active": continue
+            if not order:
+                log.warning(f"❌ Order not found: {p['order_id']}")
+                continue
+            
+            if order.get("status") != "active":
+                log.warning(f"⛔️ Order not active: {p['order_id']}")
+                continue
+            
             order_chat_id = order.get("chat_id")
             order_post_id = order.get("post_id")
+            
+            log.info(f"📋 Order: {p['order_id']} | chat_id={order_chat_id} | post_id={order_post_id}")
+            log.info(f"🔍 Comparing: order_chat={order_chat_id} vs reaction_chat={chat_id}")
+            log.info(f"🔍 Comparing: order_post={order_post_id} vs reaction_msg={message_id}")
             
             if order_chat_id and order_post_id:
                 try:
                     if int(order_chat_id) == int(chat_id) and int(order_post_id) == int(message_id):
+                        log.info(f"✅✅✅ MATCH FOUND! Order {p['order_id']} verified for user {user_id}")
+                        
                         order_id = p["order_id"]
                         cloud._data["pending_likes"].remove(p)
                         cloud._dirty = True
+                        
                         key = f"{order_id}_{user_id}"
                         if key not in cloud._data["tasks_completed"]:
                             order["remaining_count"] -= 1
@@ -840,7 +887,9 @@ async def on_reaction(update, ctx):
                             reward = REACTION_REWARD
                             cloud.add_coin(user_id, reward, f"reaction_{order_id}")
                             cloud.save(force=True)
-                            log.info(f"✅ Reaction verified for {user_id} on order {order_id}")
+                            
+                            log.info(f"💰 Reward {reward} {COIN} given to user {user_id}")
+                            
                             try:
                                 await ctx.bot.send_message(
                                     user_id,
@@ -852,11 +901,12 @@ async def on_reaction(update, ctx):
                             except Exception as e:
                                 log.error(f"Send like confirm error: {e}")
                         break
+                    else:
+                        log.debug(f"❌ IDs don't match")
                 except (ValueError, TypeError) as e:
                     log.error(f"ID comparison error: {e}")
                     continue
 
-# ═══════════════ MESSAGE HANDLER ═══════════════
 async def on_message(update, ctx):
     uid = update.effective_user.id
     text_in = (update.message.text or "").strip() if update.message.text else ""
@@ -882,7 +932,6 @@ async def on_message(update, ctx):
         })(), ctx)
         return
     
-    # ═══ ORDER JOIN ═══
     if awaiting == "order_join":
         ctx.user_data.pop("awaiting", None)
         parts = [p.strip() for p in text_in.split("|")]
@@ -904,7 +953,6 @@ async def on_message(update, ctx):
         if u.get("balance", 0) < total:
             await update.message.reply_text(f"❌ موجودی کافی نیست. نیاز: {total} {COIN}"); return
         
-        # ذخیره موقت برای مرحله توضیحات
         ctx.user_data["temp_order"] = {
             "type": "join", "target": target, "count": count,
             "cost_per": cost_per, "chat_id": chat.id
@@ -913,14 +961,12 @@ async def on_message(update, ctx):
         
         await update.message.reply_text(
             f"✅ اطلاعات دریافت شد!\n\n"
-            f"📝 <b>مرحله آخر: توضیحات (اختیاری)</b>\n\n"
-            f"می‌خواهی توضیحاتی برای کارگران بنویسی؟ (مثلاً: «لطفاً تا آخر در کانال بمانید»)\n\n"
-            f"📌 حداکثر {MAX_DESC_LENGTH} کاراکتر\n\n"
-            f"📝 توضیحات را بنویس یا برای رد کردن <code>skip</code> را ارسال کن.",
+            f"📝 <b>توضیحات (اختیاری):</b>\n\n"
+            f"حداکثر {MAX_DESC_LENGTH} کاراکتر\n\n"
+            f"توضیحات را بنویس یا <code>skip</code> برای رد کردن.",
             parse_mode=ParseMode.HTML)
         return
     
-    # ═══ ORDER REACTION - CHANNEL ═══
     if awaiting == "order_reaction_channel":
         ctx.user_data.pop("awaiting", None)
         channel = text_in.strip()
@@ -947,7 +993,6 @@ async def on_message(update, ctx):
             parse_mode=ParseMode.HTML)
         return
     
-    # ═══ ORDER REACTION - POST ═══
     if awaiting and awaiting.startswith("order_reaction_post_"):
         channel = awaiting.replace("order_reaction_post_", "")
         ctx.user_data.pop("awaiting", None)
@@ -979,7 +1024,6 @@ async def on_message(update, ctx):
             parse_mode=ParseMode.HTML)
         return
     
-    # ═══ ORDER REACTION - COUNT ═══
     if awaiting and awaiting.startswith("order_reaction_count_"):
         parts = awaiting.replace("order_reaction_count_", "").split("_")
         if len(parts) < 3:
@@ -1000,7 +1044,6 @@ async def on_message(update, ctx):
         post_id = int(post_id_str)
         chat_id = int(chat_id_str)
         
-        # ذخیره موقت برای مرحله توضیحات
         ctx.user_data["temp_order"] = {
             "type": "reaction", "target": channel, "count": count,
             "cost_per": cost_per, "chat_id": chat_id, "post_id": post_id
@@ -1009,14 +1052,12 @@ async def on_message(update, ctx):
         
         await update.message.reply_text(
             f"✅ اطلاعات دریافت شد!\n\n"
-            f"📝 <b>مرحله آخر: توضیحات (اختیاری)</b>\n\n"
-            f"می‌خواهی توضیحاتی برای کارگران بنویسی؟ (مثلاً: «لطفاً با ❤️ لایک کنید»)\n\n"
-            f"📌 حداکثر {MAX_DESC_LENGTH} کاراکتر\n\n"
-            f"📝 توضیحات را بنویس یا برای رد کردن <code>skip</code> را ارسال کن.",
+            f"📝 <b>توضیحات (اختیاری):</b>\n\n"
+            f"حداکثر {MAX_DESC_LENGTH} کاراکتر\n\n"
+            f"توضیحات را بنویس یا <code>skip</code> برای رد کردن.",
             parse_mode=ParseMode.HTML)
         return
     
-    # ═══ ORDER DESCRIPTION (جدید) ═══
     if awaiting == "order_description":
         ctx.user_data.pop("awaiting", None)
         temp = ctx.user_data.pop("temp_order", None)
@@ -1049,7 +1090,6 @@ async def on_message(update, ctx):
             await update.message.reply_text("❌ خطا در ثبت سفارش.")
         return
     
-    # ADMIN BROADCAST
     if not is_admin(uid): return
     if awaiting == "broadcast":
         ctx.user_data.pop("awaiting", None)
@@ -1063,7 +1103,6 @@ async def on_message(update, ctx):
             except: pass
         await update.message.reply_text(f"✅ ارسال: {sent}/{len(users)}")
 
-# ═══════════════ MAIN ═══════════════
 async def on_startup(app):
     cloud.load()
     async def cleanup():
@@ -1072,7 +1111,7 @@ async def on_startup(app):
             cloud.cleanup_expired_pendings()
             cloud.save()
     asyncio.create_task(cleanup())
-    log.info("ExchangeBot v3.0 Ready ✅ (Task Cards)")
+    log.info("ExchangeBot v3.1 Ready ✅ (Debug + Manual Verify)")
 
 async def on_shutdown(app):
     cloud.save(force=True)
@@ -1101,7 +1140,7 @@ def main():
         threading.Thread(target=lambda: asyncio.set_event_loop(main_loop) or main_loop.run_forever(), daemon=True).start()
         flask_app = Flask(__name__)
         @flask_app.route("/")
-        def index(): return "🤖 ExchangeBot v3.0 Alive!", 200
+        def index(): return "🤖 ExchangeBot v3.1 Alive!", 200
         @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
         def webhook():
             try:
