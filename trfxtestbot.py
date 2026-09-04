@@ -675,6 +675,47 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb_main(update.effective_user.id)
     )
 
+async def cmd_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return
+    bot = ctx.bot
+    try:
+        wh = await bot.get_webhook_info()
+        wh_url = wh.url or "set nshode"
+        wh_updates = list(wh.allowed_updates or [])
+        has_reaction = "message_reaction" in wh_updates
+        wh_status = "OK - message_reaction daryaft mishe" if has_reaction else f"FAIL - message_reaction nist! allowed={wh_updates}"
+    except Exception as e:
+        wh_url, wh_status = f"khata: {e}", "FAIL"
+
+    reaction_orders = [o for o in cloud.get_active_orders("reaction")]
+    orders_text = ""
+    for o in reaction_orders[:5]:
+        orders_text += (
+            f"\n  order={o['order_id']} ch={o.get('chat_id')} post={o.get('post_id')}"
+        )
+    if not orders_text:
+        orders_text = " hich"
+
+    now = time.time()
+    pendings = [p for p in cloud._data.get("pending_likes", []) if p["expires"] > now]
+    pending_text = ""
+    for p in pendings:
+        remaining = int(p["expires"] - now)
+        pending_text += f"\n  user={p['worker_uid']} order={p['order_id']} ({remaining}s)"
+    if not pending_text:
+        pending_text = " hich"
+
+    msg = (
+        f"DEBUG\n\n"
+        f"Webhook: {wh_url[:50]}\n"
+        f"Reaction status: {wh_status}\n\n"
+        f"Reaction Orders:{orders_text}\n\n"
+        f"Pendings:{pending_text}"
+    )
+    await update.message.reply_text(msg)
+
 # ═══════════════════════════════════════════════════════════════
 #                  CALLBACK QUERY HANDLER
 # ═══════════════════════════════════════════════════════════════
@@ -926,32 +967,19 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         post_id = order.get("post_id")
         reaction_confirmed = False
 
-        if channel and post_id:
-            try:
-                # تلاش برای دریافت پیام و بررسی وجود reactions
-                # اگه ربات ادمین باشه می‌تونه این رو بخونه
-                msg = await q.get_bot().forward_message(
-                    chat_id=uid,
-                    from_chat_id=channel,
-                    message_id=int(post_id),
-                    disable_notification=True
-                )
-                # پیام رو حذف می‌کنیم چون فقط برای چک بود
-                try:
-                    await q.get_bot().delete_message(uid, msg.message_id)
-                except: pass
-                # اگه forward موفق بود، یعنی پست وجود داره
-                # حالا فقط به pending اعتماد می‌کنیم
-                reaction_confirmed = True
-                log.info(f"✅ Forward check passed for user={uid}, confirming pending reaction")
-            except Exception as e:
-                log.warning(f"Forward check failed: {e}")
-                # اگه forward نشد، احتمالاً مشکل دسترسی داریم
-                # به pending اعتماد می‌کنیم (کاربر 15 دقیقه صبر کرده)
-                time_elapsed = time.time() - pending["timestamp"]
-                if time_elapsed >= 30:  # حداقل 30 ثانیه گذشته باشه
-                    reaction_confirmed = True
-                    log.info(f"Trusting pending after {time_elapsed:.0f}s for user={uid}")
+        # ✅ اینجا هیچ fallback نداریم — فقط on_reaction می‌تونه تأیید کنه
+        # اگه message_reaction update رسیده باشه، تا اینجا is_task_done True شده
+        # و بالاتر چک شده و پاداش داده شده
+        # اگه اینجا رسیدیم یعنی reaction هنوز نرسیده
+        if cloud.is_task_done(order_id, uid):
+            cloud.remove_pending_like(order_id, uid)
+            cloud.save(force=True)
+            await q.answer(f"✅ پاداش دریافت شد!", show_alert=True)
+            await show_task_card(q, uid, cur_idx, ot)
+            return
+
+        # reaction هنوز از تلگرام نرسیده
+        reaction_confirmed = False
 
         if reaction_confirmed:
             ok, result = cloud.complete_order_unit(order_id, uid)
@@ -966,9 +994,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await q.answer(msg, show_alert=True)
         else:
             await q.answer(
-                "⏳ هنوز لایک تأیید نشده!\n\n"
-                "مطمئن شو که پست رو باز کردی و لایک زدی.\n"
-                "چند ثانیه صبر کن و دوباره امتحان کن.",
+                "⏳ لایک هنوز از تلگرام دریافت نشده!\n\n"
+                "مطمئن شو:\n"
+                "۱. ربات ادمین کانال هست\n"
+                "۲. لایک زدی (نه فقط پست رو باز کردی)\n"
+                "۳. چند ثانیه صبر کن و دوباره بزن",
                 show_alert=True
             )
         return
@@ -1522,6 +1552,7 @@ def main():
 
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("debug",  cmd_debug))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageReactionHandler(on_reaction))
     app.add_handler(MessageHandler(
