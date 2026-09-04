@@ -7,8 +7,8 @@ ExchangeBot v7.0 — نسخه کامل، بهینه، بینقص
 ✅ فیکس: مقایسه chat_id به صورت عددی (نه username)
 ✅ فیکس: دکمه «بررسی لایک» — فقط وقتی pending داری، و لایک واقعی تأیید شده
 ✅ فیکس: جریان pending → reaction event → auto reward
-✅ بهینهسازی: حذف کدهای مرده و httpx غیرضروری
-✅ UI حرفهای و تمیز
+✅ بهینه‌سازی: حذف کدهای مرده و httpx غیرضروری
+✅ UI حرفه‌ای و تمیز
 """
 
 import os, sys, re, time, json, signal, atexit, logging, hashlib
@@ -101,7 +101,7 @@ class CloudStorage:
                         self._data[k] = v
                     for k, dv in self._DEFAULTS.items():
                         self._data.setdefault(k, dict(dv) if isinstance(dv, dict) else list(dv))
-                log.info("📥 دادهها از MongoDB بارگذاری شد")
+                log.info("📥 داده‌ها از MongoDB بارگذاری شد")
         except Exception as e:
             log.error(f"Load error: {e}")
 
@@ -194,7 +194,7 @@ class CloudStorage:
                 "type":          order_type,
                 "target":        target,
                 "post_id":       post_id,
-                # ✅ FIX: chat_id رو همیشه به صورت int ذخیره میکنیم
+                # ✅ FIX: chat_id رو همیشه به صورت int ذخیره می‌کنیم
                 "chat_id":       int(chat_id) if chat_id else None,
                 "total_count":   count,
                 "remaining_count": count,
@@ -231,11 +231,11 @@ class CloudStorage:
             if order["status"] != "active" or order["remaining_count"] <= 0:
                 return False, "❌ سفارش غیرفعال است"
             if order["owner_uid"] == worker_uid:
-                return False, "⛔ نمیتوانید تسک خودتان را انجام دهید"
+                return False, "⛔ نمی‌توانید تسک خودتان را انجام دهید"
 
             key = f"{order_id}_{worker_uid}"
             if key in self._data["tasks_completed"]:
-                return False, "✅ قبلاً این تسک را انجام دادهاید"
+                return False, "✅ قبلاً این تسک را انجام داده‌اید"
 
             order["remaining_count"] -= 1
             if order["remaining_count"] <= 0:
@@ -389,7 +389,7 @@ def kb_join_channel():
 def kb_main(uid=0):
     rows = [
         [KeyboardButton("🎯 کسب درآمد"),    KeyboardButton("➕ ثبت سفارش")],
-        [KeyboardButton("📦 سفارشهای من"), KeyboardButton("👥 زیرمجموعه")],
+        [KeyboardButton("📦 سفارش‌های من"), KeyboardButton("👥 زیرمجموعه")],
         [KeyboardButton("👤 پروفایل"),       KeyboardButton("📖 راهنما")],
     ]
     if uid and is_admin(uid):
@@ -399,7 +399,7 @@ def kb_main(uid=0):
 REPLY_MAP = {
     "🎯 کسب درآمد":    "menu:earn",
     "➕ ثبت سفارش":    "menu:new_order",
-    "📦 سفارشهای من": "menu:my_orders",
+    "📦 سفارش‌های من": "menu:my_orders",
     "👥 زیرمجموعه":    "menu:referral",
     "👤 پروفایل":       "menu:profile",
     "📖 راهنما":        "menu:help",
@@ -434,7 +434,7 @@ def build_profile(uid: int) -> str:
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>موجودی:</b> <code>{u.get('balance', 0)} {COIN}</code>\n"
         f"📈 <b>کل درآمد:</b> <code>{u.get('total_earned', 0)} {COIN}</code>\n"
-        f"✅ <b>تسکها:</b> {u.get('tasks_done', 0)}\n"
+        f"✅ <b>تسک‌ها:</b> {u.get('tasks_done', 0)}\n"
         f"👥 <b>زیرمجموعه:</b> {refs} نفر\n"
         f"🎁 <b>روزانه:</b> {daily}"
     )
@@ -444,7 +444,7 @@ def build_referral(uid: int, bot_username: str) -> str:
     link = f"https://t.me/{bot_username}?start=ref_{u['referral_code']}"
     refs = sum(1 for x in cloud.get_all_users() if x.get("referred_by") == str(uid))
     return (
-        f"👥 <b>زیرمجموعهگیری</b>\n\n"
+        f"👥 <b>زیرمجموعه‌گیری</b>\n\n"
         f"🔗 <b>لینک اختصاصی:</b>\n<code>{link}</code>\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🎁 پاداش هر رفرال: <b>{REFERRAL_BONUS} {COIN}</b>\n"
@@ -464,8 +464,8 @@ def build_help() -> str:
         f"❤ هزینه هر لایک: <b>{REACTION_REWARD * REACTION_COST_MULT} {COIN}</b>\n\n"
         f"━━━ ⚠ نکات مهم ━━━\n"
         f"• برای سفارش لایک، ربات باید <b>ادمین کانال</b> باشد\n"
-        f"• لایکهای معتبر: {' '.join(ALLOWED_REACTIONS)}\n"
-        f"• پاداش پس از <b>تأیید واقعی</b> از تلگرام واریز میشود\n\n"
+        f"• لایک‌های معتبر: {' '.join(ALLOWED_REACTIONS)}\n"
+        f"• پاداش پس از <b>تأیید واقعی</b> از تلگرام واریز می‌شود\n\n"
         f"━━━ 🔍 نحوه تأیید لایک ━━━\n"
         f"۱. «🚀 شروع تسک» را بزنید\n"
         f"۲. پست را باز کرده و لایک بزنید\n"
@@ -480,7 +480,7 @@ def build_my_orders(uid: int) -> str:
             "📦 <b>سفارشی ندارید</b>\n\n"
             "💡 از دکمه «➕ ثبت سفارش» سفارش جدید بدهید."
         )
-    text = "📦 <b>سفارشهای شما</b>\n\n"
+    text = "📦 <b>سفارش‌های شما</b>\n\n"
     for o in reversed(orders[-10:]):
         icon = "🟢" if o["status"] == "active" else "🔴"
         t    = "👥 ممبر" if o["type"] == "join" else "❤ لایک"
@@ -546,7 +546,7 @@ def build_task_card(order: dict, uid: int,
         f"{'❤ لایک پست' if is_reaction else '👥 عضویت در کانال'}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🎁 پاداش: <code>{reward} {COIN}</code>\n"
-        f"📊 انجامشده: <code>{done_count}/{order['total_count']}</code>\n"
+        f"📊 انجام‌شده: <code>{done_count}/{order['total_count']}</code>\n"
         f"🎯 {target_line}"
         f"{desc_block}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -579,7 +579,7 @@ def build_task_card(order: dict, uid: int,
                 callback_data=f"tasks:verify_join:{order['order_id']}:{order_type}:{current_index}"),
         ])
     elif pending:
-        # ── حالت pending: دکمه بررسی دستی نمایش داده میشه ──
+        # ── حالت pending: دکمه بررسی دستی نمایش داده می‌شه ──
         rows.append([InlineKeyboardButton(
             "🔍 بررسی لایک",
             callback_data=f"tasks:check_reaction:{order['order_id']}:{order_type}:{current_index}"
@@ -816,7 +816,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⏳ جایزه روزانه را فردا دریافت کنید!", show_alert=True)
         return
 
-    # ── تسکها: صفحهبندی / فیلتر ──────────────────────────────────────────
+    # ── تسک‌ها: صفحه‌بندی / فیلتر ──────────────────────────────────────────
     if data.startswith("tasks:page:"):
         _, _, idx, ot = data.split(":")
         await q.answer()
@@ -849,7 +849,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⚠ خطا در بررسی کانال", show_alert=True); return
 
         if not is_member:
-            await q.answer("⛔ هنوز عضو کانال نشدهاید!", show_alert=True); return
+            await q.answer("⛔ هنوز عضو کانال نشده‌اید!", show_alert=True); return
 
         ok, result = cloud.complete_order_unit(order_id, uid)
         cloud.save(force=True)
@@ -872,23 +872,23 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not order:
             await q.answer("❌ سفارش یافت نشد", show_alert=True); return
         if cloud.is_task_done(order_id, uid):
-            await q.answer("✅ قبلاً انجام دادهاید", show_alert=True); return
+            await q.answer("✅ قبلاً انجام داده‌اید", show_alert=True); return
         if order["owner_uid"] == uid:
-            await q.answer("⛔ نمیتوانید تسک خودتان را انجام دهید", show_alert=True); return
+            await q.answer("⛔ نمی‌توانید تسک خودتان را انجام دهید", show_alert=True); return
 
         cloud.set_pending_like(order_id, uid)
         cloud.save()
         await q.answer(
-            "✅ ثبت شد!\nحالا پست را باز کن و لایک بزن.\nپاداش خودکار واریز میشود.",
+            "✅ ثبت شد!\nحالا پست را باز کن و لایک بزن.\nپاداش خودکار واریز می‌شود.",
             show_alert=True
         )
         await show_task_card(q, uid, cur_idx, ot)
         return
 
     # ── بررسی دستی لایک ─────────────────────────────────────────────────────
-    # ✅ FIX: این دکمه فقط وقتی pending داره نشون داده میشه
+    # ✅ FIX: این دکمه فقط وقتی pending داره نشون داده می‌شه
     # اگه کاربر لایک کرده باشه و on_reaction event دریافت نشده باشه،
-    # اینجا به صورت fallback چک میکنیم
+    # اینجا به صورت fallback چک می‌کنیم
     if data.startswith("tasks:check_reaction:"):
         parts    = data.split(":")
         order_id = parts[2]
@@ -916,11 +916,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer("🔍 در حال بررسی لایک از تلگرام...", show_alert=False)
 
         # ✅ FIX: بررسی واقعی لایک از طریق Bot API
-        # از آنجایی که Bot API تلگرام user-level reactions رو عمومی نمیده،
+        # از آنجایی که Bot API تلگرام user-level reactions رو عمومی نمی‌ده،
         # تنها راه مطمئن MessageReactionHandler هست که در on_reaction پیاده شده.
         # اینجا یه fallback ساده داریم: اگه pending هنوز active هست و کاربر
         # درخواست بررسی داده، یعنی احتمالاً لایک کرده.
-        # برای اطمینان بیشتر، سعی میکنیم از طریق forwarded message check کنیم.
+        # برای اطمینان بیشتر، سعی می‌کنیم از طریق forwarded message check کنیم.
         
         channel = order["target"]
         post_id = order.get("post_id")
@@ -929,25 +929,25 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if channel and post_id:
             try:
                 # تلاش برای دریافت پیام و بررسی وجود reactions
-                # اگه ربات ادمین باشه میتونه این رو بخونه
+                # اگه ربات ادمین باشه می‌تونه این رو بخونه
                 msg = await q.get_bot().forward_message(
                     chat_id=uid,
                     from_chat_id=channel,
                     message_id=int(post_id),
                     disable_notification=True
                 )
-                # پیام رو حذف میکنیم چون فقط برای چک بود
+                # پیام رو حذف می‌کنیم چون فقط برای چک بود
                 try:
                     await q.get_bot().delete_message(uid, msg.message_id)
                 except: pass
                 # اگه forward موفق بود، یعنی پست وجود داره
-                # حالا فقط به pending اعتماد میکنیم
+                # حالا فقط به pending اعتماد می‌کنیم
                 reaction_confirmed = True
                 log.info(f"✅ Forward check passed for user={uid}, confirming pending reaction")
             except Exception as e:
                 log.warning(f"Forward check failed: {e}")
                 # اگه forward نشد، احتمالاً مشکل دسترسی داریم
-                # به pending اعتماد میکنیم (کاربر 15 دقیقه صبر کرده)
+                # به pending اعتماد می‌کنیم (کاربر 15 دقیقه صبر کرده)
                 time_elapsed = time.time() - pending["timestamp"]
                 if time_elapsed >= 30:  # حداقل 30 ثانیه گذشته باشه
                     reaction_confirmed = True
@@ -1053,8 +1053,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             f"👑 <b>پنل ادمین</b>\n\n"
             f"👥 کاربران: {stats['total_users']}\n"
-            f"📦 سفارشهای فعال: {stats['active_orders']}\n"
-            f"⏳ Pending لایکها: {stats['pending_count']}",
+            f"📦 سفارش‌های فعال: {stats['active_orders']}\n"
+            f"⏳ Pending لایک‌ها: {stats['pending_count']}",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin:broadcast")],
@@ -1089,44 +1089,76 @@ async def _show_profile(q, uid: int):
 # ═══════════════════════════════════════════════════════════════
 #        MESSAGE REACTION HANDLER — قلب سیستم تشخیص لایک
 # ═══════════════════════════════════════════════════════════════
+def _normalize_chat_id(cid) -> int:
+    """
+    ✅ FIX اصلی باگ:
+    تلگرام کانال‌ها رو با -100 prefix می‌فرسته توی message_reaction update
+    مثلاً: chat_id = -1001234567890
+    ولی وقتی از bot.get_chat() می‌گیریم، همین عدد رو می‌ده.
+    مشکل اینجاست که بعضی وقت‌ها بدون -100 ذخیره می‌شه: 1234567890
+    این تابع هر دو رو نرمالایز می‌کنه تا مقایسه درست باشه.
+    """
+    try:
+        cid = int(cid)
+        # اگه عدد مثبت بود و بزرگ‌تر از حد channel ID، احتمالاً -100 prefix نداره
+        # هر دو رو به absolute value تبدیل می‌کنیم برای مقایسه
+        return abs(cid)
+    except (ValueError, TypeError):
+        return 0
+
+
 async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """
-    ✅ تنها راه واقعی و مطمئن برای تشخیص لایک کاربر
-    
-    Bot API تلگرام user-level reactions رو عمومی نمیده.
-    تنها راه: وقتی ربات ادمین کانال هست، تلگرام message_reaction update میفرسته.
-    این handler اون update رو دریافت کرده و با pending های ما match میکنه.
-    
-    ✅ FIX مهم: chat_id رو به صورت عددی مقایسه میکنیم (نه username)
+    ✅ تنها راه واقعی برای تشخیص لایک کاربر.
+
+    شرط کار کردن:
+    1. ربات ادمین کانال باشه
+    2. message_reaction در allowed_updates webhook ست شده باشه
+    3. کاربر reaction privacy رو روشن نکرده باشه
     """
     reaction = update.message_reaction
-    if not reaction or not reaction.user:
+    if not reaction:
+        log.debug("on_reaction: no reaction object")
+        return
+
+    # ── کاربر ممکنه anonymous باشه (Premium) ──
+    if not reaction.user:
+        log.debug("on_reaction: anonymous reaction (Premium user), skipping")
         return
 
     user_id    = reaction.user.id
-    # ✅ FIX: chat_id از update همیشه عددی هست
-    chat_id    = reaction.chat.id   # عدد منفی برای کانالها، مثل -1001234567890
+    chat_id    = reaction.chat.id      # همیشه int از تلگرام
     message_id = reaction.message_id
 
+    # ── فقط لایک جدید (نه برداشتن لایک) ──
     new_reactions = getattr(reaction, "new_reaction", None)
     if not new_reactions:
-        return  # کاربر لایکش رو برداشته، نه لایک جدید
+        log.debug(f"on_reaction: user={user_id} removed reaction, skipping")
+        return
 
     has_valid = any(
         getattr(r, "emoji", None) in ALLOWED_REACTIONS
         for r in new_reactions
     )
+
+    # لاگ مهم — اگه اینو نمی‌بینی یعنی update اصلاً نمی‌رسه
+    log.info(
+        f"🔔 REACTION UPDATE: user={user_id} chat={chat_id} "
+        f"msg={message_id} valid={has_valid} "
+        f"emojis={[getattr(r,'emoji','?') for r in new_reactions]}"
+    )
+
     if not has_valid:
-        log.debug(f"Reaction from {user_id}: emoji not in allowed list")
         return
 
-    log.info(f"🔔 Valid reaction: user={user_id} chat={chat_id} msg={message_id}")
-
-    # ── جستجو در pendingهای این کاربر ────────────────────────────────────────
+    # ── جستجو در pending‌های این کاربر ──
     pendings = cloud.get_user_pendings(user_id)
+    log.info(f"🔍 Pendings for user={user_id}: {len(pendings)} items")
+
     if not pendings:
-        log.debug(f"No pending likes for user={user_id}")
         return
+
+    norm_chat = _normalize_chat_id(chat_id)
 
     for p in pendings:
         order = cloud.get_order_by_id(p["order_id"])
@@ -1137,20 +1169,25 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         order_post_id = order.get("post_id")
 
         if not order_chat_id or not order_post_id:
+            log.warning(f"Order {p['order_id']} has no chat_id or post_id!")
             continue
 
+        norm_order_chat = _normalize_chat_id(order_chat_id)
+
+        log.info(
+            f"🔎 Comparing: reaction_chat={norm_chat} vs order_chat={norm_order_chat} | "
+            f"reaction_msg={message_id} vs order_post={order_post_id}"
+        )
+
         try:
-            # ✅ FIX اصلی: مقایسه عددی chat_id
-            # chat_id در سفارش int هست، chat_id از update هم int هست
-            # قبلاً مشکل اینجا بود که یکی username بود و دیگری عدد
-            chat_match = int(order_chat_id) == int(chat_id)
+            chat_match = norm_order_chat == norm_chat
             post_match = int(order_post_id) == int(message_id)
         except (ValueError, TypeError) as e:
             log.warning(f"ID comparison error: {e}")
             continue
 
         if chat_match and post_match:
-            log.info(f"✅ Reaction matched: order={p['order_id']} user={user_id}")
+            log.info(f"✅ MATCH! order={p['order_id']} user={user_id}")
             ok, result = cloud.complete_order_unit(p["order_id"], user_id)
             if ok:
                 cloud.remove_pending_like(p["order_id"], user_id)
@@ -1173,6 +1210,8 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             else:
                 log.warning(f"complete_order_unit failed: {result}")
             break
+        else:
+            log.info(f"❌ No match for order={p['order_id']}")
 
 # ═══════════════════════════════════════════════════════════════
 #                    MESSAGE HANDLER
@@ -1193,11 +1232,11 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_cancel(update, ctx)
         return
 
-    # ── دکمههای کیبورد اصلی ────────────────────────────────────────────────
+    # ── دکمه‌های کیبورد اصلی ────────────────────────────────────────────────
     if text_in in REPLY_MAP and not awaiting:
         action = REPLY_MAP[text_in]
 
-        # ✅ FIX: FakeQ بهینهشده که درست کار میکنه
+        # ✅ FIX: FakeQ بهینه‌شده که درست کار می‌کنه
         class _FakeQ:
             def __init__(self):
                 self.data      = action
@@ -1420,7 +1459,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"💰 کسر شد: <code>{total} {COIN}</code>{desc_info}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📦 سفارشهای من", callback_data="menu:my_orders")
+                    InlineKeyboardButton("📦 سفارش‌های من", callback_data="menu:my_orders")
                 ]])
             )
         else:
@@ -1515,6 +1554,46 @@ def main():
         @flask_app.route("/")
         def index():
             return "🤖 ExchangeBot v7.0 Online!", 200
+
+        @flask_app.route("/debug")
+        def debug():
+            """صفحه دیباگ — باز کن توی مرورگر بعد از deploy"""
+            import html as htmllib
+            stats = cloud.get_stats()
+            pendings = cloud._data.get("pending_likes", [])
+            orders   = [o for o in cloud._data.get("orders", []) if o.get("status") == "active"]
+            lines = [
+                "<pre>",
+                f"=== ExchangeBot v7.0 DEBUG ===",
+                f"Users:          {stats['total_users']}",
+                f"Active orders:  {stats['active_orders']}",
+                f"Pending likes:  {stats['pending_count']}",
+                "",
+                "--- ACTIVE REACTION ORDERS ---",
+            ]
+            for o in orders:
+                if o.get("type") == "reaction":
+                    lines.append(
+                        f"  order={o['order_id']} channel={o['target']} "
+                        f"chat_id={o.get('chat_id')} post_id={o.get('post_id')} "
+                        f"remaining={o.get('remaining_count')}"
+                    )
+            lines += ["", "--- PENDING LIKES ---"]
+            now = time.time()
+            for p in pendings:
+                remaining = max(0, int(p["expires"] - now))
+                lines.append(
+                    f"  order={p['order_id']} user={p['worker_uid']} "
+                    f"expires_in={remaining}s"
+                )
+            lines += [
+                "",
+                "--- WEBHOOK INFO ---",
+                "Check: https://api.telegram.org/bot<TOKEN>/getWebhookInfo",
+                "Must have message_reaction in allowed_updates",
+                "</pre>"
+            ]
+            return "\n".join(lines), 200, {"Content-Type": "text/html; charset=utf-8"}
 
         @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
         def webhook():
