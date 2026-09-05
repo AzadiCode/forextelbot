@@ -11,7 +11,7 @@ ExchangeBot v7.0 — نسخه کامل، بهینه، بینقص
 ✅ UI حرفه‌ای و تمیز
 """
 
-import os, sys, re, time, json, signal, atexit, logging, hashlib
+import os, sys, re, time, json, signal, atexit, logging, hashlib, unicodedata
 import asyncio, threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
@@ -1119,6 +1119,21 @@ async def _show_profile(q, uid: int):
 # ═══════════════════════════════════════════════════════════════
 #        MESSAGE REACTION HANDLER — قلب سیستم تشخیص لایک
 # ═══════════════════════════════════════════════════════════════
+
+def _normalize_emoji(emoji_str: str) -> str:
+    """
+    ✅ FIX باگ Variation Selector:
+    تلگرام گاهی ایموجی‌ها را با کاراکتر نامرئی (U+FE0F) می‌فرستد.
+    مثلاً شما "❤" دارید ولی تلگرام "❤️" می‌فرستد و پایتون این دو را نابرابر می‌داند.
+    این تابع کاراکترهای نامرئی را حذف می‌کند.
+    """
+    if not emoji_str:
+        return ""
+    # حذف تمام Variation Selectors (U+FE00 to U+FE0F)
+    cleaned = re.sub(r'[\ufe00-\ufe0f]', '', emoji_str)
+    return unicodedata.normalize('NFC', cleaned)
+
+
 def _normalize_chat_id(cid) -> int:
     """
     ✅ FIX اصلی باگ:
@@ -1139,53 +1154,61 @@ def _normalize_chat_id(cid) -> int:
 
 async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """
-    ✅ تنها راه واقعی برای تشخیص لایک کاربر.
-
-    شرط کار کردن:
-    1. ربات ادمین کانال باشه
-    2. message_reaction در allowed_updates webhook ست شده باشه
-    3. کاربر reaction privacy رو روشن نکرده باشه
+    ✅ تنها راه واقعی برای تشخیص لایک کاربر (نسخه فیکس شده)
     """
     reaction = update.message_reaction
     if not reaction:
-        log.debug("on_reaction: no reaction object")
         return
 
-    # ── کاربر ممکنه anonymous باشه (Premium) ──
-    if not reaction.user:
-        log.debug("on_reaction: anonymous reaction (Premium user), skipping")
-        return
-
-    user_id    = reaction.user.id
-    chat_id    = reaction.chat.id      # همیشه int از تلگرام
+    chat_id    = reaction.chat.id
     message_id = reaction.message_id
 
-    # ── فقط لایک جدید (نه برداشتن لایک) ──
-    new_reactions = getattr(reaction, "new_reaction", None)
-    if not new_reactions:
-        log.debug(f"on_reaction: user={user_id} removed reaction, skipping")
+    # ── ۱. بررسی کاربر (ممکن است به دلیل Privacy مخفی باشد) ──
+    if not reaction.user:
+        # اگر کاربر تنظیمات حریم خصوصی را روشن کرده باشد، user None است.
+        # تلگرام اجازه نمی‌دهد بفهمیم چه کسی ریکشن گذاشته، پس نمی‌توانیم پاداش دهیم.
+        log.warning(
+            f"⚠️ ریکشن ناشناس (Privacy/Anonymous) در چت {chat_id} پیام {message_id} دریافت شد. "
+            f"به دلیل محدودیت تلگرام، امکان پرداخت پاداش وجود ندارد."
+        )
         return
 
-    has_valid = any(
-        getattr(r, "emoji", None) in ALLOWED_REACTIONS
-        for r in new_reactions
-    )
+    user_id = reaction.user.id
 
-    # لاگ مهم — اگه اینو نمی‌بینی یعنی update اصلاً نمی‌رسه
+    # ── ۲. فقط لایک جدید (نه برداشتن لایک) ──
+    new_reactions = getattr(reaction, "new_reaction", None)
+    if not new_reactions:
+        log.debug(f"کاربر {user_id} ریکشن خود را حذف کرد یا تغییر نداد.")
+        return
+
+    # ── ۳. بررسی اعتبار ایموجی (با فیکس باگ Variation Selector) ──
+    # یک بار لیست مجاز را نرمال می‌کنیم
+    normalized_allowed = {_normalize_emoji(e) for e in ALLOWED_REACTIONS}
+    
+    has_valid = False
+    for r in new_reactions:
+        raw_emoji = getattr(r, "emoji", None)
+        if raw_emoji and _normalize_emoji(raw_emoji) in normalized_allowed:
+            has_valid = True
+            break
+
+    # لاگ حیاتی برای دیباگ
+    raw_emojis = [getattr(r, 'emoji', '?') for r in new_reactions]
     log.info(
-        f"🔔 REACTION UPDATE: user={user_id} chat={chat_id} "
-        f"msg={message_id} valid={has_valid} "
-        f"emojis={[getattr(r,'emoji','?') for r in new_reactions]}"
+        f"🔔 REACTION UPDATE: user={user_id} chat={chat_id} msg={message_id} "
+        f"valid={has_valid} emojis={raw_emojis}"
     )
 
     if not has_valid:
+        log.info(f"❌ ایموجی استفاده شده در لیست ALLOWED_REACTIONS نیست.")
         return
 
-    # ── جستجو در pending‌های این کاربر ──
+    # ── ۴. جستجو در pending‌های این کاربر ──
     pendings = cloud.get_user_pendings(user_id)
     log.info(f"🔍 Pendings for user={user_id}: {len(pendings)} items")
 
     if not pendings:
+        log.info(f"⚠️ کاربر {user_id} هیچ pending active ندارد.")
         return
 
     norm_chat = _normalize_chat_id(chat_id)
@@ -1241,8 +1264,7 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 log.warning(f"complete_order_unit failed: {result}")
             break
         else:
-            log.info(f"❌ No match for order={p['order_id']}")
-
+            log.debug(f"❌ No match for order={p['order_id']}")
 # ═══════════════════════════════════════════════════════════════
 #                    MESSAGE HANDLER
 # ═══════════════════════════════════════════════════════════════
