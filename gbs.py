@@ -76,7 +76,7 @@ log = logging.getLogger("GramSaz")
 # ════════════════════════════════════════════════════════════════════
 # تنظیمات و ثابت‌ها
 # ════════════════════════════════════════════════════════════════════
-PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "6320100564:AAHamW0EGJTmIf9k9Jqqimk2U7qDDfnsgzw").strip()
+PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "8911189546:AAHJDYtsNZmc-UGi6PH2AYIMF1ePS-Q0Y14").strip()
 MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")  # خالی = polling
 PORT = int(os.getenv("PORT", "10000"))
