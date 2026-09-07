@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ExchangeBot v7.0 — نسخه کامل، بهینه، بینقص
+ExchangeBot v8.0 — نسخه امن‌تر + رابط کاربری تمیزتر
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ فیکس اصلی: تشخیص لایک از طریق MessageReactionHandler (تنها راه واقعی)
-✅ فیکس: مقایسه chat_id به صورت عددی (نه username)
-✅ فیکس: دکمه «بررسی لایک» — فقط وقتی pending داری، و لایک واقعی تأیید شده
-✅ فیکس: جریان pending → reaction event → auto reward
-✅ بهینه‌سازی: حذف کدهای مرده و httpx غیرضروری
-✅ UI حرفه‌ای و تمیز
+تغییرات نسبت به v7.0:
+
+✅ سیستم جدید تأیید لایک برای «کانال» (Quota-Pool مبتنی بر message_reaction_count):
+   - چون تلگرام هیچ‌وقت مشخص نمی‌کند «کدام کاربر» به پست کانال لایک زده
+     (ریکشن‌های کانال ذاتاً ناشناس‌اند)، امکان اثبات هویت فرد به فرد وجود ندارد.
+   - به‌جای آن، مجموع واقعی لایک‌های جدید روی پست (از لحظه‌ی baseline) را
+     ردیابی می‌کنیم و پاداش فقط به اندازه‌ی همان تعداد واقعی، و فقط یک واحد
+     در هر بار، پرداخت می‌شود. یعنی هیچ‌وقت پاداش بیشتر از لایک واقعی رخ‌داده
+     پرداخت نمی‌شود (سقف اقتصادی امن) — حتی اگر ندانیم دقیقاً چه کسی لایک زده.
+   - baseline فقط از اولین رویداد message_reaction_count بعد از ثبت سفارش
+     برداشته می‌شود (نه صفر فرضی)، تا لایک‌های قدیمیِ از قبل موجود روی پست
+     هرگز به‌عنوان پاداشِ رایگان قابل برداشت نباشند.
+✅ برای «سوپرگروه‌ها» چون تلگرام واقعاً می‌داند چه کسی لایک زده، همان مکانیزم
+   دقیق قبلی (MessageReactionHandler روی message_reaction) حفظ شده.
+✅ کیبورد اصلی حالا کشویی است (is_persistent=False) نه همیشه باز.
+✅ دکمه‌های بی‌کاربرد (نشانگر noop صفحه، فلش‌های غیرفعال ⏮/⏭) حذف شدند؛
+   شماره صفحه داخل متن کارت نمایش داده می‌شود.
+✅ پالایش ظاهری/متنی برای حرفه‌ای‌تر شدن UI.
 """
 
 import os, sys, re, time, json, signal, atexit, logging, hashlib, unicodedata
@@ -53,8 +65,24 @@ IRAN_TZ            = timezone(timedelta(hours=3, minutes=30))
 PENDING_TIMEOUT    = 900   # 15 دقیقه
 MAX_DESC_LENGTH    = 200
 
+# ✅ حداقل زمان انتظار بعد از «شروع تسک» قبل از فعال‌شدن دکمه «بررسی»
+#    (چون آپدیت message_reaction_count تلگرام ممکن است تا چند دقیقه تأخیر داشته باشد)
+MIN_REACTION_WAIT_SECONDS = 20
+
 def now_ir():    return datetime.now(IRAN_TZ)
 def is_admin(u): return u in ADMIN_IDS
+
+def _normalize_emoji(emoji_str: str) -> str:
+    if not emoji_str:
+        return ""
+    cleaned = re.sub(r'[\ufe00-\ufe0f]', '', emoji_str)
+    return unicodedata.normalize('NFC', cleaned)
+
+def _normalize_chat_id(cid) -> int:
+    try:
+        return abs(int(cid))
+    except (ValueError, TypeError):
+        return 0
 
 # ═══════════════════════════════════════════════════════════════
 #                       CLOUD STORAGE
@@ -183,7 +211,7 @@ class CloudStorage:
 
     # ── orders ───────────────────────────────────────────────────────────────
     def create_order(self, uid, order_type, target, count, cost_per,
-                     post_id=None, chat_id=None, description="") -> Optional[dict]:
+                     post_id=None, chat_id=None, description="", chat_type=None) -> Optional[dict]:
         total = cost_per * count
         if not self.deduct_coin(uid, total, f"create_{order_type}"): return None
         order_id = hashlib.md5(f"{uid}{target}{time.time()}".encode()).hexdigest()[:12]
@@ -194,18 +222,22 @@ class CloudStorage:
                 "type":          order_type,
                 "target":        target,
                 "post_id":       post_id,
-                # ✅ FIX: chat_id رو همیشه به صورت int ذخیره می‌کنیم
                 "chat_id":       int(chat_id) if chat_id else None,
+                "chat_type":     chat_type,        # "channel" | "supergroup" | None
                 "total_count":   count,
                 "remaining_count": count,
                 "cost_per_unit": cost_per,
                 "description":   description[:MAX_DESC_LENGTH],
                 "created_at":    now_ir().isoformat(),
-                "status":        "active"
+                "status":        "active",
+                # ── فیلدهای مخصوص سیستم Quota-Pool (فقط برای reaction روی کانال) ──
+                "reaction_baseline":   None,   # مجموع لایک‌های مجاز در لحظه‌ی اولین رویداد بعد از ثبت سفارش
+                "reaction_last_total": None,   # آخرین مجموع دریافتی از تلگرام
+                "quota_claimed":       0,      # چند واحد از quota تا الان مصرف شده
             }
             self._data["orders"].append(order)
             self._dirty = True
-            log.info(f"✅ Order {order_id}: type={order_type} chat={chat_id} post={post_id}")
+            log.info(f"✅ Order {order_id}: type={order_type} chat={chat_id}({chat_type}) post={post_id}")
             return dict(order)
 
     def get_active_orders(self, order_type=None) -> List[dict]:
@@ -293,7 +325,6 @@ class CloudStorage:
             self._dirty = True
 
     def get_user_pendings(self, worker_uid: int) -> List[dict]:
-        """همه pending های یک کاربر که هنوز expire نشده"""
         now = time.time()
         with self._lock:
             return [p for p in self._data["pending_likes"]
@@ -308,6 +339,66 @@ class CloudStorage:
             ]
             if len(self._data["pending_likes"]) < before:
                 self._dirty = True
+
+    # ── Quota-Pool برای لایک کانال (امن، بدون تشخیص فردی) ───────────────────
+    def update_reaction_totals(self, chat_id, message_id, total: int):
+        """
+        هر بار آپدیت message_reaction_count از تلگرام می‌رسد، این تابع
+        مجموع فعلی ریکشن‌های مجاز روی آن پست را برای سفارش‌های مرتبط ثبت می‌کند.
+        ✅ نکته امنیتی: baseline فقط از *اولین* رویدادی که بعد از ساخته‌شدن
+        سفارش می‌رسد گرفته می‌شود — یعنی لایک‌های از‌قبل‌موجود روی پست
+        هرگز به‌عنوان quota قابل‌برداشت حساب نمی‌شوند.
+        """
+        norm_chat = _normalize_chat_id(chat_id)
+        with self._lock:
+            for o in self._data["orders"]:
+                if o.get("type") != "reaction": continue
+                if o.get("chat_type") != "channel": continue
+                if _normalize_chat_id(o.get("chat_id")) != norm_chat: continue
+                try:
+                    if int(o.get("post_id", -1)) != int(message_id): continue
+                except (ValueError, TypeError):
+                    continue
+
+                if o.get("reaction_baseline") is None:
+                    o["reaction_baseline"] = total
+                    log.info(f"📌 Baseline ثبت شد برای order={o['order_id']}: {total}")
+                o["reaction_last_total"] = total
+                self._dirty = True
+
+    def _available_quota_locked(self, order: dict) -> int:
+        if order.get("reaction_baseline") is None:
+            return 0
+        base    = order["reaction_baseline"]
+        total   = order.get("reaction_last_total", base)
+        claimed = order.get("quota_claimed", 0)
+        return max(0, (total - base) - claimed)
+
+    def get_available_quota(self, order_id: str) -> int:
+        with self._lock:
+            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
+            if not order: return 0
+            return self._available_quota_locked(order)
+
+    def has_reaction_baseline(self, order_id: str) -> bool:
+        with self._lock:
+            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
+            return bool(order and order.get("reaction_baseline") is not None)
+
+    def claim_quota_unit(self, order_id: str) -> bool:
+        """
+        مصرف اتمیک یک واحد از quota. اگر واحد واقعی موجود نبود، False برمی‌گردد
+        و هیچ پاداشی پرداخت نمی‌شود — این تنها نقطه‌ای است که تصمیم پرداخت
+        برای لایک کانال گرفته می‌شود، پس هرگز نباید بدون عبور از این تابع
+        به complete_order_unit برای سفارش‌های نوع کانال رسید.
+        """
+        with self._lock:
+            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
+            if not order: return False
+            if self._available_quota_locked(order) < 1: return False
+            order["quota_claimed"] = order.get("quota_claimed", 0) + 1
+            self._dirty = True
+            return True
 
     # ── daily & referral ─────────────────────────────────────────────────────
     def can_claim_daily(self, uid: int) -> bool:
@@ -394,7 +485,9 @@ def kb_main(uid=0):
     ]
     if uid and is_admin(uid):
         rows.append([KeyboardButton("👑 پنل ادمین")])
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
+    # ✅ کشویی: is_persistent=False یعنی کیبورد همیشه باز نمی‌ماند و از طریق
+    # آیکون کنار پیام قابل باز/بسته‌شدن است.
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=False)
 
 REPLY_MAP = {
     "🎯 کسب درآمد":    "menu:earn",
@@ -413,12 +506,13 @@ def build_welcome(uid: int) -> str:
     u   = cloud.get_user(uid)
     bal = u.get("balance", 0) if u else 0
     return (
-        f"👋 <b>سلام به ExchangeBot!</b>\n\n"
-        f"💰 موجودی شما: <code>{bal} {COIN}</code>\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 <b>کسب درآمد</b> — عضویت و لایک\n"
-        f"➕ <b>سفارش</b> — برای کانال خودت\n"
-        f"👥 <b>رفرال</b> — {REFERRAL_BONUS} {COIN} به ازای هر نفر"
+        f"✨ <b>به ExchangeBot خوش آمدید</b>\n"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"💰 موجودی شما: <code>{bal:,} {COIN}</code>\n\n"
+        f"🎯 <b>کسب درآمد</b> — با عضویت و لایک، سکه جمع کن\n"
+        f"➕ <b>ثبت سفارش</b> — رشد کانال یا پست خودت\n"
+        f"👥 <b>زیرمجموعه</b> — {REFERRAL_BONUS} {COIN} به ازای هر دعوت\n\n"
+        f"از منوی پایین شروع کن 👇"
     )
 
 def build_profile(uid: int) -> str:
@@ -428,15 +522,15 @@ def build_profile(uid: int) -> str:
     daily = "✅ قابل دریافت" if cloud.can_claim_daily(uid) else "⏳ فردا"
     name  = u.get("full_name") or f"@{u.get('username')}" or "—"
     return (
-        f"👤 <b>پروفایل</b>\n\n"
-        f"📛 <b>نام:</b> {name}\n"
-        f"🆔 <b>شناسه:</b> <code>{uid}</code>\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 <b>موجودی:</b> <code>{u.get('balance', 0)} {COIN}</code>\n"
-        f"📈 <b>کل درآمد:</b> <code>{u.get('total_earned', 0)} {COIN}</code>\n"
-        f"✅ <b>تسک‌ها:</b> {u.get('tasks_done', 0)}\n"
-        f"👥 <b>زیرمجموعه:</b> {refs} نفر\n"
-        f"🎁 <b>روزانه:</b> {daily}"
+        f"👤 <b>پروفایل شما</b>\n"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"📛 نام: <b>{name}</b>\n"
+        f"🆔 شناسه: <code>{uid}</code>\n\n"
+        f"💰 موجودی: <code>{u.get('balance', 0):,} {COIN}</code>\n"
+        f"📈 کل درآمد: <code>{u.get('total_earned', 0):,} {COIN}</code>\n"
+        f"✅ تسک‌های انجام‌شده: <b>{u.get('tasks_done', 0)}</b>\n"
+        f"👥 زیرمجموعه: <b>{refs} نفر</b>\n"
+        f"🎁 جایزه روزانه: {daily}"
     )
 
 def build_referral(uid: int, bot_username: str) -> str:
@@ -444,43 +538,45 @@ def build_referral(uid: int, bot_username: str) -> str:
     link = f"https://t.me/{bot_username}?start=ref_{u['referral_code']}"
     refs = sum(1 for x in cloud.get_all_users() if x.get("referred_by") == str(uid))
     return (
-        f"👥 <b>زیرمجموعه‌گیری</b>\n\n"
-        f"🔗 <b>لینک اختصاصی:</b>\n<code>{link}</code>\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🎁 پاداش هر رفرال: <b>{REFERRAL_BONUS} {COIN}</b>\n"
-        f"👥 تعداد زیرمجموعه: <b>{refs} نفر</b>"
+        f"👥 <b>زیرمجموعه‌گیری</b>\n"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"لینک اختصاصی خودت را برای دوستانت بفرست:\n"
+        f"<code>{link}</code>\n\n"
+        f"🎁 پاداش هر دعوت: <b>{REFERRAL_BONUS} {COIN}</b>\n"
+        f"👥 تعداد زیرمجموعه فعلی: <b>{refs} نفر</b>"
     )
 
 def build_help() -> str:
     return (
-        f"📖 <b>راهنمای ExchangeBot</b>\n\n"
-        f"━━━ 💰 کسب درآمد ━━━\n"
+        f"📖 <b>راهنمای ExchangeBot</b>\n"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"<b>💰 کسب درآمد</b>\n"
         f"👥 عضویت در کانال: <b>{JOIN_REWARD} {COIN}</b>\n"
         f"❤ لایک پست: <b>{REACTION_REWARD} {COIN}</b>\n"
         f"🎁 جایزه روزانه: <b>{DAILY_REWARD} {COIN}</b>\n"
-        f"👥 رفرال: <b>{REFERRAL_BONUS} {COIN}</b>\n\n"
-        f"━━━ 📦 ثبت سفارش ━━━\n"
+        f"👥 هر رفرال: <b>{REFERRAL_BONUS} {COIN}</b>\n\n"
+        f"<b>📦 ثبت سفارش</b>\n"
         f"👥 هزینه هر ممبر: <b>{JOIN_REWARD * JOIN_COST_MULT} {COIN}</b>\n"
         f"❤ هزینه هر لایک: <b>{REACTION_REWARD * REACTION_COST_MULT} {COIN}</b>\n\n"
-        f"━━━ ⚠ نکات مهم ━━━\n"
-        f"• برای سفارش لایک، ربات باید <b>ادمین کانال</b> باشد\n"
+        f"<b>⚠ نکات مهم</b>\n"
+        f"• برای سفارش لایک، ربات باید <b>ادمین کانال/گروه</b> باشد\n"
         f"• لایک‌های معتبر: {' '.join(ALLOWED_REACTIONS)}\n"
-        f"• پاداش پس از <b>تأیید واقعی</b> از تلگرام واریز می‌شود\n\n"
-        f"━━━ 🔍 نحوه تأیید لایک ━━━\n"
-        f"۱. «🚀 شروع تسک» را بزنید\n"
-        f"۲. پست را باز کرده و لایک بزنید\n"
-        f"۳. منتظر پاداش خودکار باشید\n"
-        f"   یا «🔍 بررسی لایک» را بزنید"
+        f"• پاداش فقط پس از تأیید واقعی از تلگرام واریز می‌شود\n\n"
+        f"<b>🔍 روند تأیید لایک</b>\n"
+        f"۱. «🚀 شروع تسک» را بزن\n"
+        f"۲. پست را باز کن و لایک بزن\n"
+        f"۳. حداقل {MIN_REACTION_WAIT_SECONDS} ثانیه صبر کن (تلگرام با کمی تأخیر خبر می‌دهد)\n"
+        f"۴. «🔍 بررسی لایک» را بزن یا منتظر پیام خودکار بمان"
     )
 
 def build_my_orders(uid: int) -> str:
     orders = cloud.get_user_orders(uid)
     if not orders:
         return (
-            "📦 <b>سفارشی ندارید</b>\n\n"
-            "💡 از دکمه «➕ ثبت سفارش» سفارش جدید بدهید."
+            "📦 <b>سفارشی ثبت نکرده‌اید</b>\n\n"
+            "💡 از دکمه «➕ ثبت سفارش» یک سفارش جدید بسازید."
         )
-    text = "📦 <b>سفارش‌های شما</b>\n\n"
+    text = "📦 <b>سفارش‌های شما</b>\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
     for o in reversed(orders[-10:]):
         icon = "🟢" if o["status"] == "active" else "🔴"
         t    = "👥 ممبر" if o["type"] == "join" else "❤ لایک"
@@ -502,6 +598,7 @@ def build_task_card(order: dict, uid: int,
     done_count   = order["total_count"] - order["remaining_count"]
     already_done = cloud.is_task_done(order["order_id"], uid)
     pending      = cloud.get_pending_like(order["order_id"], uid) if is_reaction else None
+    chat_type    = order.get("chat_type") or "channel"
 
     if is_reaction:
         post_id    = order.get("post_id", "")
@@ -517,26 +614,41 @@ def build_task_card(order: dict, uid: int,
     elif pending:
         remaining_sec = max(0, int(pending["expires"] - time.time()))
         remaining_min = remaining_sec // 60
-        status_line = (
-            f"⏳ <b>در انتظار تأیید لایک</b>\n"
-            f"   ⏱ مهلت: {remaining_min} دقیقه دیگر\n"
-            f"   📌 پس از لایک کردن منتظر پیام خودکار باش\n"
-            f"   یا دکمه «🔍 بررسی لایک» را بزن"
-        )
+        elapsed = time.time() - pending["timestamp"]
+        if chat_type == "supergroup":
+            status_line = (
+                f"⏳ <b>در انتظار تأیید خودکار</b>\n"
+                f"   ⏱ مهلت: {remaining_min} دقیقه دیگر\n"
+                f"   📌 به‌محض ثبت لایک، پاداش خودش واریز می‌شود"
+            )
+        else:
+            wait_left = max(0, int(MIN_REACTION_WAIT_SECONDS - elapsed))
+            if wait_left > 0:
+                status_line = (
+                    f"⏳ <b>در انتظار تأیید لایک</b>\n"
+                    f"   ⏱ مهلت کلی: {remaining_min} دقیقه دیگر\n"
+                    f"   ⌛ دکمه بررسی تا {wait_left} ثانیه دیگر فعال می‌شود"
+                )
+            else:
+                status_line = (
+                    f"⏳ <b>در انتظار تأیید لایک</b>\n"
+                    f"   ⏱ مهلت: {remaining_min} دقیقه دیگر\n"
+                    f"   📌 اگر لایک زدی، «🔍 بررسی لایک» را بزن"
+                )
     elif is_reaction:
         emojis = "  ".join(list(ALLOWED_REACTIONS)[:4])
         status_line = (
             f"📌 <b>راهنما:</b>\n"
-            f"  ۱. «🚀 شروع تسک» را بزنید\n"
-            f"  ۲. پست را باز کنید\n"
-            f"  ۳. با {emojis} لایک بزنید\n"
-            f"  ۴. منتظر پاداش خودکار باشید"
+            f"  ۱. «🚀 شروع تسک» را بزن\n"
+            f"  ۲. پست را باز کن\n"
+            f"  ۳. با {emojis} لایک بزن\n"
+            f"  ۴. چند ثانیه صبر کن و «🔍 بررسی لایک» بزن"
         )
     else:
         status_line = (
             f"📌 <b>راهنما:</b>\n"
-            f"  ۱. عضو کانال شوید\n"
-            f"  ۲. «✅ تأیید عضویت» را بزنید"
+            f"  ۱. عضو کانال شو\n"
+            f"  ۲. «✅ تأیید عضویت» را بزن"
         )
 
     desc = order.get("description", "").strip()
@@ -544,13 +656,14 @@ def build_task_card(order: dict, uid: int,
 
     card_text = (
         f"{'❤ لایک پست' if is_reaction else '👥 عضویت در کانال'}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
         f"🎁 پاداش: <code>{reward} {COIN}</code>\n"
         f"📊 انجام‌شده: <code>{done_count}/{order['total_count']}</code>\n"
         f"🎯 {target_line}"
         f"{desc_block}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{status_line}"
+        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"{status_line}\n\n"
+        f"📄 صفحه {current_index + 1} از {total}"
     )
 
     # ── کیبورد ──
@@ -566,9 +679,6 @@ def build_task_card(order: dict, uid: int,
         _ftab("ممبر",  "join",     0),
         _ftab("لایک",  "reaction", 0),
     ])
-    rows.append([InlineKeyboardButton(
-        f"── {current_index + 1} از {total} ──", callback_data="noop"
-    )])
 
     if already_done:
         rows.append([InlineKeyboardButton("✅ انجام شده", callback_data="noop")])
@@ -579,29 +689,27 @@ def build_task_card(order: dict, uid: int,
                 callback_data=f"tasks:verify_join:{order['order_id']}:{order_type}:{current_index}"),
         ])
     elif pending:
-        # ── حالت pending: دکمه بررسی دستی نمایش داده می‌شه ──
         rows.append([InlineKeyboardButton(
             "🔍 بررسی لایک",
             callback_data=f"tasks:check_reaction:{order['order_id']}:{order_type}:{current_index}"
         )])
         rows.append([InlineKeyboardButton("🔗 باز کردن پست", url=target_url)])
     else:
-        # ── حالت اولیه ──
         rows.append([InlineKeyboardButton("🔗 باز کردن پست", url=target_url)])
         rows.append([InlineKeyboardButton(
             "🚀 شروع تسک",
             callback_data=f"tasks:start_reaction:{order['order_id']}:{order_type}:{current_index}"
         )])
 
-    # ناوبری
+    # ✅ ناوبری: فقط وقتی واقعاً کاربردی است نمایش داده می‌شود (بدون دکمه‌های غیرفعال بی‌مصرف)
     nav = []
-    nav.append(InlineKeyboardButton(
-        "◀", callback_data=f"tasks:page:{current_index-1}:{order_type}"
-    ) if current_index > 0 else InlineKeyboardButton("⏮", callback_data="noop"))
-    nav.append(InlineKeyboardButton(
-        "▶", callback_data=f"tasks:page:{current_index+1}:{order_type}"
-    ) if current_index < total - 1 else InlineKeyboardButton("⏭", callback_data="noop"))
-    rows.append(nav)
+    if current_index > 0:
+        nav.append(InlineKeyboardButton("◀ قبلی", callback_data=f"tasks:page:{current_index-1}:{order_type}"))
+    if current_index < total - 1:
+        nav.append(InlineKeyboardButton("بعدی ▶", callback_data=f"tasks:page:{current_index+1}:{order_type}"))
+    if nav:
+        rows.append(nav)
+
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")])
 
     return card_text, InlineKeyboardMarkup(rows)
@@ -615,7 +723,7 @@ async def show_task_card(q, uid: int, index: int, order_type: str):
         await q.edit_message_text(
             "📭 <b>تسکی موجود نیست</b>\n\n"
             "فعلاً سفارش فعالی برای انجام وجود ندارد.\n"
-            "کمی دیگر دوباره بررسی کنید 🙂",
+            "کمی دیگر دوباره بررسی کن 🙂",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 بروزرسانی",
@@ -666,9 +774,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cloud.save()
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    ctx.user_data.pop("awaiting",    None)
-    ctx.user_data.pop("pending_ref", None)
-    ctx.user_data.pop("temp_order",  None)
+    ctx.user_data.pop("awaiting",       None)
+    ctx.user_data.pop("pending_ref",    None)
+    ctx.user_data.pop("temp_order",     None)
+    ctx.user_data.pop("temp_chat_type", None)
     await update.message.reply_text(
         "❌ عملیات لغو شد.",
         parse_mode=ParseMode.HTML,
@@ -684,16 +793,22 @@ async def cmd_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         wh = await bot.get_webhook_info()
         wh_url = wh.url or "set nshode"
         wh_updates = list(wh.allowed_updates or [])
-        has_reaction = "message_reaction" in wh_updates
-        wh_status = "OK - message_reaction daryaft mishe" if has_reaction else f"FAIL - message_reaction nist! allowed={wh_updates}"
+        has_reaction   = "message_reaction" in wh_updates
+        has_react_cnt  = "message_reaction_count" in wh_updates
+        wh_status = (
+            f"reaction={has_reaction} reaction_count={has_react_cnt} allowed={wh_updates}"
+        )
     except Exception as e:
         wh_url, wh_status = f"khata: {e}", "FAIL"
 
-    reaction_orders = [o for o in cloud.get_active_orders("reaction")]
+    reaction_orders = cloud.get_active_orders("reaction")
     orders_text = ""
     for o in reaction_orders[:5]:
+        quota = cloud.get_available_quota(o["order_id"])
         orders_text += (
-            f"\n  order={o['order_id']} ch={o.get('chat_id')} post={o.get('post_id')}"
+            f"\n  order={o['order_id']} type={o.get('chat_type')} ch={o.get('chat_id')} "
+            f"post={o.get('post_id')} baseline={o.get('reaction_baseline')} "
+            f"last={o.get('reaction_last_total')} claimed={o.get('quota_claimed')} quota={quota}"
         )
     if not orders_text:
         orders_text = " hich"
@@ -710,7 +825,7 @@ async def cmd_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = (
         f"DEBUG\n\n"
         f"Webhook: {wh_url[:50]}\n"
-        f"Reaction status: {wh_status}\n\n"
+        f"{wh_status}\n\n"
         f"Reaction Orders:{orders_text}\n\n"
         f"Pendings:{pending_text}"
     )
@@ -778,14 +893,14 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(
                 build_referral(uid, me.username), parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙", callback_data="nav:home")
+                    InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
                 ]])
             )
         elif dest == "help":
             await q.edit_message_text(
                 build_help(), parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙", callback_data="nav:home")
+                    InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
                 ]])
             )
         elif dest == "my_orders":
@@ -793,7 +908,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 build_my_orders(uid), parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("➕ ثبت جدید", callback_data="menu:new_order")],
-                    [InlineKeyboardButton("🔙", callback_data="nav:home")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
                 ])
             )
         return
@@ -807,7 +922,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         me = await q.get_bot().get_me()
         await q.edit_message_text(
             build_referral(uid, me.username), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="nav:home")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")]])
         )
         return
 
@@ -815,7 +930,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         await q.edit_message_text(
             build_help(), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="nav:home")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")]])
         )
         return
 
@@ -825,7 +940,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             build_my_orders(uid), parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ ثبت جدید", callback_data="menu:new_order")],
-                [InlineKeyboardButton("🔙", callback_data="nav:home")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
             ])
         )
         return
@@ -849,7 +964,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     f"💰 موجودی: <code>{u.get('balance', 0)} {COIN}</code>",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙", callback_data="nav:home")
+                        InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
                     ]])
                 )
             except: pass
@@ -920,16 +1035,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         cloud.set_pending_like(order_id, uid)
         cloud.save()
         await q.answer(
-            "✅ ثبت شد!\nحالا پست را باز کن و لایک بزن.\nپاداش خودکار واریز می‌شود.",
+            "✅ ثبت شد!\nحالا پست را باز کن و لایک بزن.\nچند ثانیه صبر کن، بعد «بررسی لایک» را بزن.",
             show_alert=True
         )
         await show_task_card(q, uid, cur_idx, ot)
         return
 
-    # ── بررسی دستی لایک ─────────────────────────────────────────────────────
-    # ✅ FIX: این دکمه فقط وقتی pending داره نشون داده می‌شه
-    # اگه کاربر لایک کرده باشه و on_reaction event دریافت نشده باشه،
-    # اینجا به صورت fallback چک می‌کنیم
+    # ── بررسی لایک ───────────────────────────────────────────────────────────
     if data.startswith("tasks:check_reaction:"):
         parts    = data.split(":")
         order_id = parts[2]
@@ -940,67 +1052,75 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not order:
             await q.answer("❌ سفارش یافت نشد", show_alert=True); return
 
-        pending = cloud.get_pending_like(order_id, uid)
-        if not pending:
-            await q.answer(
-                "⚠ ابتدا «🚀 شروع تسک» را بزنید، سپس لایک کنید.",
-                show_alert=True
-            )
-            return
-
         if cloud.is_task_done(order_id, uid):
             cloud.remove_pending_like(order_id, uid)
             await q.answer("✅ پاداش قبلاً دریافت شده", show_alert=True)
             await show_task_card(q, uid, cur_idx, ot)
             return
 
-        await q.answer("🔍 در حال بررسی لایک از تلگرام...", show_alert=False)
-
-        # ✅ FIX: بررسی واقعی لایک از طریق Bot API
-        # از آنجایی که Bot API تلگرام user-level reactions رو عمومی نمی‌ده،
-        # تنها راه مطمئن MessageReactionHandler هست که در on_reaction پیاده شده.
-        # اینجا یه fallback ساده داریم: اگه pending هنوز active هست و کاربر
-        # درخواست بررسی داده، یعنی احتمالاً لایک کرده.
-        # برای اطمینان بیشتر، سعی می‌کنیم از طریق forwarded message check کنیم.
-        
-        channel = order["target"]
-        post_id = order.get("post_id")
-        reaction_confirmed = False
-
-        # ✅ اینجا هیچ fallback نداریم — فقط on_reaction می‌تونه تأیید کنه
-        # اگه message_reaction update رسیده باشه، تا اینجا is_task_done True شده
-        # و بالاتر چک شده و پاداش داده شده
-        # اگه اینجا رسیدیم یعنی reaction هنوز نرسیده
-        if cloud.is_task_done(order_id, uid):
-            cloud.remove_pending_like(order_id, uid)
-            cloud.save(force=True)
-            await q.answer(f"✅ پاداش دریافت شد!", show_alert=True)
-            await show_task_card(q, uid, cur_idx, ot)
+        pending = cloud.get_pending_like(order_id, uid)
+        if not pending:
+            await q.answer(
+                "⚠ ابتدا «🚀 شروع تسک» را بزن، سپس لایک کن.",
+                show_alert=True
+            )
             return
 
-        # reaction هنوز از تلگرام نرسیده
-        reaction_confirmed = False
+        chat_type = order.get("chat_type") or "channel"
 
-        if reaction_confirmed:
+        # ── حالت سوپرگروه: تشخیص دقیق فرد به فرد از طریق on_reaction است ──
+        # اینجا فقط یک بار دیگر وضعیت is_task_done چک می‌شود؛ اگر رویداد
+        # message_reaction هنوز نرسیده باشد، پاداشی داده نمی‌شود (امن).
+        if chat_type != "channel":
+            await q.answer(
+                "⏳ هنوز لایک واقعی از تلگرام تأیید نشده.\n"
+                "مطمئن شو ربات ادمین گروه است و لایکت را زدی، سپس دوباره امتحان کن.",
+                show_alert=True
+            )
+            return
+
+        # ── حالت کانال: سیستم Quota-Pool ──
+        elapsed = time.time() - pending["timestamp"]
+        if elapsed < MIN_REACTION_WAIT_SECONDS:
+            wait_left = int(MIN_REACTION_WAIT_SECONDS - elapsed)
+            await q.answer(
+                f"⏳ {wait_left} ثانیه دیگر صبر کن، تلگرام هنوز داده را نفرستاده.",
+                show_alert=True
+            )
+            return
+
+        if not cloud.has_reaction_baseline(order_id):
+            await q.answer(
+                "⏳ هنوز داده اولیه‌ی لایک‌های این پست از تلگرام نرسیده.\n"
+                "چند لحظه صبر کن و دوباره امتحان کن.",
+                show_alert=True
+            )
+            return
+
+        # ✅ نقطه‌ی حیاتی امنیت: فقط اگر واقعاً یک واحد لایک جدید و مصرف‌نشده
+        # روی این پست وجود داشته باشد، پاداش پرداخت می‌شود.
+        if cloud.claim_quota_unit(order_id):
             ok, result = cloud.complete_order_unit(order_id, uid)
             if ok:
                 cloud.remove_pending_like(order_id, uid)
                 cloud.save(force=True)
-                u = cloud.get_user(uid)
                 await q.answer(f"🎉 +{REACTION_REWARD} {COIN} دریافت شد!", show_alert=True)
-                await show_task_card(q, uid, cur_idx, ot)
             else:
+                # اگر به هر دلیلی complete_order_unit شکست خورد (مثلاً race)،
+                # واحد quota را برنمی‌گردانیم چون ایمن‌تر است سمت سیستم محافظه‌کار بماند
                 msg = result if isinstance(result, str) else "❌ خطا در ثبت"
                 await q.answer(msg, show_alert=True)
         else:
             await q.answer(
-                "⏳ لایک هنوز از تلگرام دریافت نشده!\n\n"
+                "⏳ هنوز لایک جدیدی روی پست ثبت نشده!\n\n"
                 "مطمئن شو:\n"
                 "۱. ربات ادمین کانال هست\n"
-                "۲. لایک زدی (نه فقط پست رو باز کردی)\n"
-                "۳. چند ثانیه صبر کن و دوباره بزن",
+                "۲. واقعاً لایک زدی (نه فقط باز کردی)\n"
+                "۳. کمی صبر کن، آپدیت تلگرام ممکنه چند دقیقه طول بکشه",
                 show_alert=True
             )
+
+        await show_task_card(q, uid, cur_idx, ot)
         return
 
     # ── ثبت سفارش جدید ──────────────────────────────────────────────────────
@@ -1008,14 +1128,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         u = cloud.get_user(uid)
         await q.edit_message_text(
-            f"➕ <b>ثبت سفارش جدید</b>\n\n"
+            f"➕ <b>ثبت سفارش جدید</b>\n"
+            f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
             f"💰 موجودی: <code>{u.get('balance', 0) if u else 0} {COIN}</code>\n\n"
-            f"نوع سفارش را انتخاب کنید:",
+            f"نوع سفارش را انتخاب کن:",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("👥 سفارش ممبر",     callback_data="order:type:join")],
                 [InlineKeyboardButton("❤ سفارش لایک پست", callback_data="order:type:reaction")],
-                [InlineKeyboardButton("🔙", callback_data="nav:home")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
             ])
         )
         return
@@ -1040,8 +1161,8 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(
                 f"❤ <b>سفارش لایک پست</b>\n\n"
                 f"💰 هزینه هر لایک: <b>{cost} {COIN}</b>\n\n"
-                f"⚠ <b>شرط مهم:</b> ربات باید ادمین کانال شما باشد\n\n"
-                f"یوزرنیم کانال را ارسال کنید:\n<code>@mychannel</code>\n\n"
+                f"⚠ <b>شرط مهم:</b> ربات باید ادمین کانال/گروه شما باشد\n\n"
+                f"یوزرنیم کانال یا گروه را ارسال کن:\n<code>@mychannel</code>\n\n"
                 f"/cancel برای لغو",
                 parse_mode=ParseMode.HTML
             )
@@ -1055,21 +1176,21 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ctx.user_data["awaiting"] = f"order_reaction_post_{channel}"
             await q.edit_message_text(
                 f"✅ ربات در <code>{channel}</code> ادمین است!\n\n"
-                f"حالا لینک پست را ارسال کنید:\n"
+                f"حالا لینک پست را ارسال کن:\n"
                 f"<code>https://t.me/{channel.lstrip('@')}/123</code>\n\n"
-                f"یا پست را فوروارد کنید.\n\n/cancel برای لغو",
+                f"یا پست را فوروارد کن.\n\n/cancel برای لغو",
                 parse_mode=ParseMode.HTML
             )
         else:
             me = await q.get_bot().get_me()
             await q.edit_message_text(
                 f"❌ ربات در <code>{channel}</code> ادمین نیست!\n\n"
-                f"ابتدا @{me.username} را ادمین کنید.",
+                f"ابتدا @{me.username} را ادمین کن.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 بررسی مجدد",
                                           callback_data=f"order:check_admin:{channel}")],
-                    [InlineKeyboardButton("🔙", callback_data="menu:new_order")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:new_order")],
                 ])
             )
         return
@@ -1081,14 +1202,15 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         stats = cloud.get_stats()
         await q.edit_message_text(
-            f"👑 <b>پنل ادمین</b>\n\n"
+            f"👑 <b>پنل ادمین</b>\n"
+            f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
             f"👥 کاربران: {stats['total_users']}\n"
             f"📦 سفارش‌های فعال: {stats['active_orders']}\n"
             f"⏳ Pending لایک‌ها: {stats['pending_count']}",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin:broadcast")],
-                [InlineKeyboardButton("🔙", callback_data="nav:home")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
             ])
         )
         return
@@ -1099,7 +1221,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data["awaiting"] = "broadcast"
         await q.answer()
         await q.edit_message_text(
-            "📢 متن پیام همگانی را ارسال کنید:\n\n/cancel برای لغو",
+            "📢 متن پیام همگانی را ارسال کن:\n\n/cancel برای لغو",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1112,50 +1234,14 @@ async def _show_profile(q, uid: int):
         build_profile(uid), parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎁 دریافت روزانه", callback_data="daily:claim")],
-            [InlineKeyboardButton("🔙", callback_data="nav:home")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
         ])
     )
 
 # ═══════════════════════════════════════════════════════════════
-#        MESSAGE REACTION HANDLER — قلب سیستم تشخیص لایک
+#   MESSAGE REACTION HANDLER — تشخیص دقیق فرد به فرد (سوپرگروه/PV)
 # ═══════════════════════════════════════════════════════════════
-
-def _normalize_emoji(emoji_str: str) -> str:
-    """
-    ✅ FIX باگ Variation Selector:
-    تلگرام گاهی ایموجی‌ها را با کاراکتر نامرئی (U+FE0F) می‌فرستد.
-    مثلاً شما "❤" دارید ولی تلگرام "❤️" می‌فرستد و پایتون این دو را نابرابر می‌داند.
-    این تابع کاراکترهای نامرئی را حذف می‌کند.
-    """
-    if not emoji_str:
-        return ""
-    # حذف تمام Variation Selectors (U+FE00 to U+FE0F)
-    cleaned = re.sub(r'[\ufe00-\ufe0f]', '', emoji_str)
-    return unicodedata.normalize('NFC', cleaned)
-
-
-def _normalize_chat_id(cid) -> int:
-    """
-    ✅ FIX اصلی باگ:
-    تلگرام کانال‌ها رو با -100 prefix می‌فرسته توی message_reaction update
-    مثلاً: chat_id = -1001234567890
-    ولی وقتی از bot.get_chat() می‌گیریم، همین عدد رو می‌ده.
-    مشکل اینجاست که بعضی وقت‌ها بدون -100 ذخیره می‌شه: 1234567890
-    این تابع هر دو رو نرمالایز می‌کنه تا مقایسه درست باشه.
-    """
-    try:
-        cid = int(cid)
-        # اگه عدد مثبت بود و بزرگ‌تر از حد channel ID، احتمالاً -100 prefix نداره
-        # هر دو رو به absolute value تبدیل می‌کنیم برای مقایسه
-        return abs(cid)
-    except (ValueError, TypeError):
-        return 0
-
-
 async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """
-    ✅ تنها راه واقعی برای تشخیص لایک کاربر (نسخه فیکس شده)
-    """
     reaction = update.message_reaction
     if not reaction:
         return
@@ -1163,10 +1249,7 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     chat_id    = reaction.chat.id
     message_id = reaction.message_id
 
-    # ── ۱. بررسی کاربر (ممکن است به دلیل Privacy مخفی باشد) ──
     if not reaction.user:
-        # اگر کاربر تنظیمات حریم خصوصی را روشن کرده باشد، user None است.
-        # تلگرام اجازه نمی‌دهد بفهمیم چه کسی ریکشن گذاشته، پس نمی‌توانیم پاداش دهیم.
         log.warning(
             f"⚠️ ریکشن ناشناس (Privacy/Anonymous) در چت {chat_id} پیام {message_id} دریافت شد. "
             f"به دلیل محدودیت تلگرام، امکان پرداخت پاداش وجود ندارد."
@@ -1175,16 +1258,12 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     user_id = reaction.user.id
 
-    # ── ۲. فقط لایک جدید (نه برداشتن لایک) ──
     new_reactions = getattr(reaction, "new_reaction", None)
     if not new_reactions:
         log.debug(f"کاربر {user_id} ریکشن خود را حذف کرد یا تغییر نداد.")
         return
 
-    # ── ۳. بررسی اعتبار ایموجی (با فیکس باگ Variation Selector) ──
-    # یک بار لیست مجاز را نرمال می‌کنیم
     normalized_allowed = {_normalize_emoji(e) for e in ALLOWED_REACTIONS}
-    
     has_valid = False
     for r in new_reactions:
         raw_emoji = getattr(r, "emoji", None)
@@ -1192,7 +1271,6 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             has_valid = True
             break
 
-    # لاگ حیاتی برای دیباگ
     raw_emojis = [getattr(r, 'emoji', '?') for r in new_reactions]
     log.info(
         f"🔔 REACTION UPDATE: user={user_id} chat={chat_id} msg={message_id} "
@@ -1200,15 +1278,10 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     if not has_valid:
-        log.info(f"❌ ایموجی استفاده شده در لیست ALLOWED_REACTIONS نیست.")
         return
 
-    # ── ۴. جستجو در pending‌های این کاربر ──
     pendings = cloud.get_user_pendings(user_id)
-    log.info(f"🔍 Pendings for user={user_id}: {len(pendings)} items")
-
     if not pendings:
-        log.info(f"⚠️ کاربر {user_id} هیچ pending active ندارد.")
         return
 
     norm_chat = _normalize_chat_id(chat_id)
@@ -1217,26 +1290,21 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         order = cloud.get_order_by_id(p["order_id"])
         if not order or order.get("status") != "active":
             continue
+        # ✅ این مسیر فقط برای سفارش‌های غیر-کانال (سوپرگروه) معتبر است؛
+        # برای کانال، فقط سیستم Quota-Pool (on_reaction_count) تصمیم می‌گیرد.
+        if order.get("chat_type") == "channel":
+            continue
 
         order_chat_id = order.get("chat_id")
         order_post_id = order.get("post_id")
-
         if not order_chat_id or not order_post_id:
-            log.warning(f"Order {p['order_id']} has no chat_id or post_id!")
             continue
 
         norm_order_chat = _normalize_chat_id(order_chat_id)
-
-        log.info(
-            f"🔎 Comparing: reaction_chat={norm_chat} vs order_chat={norm_order_chat} | "
-            f"reaction_msg={message_id} vs order_post={order_post_id}"
-        )
-
         try:
             chat_match = norm_order_chat == norm_chat
             post_match = int(order_post_id) == int(message_id)
-        except (ValueError, TypeError) as e:
-            log.warning(f"ID comparison error: {e}")
+        except (ValueError, TypeError):
             continue
 
         if chat_match and post_match:
@@ -1257,14 +1325,36 @@ async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                             InlineKeyboardButton("🎯 تسک بعدی", callback_data="menu:earn")
                         ]])
                     )
-                    log.info(f"✅ Reward sent to user={user_id}")
                 except Exception as e:
                     log.error(f"Reward notify error: {e}")
-            else:
-                log.warning(f"complete_order_unit failed: {result}")
             break
-        else:
-            log.debug(f"❌ No match for order={p['order_id']}")
+
+# ═══════════════════════════════════════════════════════════════
+#   MESSAGE REACTION COUNT HANDLER — Quota-Pool امن برای کانال‌ها
+# ═══════════════════════════════════════════════════════════════
+async def on_reaction_count(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    برای پست‌های کانال، تلگرام هرگز نمی‌گوید چه کسی لایک زده، فقط این
+    آپدیت را می‌فرستد که "این پست الان مجموعاً این تعداد از هر ایموجی را دارد".
+    این تابع آن مجموع را برای سفارش‌های مرتبط ذخیره می‌کند تا claim_quota_unit
+    بتواند تشخیص دهد آیا واقعاً یک لایک جدید و مصرف‌نشده وجود دارد یا نه.
+    """
+    rc = update.message_reaction_count
+    if not rc:
+        return
+
+    normalized_allowed = {_normalize_emoji(e) for e in ALLOWED_REACTIONS}
+    total = 0
+    for r in rc.reactions:
+        rtype = getattr(r, "type", None)
+        emoji = getattr(rtype, "emoji", None) if rtype is not None else getattr(r, "emoji", None)
+        if emoji and _normalize_emoji(emoji) in normalized_allowed:
+            total += getattr(r, "total_count", 0)
+
+    cloud.update_reaction_totals(rc.chat.id, rc.message_id, total)
+    cloud.save()
+    log.info(f"📊 REACTION COUNT: chat={rc.chat.id} msg={rc.message_id} total_allowed={total}")
+
 # ═══════════════════════════════════════════════════════════════
 #                    MESSAGE HANDLER
 # ═══════════════════════════════════════════════════════════════
@@ -1288,7 +1378,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if text_in in REPLY_MAP and not awaiting:
         action = REPLY_MAP[text_in]
 
-        # ✅ FIX: FakeQ بهینه‌شده که درست کار می‌کنه
         class _FakeQ:
             def __init__(self):
                 self.data      = action
@@ -1299,7 +1388,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             async def answer(self, *a, **kw): pass
 
             async def edit_message_text(self, text, **kw):
-                # ✅ اگه قبلاً پیام فرستادیم، edit کن، وگرنه reply بزن
                 if self._last_msg:
                     try:
                         await self._last_msg.edit_text(text, **kw)
@@ -1355,7 +1443,8 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         ctx.user_data["temp_order"]  = {
             "type": "join", "target": target,
-            "count": count, "cost_per": cost_per, "chat_id": chat.id
+            "count": count, "cost_per": cost_per, "chat_id": chat.id,
+            "chat_type": chat.type,
         }
         ctx.user_data["awaiting"] = "order_description"
         await update.message.reply_text(
@@ -1384,20 +1473,22 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             me = await ctx.bot.get_me()
             await update.message.reply_text(
                 f"❌ ربات در <code>{channel}</code> ادمین نیست!\n"
-                f"@{me.username} را ادمین کنید.",
+                f"@{me.username} را ادمین کن.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 بررسی مجدد",
                                           callback_data=f"order:check_admin:{channel}")],
-                    [InlineKeyboardButton("🔙", callback_data="menu:new_order")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:new_order")],
                 ])
             )
             return
 
+        # ✅ نوع چت (channel/supergroup) را برای مرحله بعد نگه می‌داریم
+        ctx.user_data["temp_chat_type"] = chat.type
         ctx.user_data["awaiting"] = f"order_reaction_post_{channel}"
         await update.message.reply_text(
             f"✅ ربات در <code>{channel}</code> ادمین است!\n\n"
-            f"لینک پست را ارسال کنید:\n"
+            f"لینک پست را ارسال کن:\n"
             f"<code>https://t.me/{channel.lstrip('@')}/123</code>",
             parse_mode=ParseMode.HTML
         )
@@ -1426,17 +1517,24 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         try:
             chat    = await ctx.bot.get_chat(channel)
-            chat_id = chat.id  # ✅ chat_id عددی برای ذخیره در سفارش
+            chat_id = chat.id
         except:
             await update.message.reply_text("❌ خطا در دسترسی به کانال!"); return
 
-        cost_per = REACTION_REWARD * REACTION_COST_MULT
-        ctx.user_data["awaiting"] = f"order_reaction_count_{channel}_{post_id}_{chat_id}"
+        chat_type = ctx.user_data.get("temp_chat_type") or chat.type
+        cost_per  = REACTION_REWARD * REACTION_COST_MULT
+        ctx.user_data["awaiting"] = f"order_reaction_count_{channel}_{post_id}_{chat_id}_{chat_type}"
+        note = (
+            "🔒 نکته امنیتی: برای پست کانال، امکان تشخیص کاربر به کاربر وجود ندارد؛ "
+            "سیستم مجموع لایک‌های واقعی جدید را ردیابی می‌کند تا هیچ پاداشی بیش از "
+            "لایک واقعی رخ‌داده پرداخت نشود.\n\n"
+        ) if chat_type == "channel" else ""
         await update.message.reply_text(
             f"✅ پست شناسایی شد: <code>{post_id}</code>\n"
-            f"📢 کانال: <code>{channel}</code> (ID: <code>{chat_id}</code>)\n\n"
+            f"📢 کانال: <code>{channel}</code>\n\n"
+            f"{note}"
             f"💰 هزینه هر لایک: <b>{cost_per} {COIN}</b>\n\n"
-            f"تعداد لایک مورد نظر را وارد کنید:",
+            f"تعداد لایک مورد نظر را وارد کن:",
             parse_mode=ParseMode.HTML
         )
         return
@@ -1445,10 +1543,11 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if awaiting and awaiting.startswith("order_reaction_count_"):
         raw   = awaiting[len("order_reaction_count_"):]
         parts = raw.split("_")
-        if len(parts) < 3:
+        if len(parts) < 4:
             ctx.user_data.pop("awaiting", None); return
-        channel, post_id_str, chat_id_str = parts[0], parts[1], parts[2]
+        channel, post_id_str, chat_id_str, chat_type = parts[0], parts[1], parts[2], parts[3]
         ctx.user_data.pop("awaiting", None)
+        ctx.user_data.pop("temp_chat_type", None)
 
         try:
             count = int(text_in)
@@ -1467,12 +1566,13 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
 
         ctx.user_data["temp_order"] = {
-            "type":     "reaction",
-            "target":   channel,
-            "count":    count,
-            "cost_per": cost_per,
-            "chat_id":  int(chat_id_str),   # ✅ int
-            "post_id":  int(post_id_str),   # ✅ int
+            "type":      "reaction",
+            "target":    channel,
+            "count":     count,
+            "cost_per":  cost_per,
+            "chat_id":   int(chat_id_str),
+            "post_id":   int(post_id_str),
+            "chat_type": chat_type,
         }
         ctx.user_data["awaiting"] = "order_description"
         await update.message.reply_text(
@@ -1495,7 +1595,7 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         order = cloud.create_order(
             uid, temp["type"], temp["target"], temp["count"], temp["cost_per"],
             post_id=temp.get("post_id"), chat_id=temp.get("chat_id"),
-            description=desc
+            description=desc, chat_type=temp.get("chat_type")
         )
         if order:
             cloud.save(force=True)
@@ -1548,7 +1648,7 @@ async def on_startup(app: Application):
             cloud.save()
 
     asyncio.create_task(_cleanup_loop())
-    log.info("🚀 ExchangeBot v7.0 آماده است ✅")
+    log.info("🚀 ExchangeBot v8.0 آماده است ✅")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1569,14 +1669,22 @@ def main():
         .build()
     )
 
-    # ✅ message_reaction باید حتماً در allowed_updates باشه
-    ALLOWED_UPDATES = ["message", "callback_query", "message_reaction"]
+    # ✅ هر دو نوع آپدیت ریکشن باید در allowed_updates باشند
+    ALLOWED_UPDATES = ["message", "callback_query", "message_reaction", "message_reaction_count"]
 
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("debug",  cmd_debug))
     app.add_handler(CallbackQueryHandler(on_callback))
-    app.add_handler(MessageReactionHandler(on_reaction))
+
+    # ✅ صریحاً مشخص می‌کنیم کدام هندلر کدام نوع آپدیت ریکشن را می‌گیرد
+    app.add_handler(MessageReactionHandler(
+        on_reaction, message_reaction_types=MessageReactionHandler.MESSAGE_REACTION_UPDATED
+    ))
+    app.add_handler(MessageReactionHandler(
+        on_reaction_count, message_reaction_types=MessageReactionHandler.MESSAGE_REACTION_COUNT_UPDATED
+    ))
+
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         on_message
@@ -1606,18 +1714,17 @@ def main():
 
         @flask_app.route("/")
         def index():
-            return "🤖 ExchangeBot v7.0 Online!", 200
+            return "🤖 ExchangeBot v8.0 Online!", 200
 
         @flask_app.route("/debug")
         def debug():
-            """صفحه دیباگ — باز کن توی مرورگر بعد از deploy"""
             import html as htmllib
             stats = cloud.get_stats()
             pendings = cloud._data.get("pending_likes", [])
             orders   = [o for o in cloud._data.get("orders", []) if o.get("status") == "active"]
             lines = [
                 "<pre>",
-                f"=== ExchangeBot v7.0 DEBUG ===",
+                f"=== ExchangeBot v8.0 DEBUG ===",
                 f"Users:          {stats['total_users']}",
                 f"Active orders:  {stats['active_orders']}",
                 f"Pending likes:  {stats['pending_count']}",
@@ -1626,9 +1733,12 @@ def main():
             ]
             for o in orders:
                 if o.get("type") == "reaction":
+                    quota = cloud.get_available_quota(o["order_id"])
                     lines.append(
-                        f"  order={o['order_id']} channel={o['target']} "
+                        f"  order={o['order_id']} channel={o['target']} type={o.get('chat_type')} "
                         f"chat_id={o.get('chat_id')} post_id={o.get('post_id')} "
+                        f"baseline={o.get('reaction_baseline')} last={o.get('reaction_last_total')} "
+                        f"claimed={o.get('quota_claimed')} quota_now={quota} "
                         f"remaining={o.get('remaining_count')}"
                     )
             lines += ["", "--- PENDING LIKES ---"]
@@ -1643,7 +1753,7 @@ def main():
                 "",
                 "--- WEBHOOK INFO ---",
                 "Check: https://api.telegram.org/bot<TOKEN>/getWebhookInfo",
-                "Must have message_reaction in allowed_updates",
+                "Must have message_reaction AND message_reaction_count in allowed_updates",
                 "</pre>"
             ]
             return "\n".join(lines), 200, {"Content-Type": "text/html; charset=utf-8"}
