@@ -149,7 +149,21 @@ PLAN_ORDER = sorted(PLANS.keys(), key=lambda p: PLANS[p]["order"])
 
 
 def plan_rank(plan_key: str) -> int:
-    return PLANS.get(plan_key, PLANS["free"])["order"]
+    return PLANS[safe_plan_key(plan_key)]["order"]
+
+
+def safe_plan_key(key: str) -> str:
+    """هر کلید پلن (حتی منسوخ‌شده) را به یک کلید معتبر در PLANS تبدیل می‌کند."""
+    if key in PLANS:
+        return key
+    _FALLBACK = {
+        "free": "starter",
+        "bronze": "professional",
+        "silver": "professional",
+        "gold": "enterprise",
+        "diamond": "enterprise",
+    }
+    return _FALLBACK.get(key, "starter")
 
 
 def fmt_limit(n: int) -> str:
@@ -1561,19 +1575,16 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "nav:plans":
         user = storage.get_user(uid)
         plan_key = user.get("plan", "starter")
-        # ✅ محافظت: اگر کاربر قدیمی با پلن منسوخ‌شده داشت، به starter تبدیل کن
-        if plan_key not in PLANS:
-            plan_key = "starter"
         await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
-                                reply_markup=plan_card_kb(plan_key, user))
+                                   reply_markup=plan_card_kb(plan_key, user))
         return
     if data.startswith("plan:view:"):
         plan_key = data.split(":")[2]
         if plan_key not in PLANS:
-            plan_key = "starter"
+            return
         user = storage.get_user(uid)
         await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
-                                reply_markup=plan_card_kb(plan_key, user))
+                                   reply_markup=plan_card_kb(plan_key, user))
         return
     if data == "nav:referral":
         await q.edit_message_text(build_referral_text(storage.get_user(uid)), parse_mode=ParseMode.HTML,
