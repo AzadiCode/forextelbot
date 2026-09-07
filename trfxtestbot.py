@@ -1997,20 +1997,6 @@ async def on_startup(app: Application):
     global PLATFORM_USERNAME
     mother_bot_ref["bot"] = app.bot
     await storage.load()
-    # 🔄 مهاجرت خودکار کاربران قدیمی از پلن‌های منسوخ‌شده
-    _MIGRATION = {
-        "free": "starter",
-        "bronze": "professional",
-        "silver": "professional",
-        "gold": "enterprise",
-        "diamond": "enterprise",
-    }
-    for u in storage.data["users"].values():
-        old_plan = u.get("plan")
-        if old_plan in _MIGRATION:
-            u["plan"] = _MIGRATION[old_plan]
-            storage.mark_dirty()
-    log.info("🔄 مهاجرت پلن‌های قدیمی انجام شد")
     me = await app.bot.get_me()
     PLATFORM_USERNAME = me.username or ""
     await factory.start_all_active()
