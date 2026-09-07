@@ -119,88 +119,49 @@ def to_chat_id(channel: str):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 💎 پلن‌ها
+# 💎 پلن‌های اشتراک (Starter / Professional / Enterprise)
 # ══════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════
-# 💎 پلن‌ها — فرکانس‌های انسانی (Beta / Alpha / Theta)
-# ══════════════════════════════════════════════════════════════════════
-# ✅ تغییر: سه پلن جدید با تم فرکانس‌های مغزی
 PLANS: dict[str, dict] = {
-    "beta": {
-        "order": 0,
-        "label": "🌊 Beta",
-        "badge": "🌊",
-        "price": 0,
-        "frequency": "۱۲ تا ۳۰ هرتز",
-        "vibe": "حالت هوشیاری فعال",
-        "max_bots": 1,
-        "max_commands": 5,
-        "max_callbacks": 8,
-        "broadcast": False,
-        "scheduled_broadcast": False,
-        "custom_force_join": False,
-        "media_welcome": False,
-        "analytics": "ساده",
-        "tagline": "فرکانس شروع — برای اولین قدم‌ها در دنیای ربات‌سازی.",
+    "starter": {
+        "order": 0, "label": "پایه", "badge": "🌱", "price": 0,
+        "max_bots": 1, "max_commands": 5, "max_callbacks": 8,
+        "broadcast": False, "scheduled_broadcast": False,
+        "custom_force_join": False, "media_welcome": False, "analytics": "ساده",
+        "tagline": "برای شروع و آشنایی با پلتفرم — یک ربات با امکانات پایه.",
     },
-    "alpha": {
-        "order": 1,
-        "label": "⚡ Alpha",
-        "badge": "⚡",
-        "price": 1000,
-        "frequency": "۸ تا ۱۲ هرتز",
-        "vibe": "حالت آرامش و خلاقیت",
-        "max_bots": 3,
-        "max_commands": 20,
-        "max_callbacks": 30,
-        "broadcast": True,
-        "scheduled_broadcast": False,
-        "custom_force_join": False,
-        "media_welcome": True,
-        "analytics": "پیشرفته",
-        "tagline": "فرکانس رشد — ابزارهای حرفه‌ای برای کسب‌وکارهای در حال پیشرفت.",
+    "professional": {
+        "order": 1, "label": "حرفه‌ای", "badge": "🚀", "price": 1200,
+        "max_bots": 3, "max_commands": 30, "max_callbacks": 40,
+        "broadcast": True, "scheduled_broadcast": True,
+        "custom_force_join": True, "media_welcome": True, "analytics": "پیشرفته",
+        "tagline": "ابزار کامل برای کسب‌وکارهای در حال رشد — پیام همگانی، زمان‌بندی و عضویت اجباری.",
     },
-    "theta": {
-        "order": 2,
-        "label": "🔮 Theta",
-        "badge": "🔮",
-        "price": 3000,
-        "frequency": "۴ تا ۸ هرتز",
-        "vibe": "حالت استادی و تسلط کامل",
-        "max_bots": 999,
-        "max_commands": 999,
-        "max_callbacks": 999,
-        "broadcast": True,
-        "scheduled_broadcast": True,
-        "custom_force_join": True,
-        "media_welcome": True,
-        "analytics": "حرفه‌ای + پشتیبانی ویژه",
-        "tagline": "فرکانس استادی — بدون هیچ محدودیتی، در اوج قدرت ربات‌سازی.",
+    "enterprise": {
+        "order": 2, "label": "سازمانی", "badge": "💎", "price": 4500,
+        "max_bots": 999, "max_commands": 999, "max_callbacks": 999,
+        "broadcast": True, "scheduled_broadcast": True,
+        "custom_force_join": True, "media_welcome": True,
+        "analytics": "حرفه‌ای + پشتیبانی اختصاصی",
+        "tagline": "راهکار نامحدود برای کسب‌وکارهای بزرگ — بدون سقف، با پشتیبانی اولویت‌دار.",
     },
 }
 PLAN_ORDER = sorted(PLANS.keys(), key=lambda p: PLANS[p]["order"])
 
 
 def plan_rank(plan_key: str) -> int:
-    # ✅ تغییر: پیش‌فرض به "beta"
-    return PLANS.get(plan_key, PLANS["beta"])["order"]
+    return PLANS.get(plan_key, PLANS["free"])["order"]
 
 
 def fmt_limit(n: int) -> str:
-    # ✅ تغییر: یونیکد حرفه‌ای‌تر
-    return "♾️ بی‌نهایت" if n >= 900 else f"{n:,}"
+    return "نامحدود ♾" if n >= 900 else str(n)
 
 
-def progress_bar(current: int, maximum: int, length: int = 12) -> str:
-    # ✅ تغییر: استایل مدرن‌تر
+def progress_bar(current: int, maximum: int, length: int = 10) -> str:
     if maximum >= 900:
-        return f"♾️ <b>{current:,}</b> استفاده شده (بی‌نهایت)"
+        return f"♾ نامحدود  ({current} استفاده‌شده)"
     maximum = max(maximum, 1)
     filled = int(length * min(current, maximum) / maximum)
-    empty = length - filled
-    bar = f"<b>{'▓' * filled}</b>{'░' * empty}"
-    percent = int(min(current, maximum) / maximum * 100)
-    return f"<code>{bar}</code>  <b>{current}/{maximum}</b>  ({percent}%)"
+    return "▰" * filled + "▱" * (length - filled) + f"  {current}/{maximum}"
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -237,7 +198,7 @@ class Storage:
     @staticmethod
     def _user_defaults(u: dict):
         u.setdefault("signup_bonus_claimed", False)
-        u.setdefault("plan", "free")
+        u.setdefault("plan", "starter")
         u.setdefault("referred_by", None)
         u.setdefault("referral_count", 0)
         u.setdefault("referral_earned_coins", 0)
@@ -292,7 +253,7 @@ class Storage:
                     "uid": uid, "username": username, "full_name": full_name,
                     "coin_balance": 0, "referral_code": my_code, "referred_by": referrer_uid,
                     "created_at": now_ir().isoformat(), "bots_created": [],
-                    "signup_bonus_claimed": False, "plan": "free",
+                    "signup_bonus_claimed": False, "plan": "starter",
                     "referral_count": 0, "referral_earned_coins": 0,
                     "downline_bonus_date": None, "downline_bonus_count": 0, "is_banned": False,
                 }
@@ -317,7 +278,7 @@ class Storage:
 
     def get_plan(self, uid: int) -> dict:
         u = self.get_user(uid) or {}
-        return PLANS.get(u.get("plan", "free"), PLANS["free"])
+        return PLANS.get(u.get("plan", "starter"), PLANS["starter"])
 
     async def claim_signup_bonus(self, uid: int) -> int:
         key = str(uid)
@@ -338,7 +299,7 @@ class Storage:
             u = self.data["users"].get(str(uid))
             if not u:
                 return False, "کاربر یافت نشد."
-            cur = u.get("plan", "free")
+            cur = u.get("plan", "starter")
             if plan_rank(target) <= plan_rank(cur):
                 return False, "شما همین الان این پلن یا بالاتر را دارید."
             cost = PLANS[target]["price"] - PLANS[cur]["price"]
@@ -547,7 +508,7 @@ class Storage:
         plan_counts: dict[str, int] = {p: 0 for p in PLANS}
         total_coins = 0
         for u in self.data["users"].values():
-            plan_counts[u.get("plan", "free")] = plan_counts.get(u.get("plan", "free"), 0) + 1
+            plan_counts[u.get("plan", "starter")] = plan_counts.get(u.get("plan", "starter"), 0) + 1
             total_coins += u.get("coin_balance", 0)
         bots = self.data["bots"]
         return {
@@ -781,36 +742,6 @@ def preview_buttons(rows: Optional[list]) -> str:
     return "، ".join(btn["text"] for row in rows for btn in row) or "ندارد"
 
 
-# ✅ تغییر: اضافه کردن ثابت راهنمای دکمه‌ها
-BUTTON_GUIDE_HTML = """
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  <b>🎛 فرمت ساخت دکمه اینلاین</b>     ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-<pre><b>قالب اصلی:</b>
-<code>متن دکمه|شناسه_دکمه</code>
-
-<b>چند دکمه در یک خط (با کاما):</b>
-<code>متن۱|id1, متن۲|id2</code>
-
-<b>هر خط = یک ردیف دکمه</b></pre>
-
-<b>📌 نمونه‌های آماده (قابل کپی):</b>
-
-<blockquote>🌐 <b>وب‌سایت</b> | <code>website</code>
-📞 <b>تماس</b> | <code>contact</code></blockquote>
-
-<blockquote>💰 <b>قیمت‌ها</b> | <code>prices</code>, 🛒 <b>خرید</b> | <code>buy</code></blockquote>
-
-<blockquote>❓ <b>راهنما</b> | <code>help</code>, 🎫 <b>پشتیبانی</b> | <code>support</code></blockquote>
-
-<b>⚠️ نکات:</b>
-• شناسه باید <b>انگلیسی</b> و <b>بدون فاصله</b> باشد
-• برای حذف همه دکمه‌ها: <code>/skip</code>
-• برای انصراف: <code>/cancel</code>
-"""
-
-
 def main_menu_kb(uid: int) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton("🤖 ربات‌های من", callback_data="nav:mybots"),
@@ -843,108 +774,72 @@ def confirm_kb(yes_cb: str, no_cb: str) -> InlineKeyboardMarkup:
 # ══════════════════════════════════════════════════════════════════════
 # UI — متن‌ها (لحن فروشنده و جذاب، مشابه استایل نمونه)
 # ══════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════
-# UI — متن‌ها (استایل رباتیک و مدرن)
-# ══════════════════════════════════════════════════════════════════════
-
-# ✅ تغییر: متن خوش‌آمدگویی با استایل رباتیک
 def build_welcome_text(user: dict, bonus_given: int) -> str:
-    plan = PLANS.get(user.get("plan", "beta"), PLANS["beta"])
-    bonus_line = (
-        f"\n<pre>  🎁 +{bonus_given} {COIN_SYMBOL} هدیه خوش‌آمد فعال شد  </pre>\n"
-        if bonus_given else ""
-    )
+    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
+    bonus_line = f"\n🎁 <b>{bonus_given} {COIN_SYMBOL}</b> هدیهٔ خوش‌آمدگویی به کیفتون اضافه شد!\n" if bonus_given else ""
     return (
-        "╔════════════════════════════╗\n"
-        "║  <b>🤖 به GramSaz خوش اومدی</b>   ║\n"
-        "╚════════════════════════════╝\n"
+        "🤖 <b>به GramSaz خوش اومدی!</b>\n"
         f"{bonus_line}"
-        "<blockquote>"
-        "پلتفرم ساخت ربات تلگرام <b>بدون کدنویسی</b>:\n"
-        "├ 🔧 دستور و دکمه دلخواه\n"
-        "├ 🖼 خوش‌آمد با متن و عکس\n"
-        "├ 📢 پیام همگانی\n"
-        "└ 📊 آنالیتیکس حرفه‌ای\n"
-        "</blockquote>"
-        f"<pre>  پلن فعلی: {plan['label']} | {plan['frequency']}  </pre>\n\n"
-        "👇 <b>از منوی زیر شروع کن:</b>"
+        "<blockquote expandable>"
+        "بدون یک خط کدنویسی، در چند دقیقه یک ربات تلگرام کامل می‌سازی:\n"
+        "• دستور دلخواه و دکمه‌های شیشه‌ای اختصاصی\n"
+        "• خوش‌آمدگویی با متن و عکس\n"
+        "• پیام همگانی برای اطلاع‌رسانی سریع به کاربرات\n"
+        "• آنالیتیکس روزانه برای رصد رشد ربات\n"
+        "هیچ رباتی هم به‌خاطر گذر زمان از کار نمی‌افته — فقط سقف پلن‌تون محدودتون می‌کنه."
+        "</blockquote>\n"
+        f"پلن فعلی شما: <b>{plan['label']}</b>\n\n"
+        "👇 از منوی زیر شروع کن:"
     )
 
 
-# ✅ تغییر: داشبورد مدرن
 def build_dashboard_text(uid: int, user: dict) -> str:
-    plan = PLANS.get(user.get("plan", "beta"), PLANS["beta"])
+    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
     bots = storage.get_user_bots(uid)
     ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
     return (
-        "╔════════════════════════════╗\n"
-        "║   <b>👤 پنل حساب کاربری</b>       ║\n"
-        "╚════════════════════════════╝\n\n"
-        f"<b>🆔 شناسه:</b> <code>{user['uid']}</code>\n"
-        f"<b>{plan['badge']} پلن:</b> <b>{plan['label']}</b>\n"
-        f"<b>🌊 فرکانس:</b> <i>{plan['frequency']}</i>\n"
-        f"<b>💰 موجودی:</b> <b>{user.get('coin_balance', 0):,} {COIN_SYMBOL}</b>\n\n"
-        f"<b>🤖 مصرف ربات‌ها:</b>\n{progress_bar(len(bots), plan['max_bots'])}\n\n"
-        "<pre>┌─────────────────────────────┐\n"
-        "│        🔗 سیستم دعوت       │\n"
-        "└─────────────────────────────┘</pre>"
-        f"<b>🔑 کد دعوت:</b> <code>{user.get('referral_code', '—')}</code>\n"
-        f"<b>🔗 لینک:</b> {ref_link}\n"
-        f"<b>👥 دعوت‌شده:</b> {user.get('referral_count', 0)} نفر\n"
-        f"<b>💵 درآمد:</b> +{user.get('referral_earned_coins', 0):,} {COIN_SYMBOL}"
+        "👤 <b>پنل حساب من</b>\n\n"
+        f"🆔 آیدی: <code>{user['uid']}</code>\n"
+        f"{plan['badge']} پلن فعلی: <b>{plan['label']}</b>\n"
+        f"💰 موجودی: <b>{user.get('coin_balance', 0)} {COIN_SYMBOL}</b>\n\n"
+        f"🤖 <b>مصرف ربات‌ها</b>\n{progress_bar(len(bots), plan['max_bots'])}\n\n"
+        "🔗 <b>دعوت و درآمد</b>\n"
+        f"کد دعوت: <code>{user.get('referral_code', '—')}</code>\n"
+        f"لینک اختصاصی: {ref_link}\n"
+        f"👥 {user.get('referral_count', 0)} نفر دعوت‌شده "
+        f"(+{user.get('referral_earned_coins', 0)} {COIN_SYMBOL} تا این لحظه)"
     )
 
 
 def _feature_line(icon: str, label: str, enabled: bool) -> str:
-    # ✅ تغییر: آیکون‌های واضح‌تر
-    status = "<b>✅ فعال</b>" if enabled else "<b>⛔ غیرفعال</b>"
-    return f"{icon} {label}: {status}"
+    return f"{icon} {label}: {'✅ فعال' if enabled else '⛔️ قفل'}"
 
 
-# ✅ تغییر: کارت پلن با تم فرکانس
 def build_plan_card_text(plan_key: str, user: dict) -> str:
     d = PLANS[plan_key]
-    cur = user.get("plan", "beta")
+    cur = user.get("plan", "free")
     dots = "".join("◉" if p == cur else ("●" if p == plan_key else "○") for p in PLAN_ORDER)
-
-    if plan_key == cur:
-        status = "<b>✅ پلن فعلی شما</b>"
-    elif plan_rank(plan_key) < plan_rank(cur):
-        status = "<b>🔒 پایین‌تر از پلن فعلی</b>"
-    else:
-        status = "<b>⬆️ قابل ارتقا</b>"
-
-    if d["price"] == 0:
-        price_line = "🎉 <b>رایگان مادام‌العمر</b>"
-    else:
-        cost = d["price"] - PLANS[cur]["price"] if plan_rank(plan_key) > plan_rank(cur) else d["price"]
-        price_line = f"<b>{d['price']:,} {COIN_SYMBOL}</b>  (اختلاف: {cost:,})"
-
+    status_line = ("🟢 <b>پلن فعلی شماست</b>" if plan_key == cur else
+                   "🔒 پایین‌تر از پلن فعلی شماست" if plan_rank(plan_key) < plan_rank(cur) else "⬆️ قابل ارتقا")
+    price_line = "رایگان برای همیشه 🎉" if d["price"] == 0 else f"<b>{d['price']} {COIN_SYMBOL}</b>"
     return (
-        "╔════════════════════════════╗\n"
-        f"║   {d['badge']}  <b>{d['label']}</b>              ║\n"
-        "╚════════════════════════════╝\n\n"
-        f"<b>🌊 فرکانس:</b> <code>{d['frequency']}</code>\n"
-        f"<b>🧠 حالت:</b> <i>{d['vibe']}</i>\n\n"
-        f"<blockquote>{d['tagline']}</blockquote>\n\n"
-        f"<b>💳 قیمت:</b> {price_line}\n{status}\n\n"
-        "<pre>┌──────────────────────────────┐\n"
-        f"│ 🤖 ربات هم‌زمان: <b>{fmt_limit(d['max_bots']):<14}</b>│\n"
-        f"│ 🔧 دستورات:     <b>{fmt_limit(d['max_commands']):<14}</b>│\n"
-        f"│ ⚡ دکمه‌ها:      <b>{fmt_limit(d['max_callbacks']):<14}</b>│\n"
-        "└──────────────────────────────┘</pre>\n\n"
+        f"{d['badge']}  <b>{d['label']}</b>\n{dots}\n\n"
+        f"<blockquote>{d['tagline']}</blockquote>\n"
+        f"💳 قیمت: {price_line}\n{status_line}\n\n"
+        f"🤖 ربات هم‌زمان: <b>{fmt_limit(d['max_bots'])}</b>\n"
+        f"🔧 دستور دلخواه: <b>{fmt_limit(d['max_commands'])}</b>\n"
+        f"⚡ دکمهٔ سراسری: <b>{fmt_limit(d['max_callbacks'])}</b>\n\n"
         f"{_feature_line('📢', 'پیام همگانی', d['broadcast'])}\n"
-        f"{_feature_line('⏰', 'زمان‌بندی پیام', d['scheduled_broadcast'])}\n"
-        f"{_feature_line('🚫', 'عضویت اجباری اختصاصی', d['custom_force_join'])}\n"
+        f"{_feature_line('⏰', 'زمان‌بندی پیام همگانی', d['scheduled_broadcast'])}\n"
+        f"{_feature_line('🚫', 'عضویت اجباری اختصاصی هر ربات', d['custom_force_join'])}\n"
         f"{_feature_line('🖼', 'خوش‌آمد با عکس', d['media_welcome'])}\n"
-        f"📊 <b>آنالیتیکس:</b> {d['analytics']}\n\n"
-        f"💰 <b>موجودی شما:</b> {user.get('coin_balance', 0):,} {COIN_SYMBOL}"
+        f"📊 آنالیتیکس: <b>{d['analytics']}</b>\n\n"
+        f"💰 موجودی شما: <b>{user.get('coin_balance', 0)} {COIN_SYMBOL}</b>"
     )
 
 
 def plan_card_kb(plan_key: str, user: dict) -> InlineKeyboardMarkup:
-    # ✅ تغییر: بدون تغییر در منطق، فقط پلن پیش‌فرض
-    cur = user.get("plan", "beta")
+    cur = user.get("plan", "free")
     idx = PLAN_ORDER.index(plan_key)
     nav_row = []
     if idx > 0:
@@ -954,50 +849,12 @@ def plan_card_kb(plan_key: str, user: dict) -> InlineKeyboardMarkup:
     rows = [nav_row] if nav_row else []
     if plan_rank(plan_key) > plan_rank(cur):
         cost = PLANS[plan_key]["price"] - PLANS[cur]["price"]
-        rows.append([InlineKeyboardButton(f"🚀 ارتقا به {PLANS[plan_key]['label']} — {cost:,} {COIN_SYMBOL}",
+        rows.append([InlineKeyboardButton(f"🚀 ارتقا به {PLANS[plan_key]['label']} — {cost} {COIN_SYMBOL}",
                                            callback_data=f"plan:upgrade:{plan_key}")])
     elif plan_key == cur:
-        rows.append([InlineKeyboardButton("✅ پلن فعلی شما", callback_data="noop")])
+        rows.append([InlineKeyboardButton("✅ پلن فعلی شماست", callback_data="noop")])
     rows.append([InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")])
     return InlineKeyboardMarkup(rows)
-
-
-# ✅ تغییر: متن راهنما با استایل مدرن
-HELP_TEXT = (
-    "╔════════════════════════════╗\n"
-    "║   <b>📖 راهنمای GramSaz</b>        ║\n"
-    "╚════════════════════════════╝\n\n"
-    "<pre>┌─────────────────────────────┐\n"
-    "│  ۱. ساخت اولین ربات         │\n"
-    "└─────────────────────────────┘</pre>"
-    "<blockquote>"
-    "روی <b>➕ ساخت ربات</b> بزن، در @BotFather با <code>/newbot</code> ربات بساز "
-    "و توکن رو اینجا بفرست."
-    "</blockquote>\n\n"
-    "<pre>┌─────────────────────────────┐\n"
-    "│  ۲. مدیریت هر ربات         │\n"
-    "└─────────────────────────────┘</pre>"
-    "<blockquote>"
-    "از <b>🤖 ربات‌های من</b> → <b>⚙️ مدیریت</b>:\n"
-    "├ پیام /start (متن + دکمه + عکس)\n"
-    "├ دستورات دلخواه مثل <code>/info</code>\n"
-    "├ پاسخ اختصاصی هر دکمه\n"
-    "├ پیام همگانی (Alpha+)\n"
-    "└ عضویت اجباری (Theta)"
-    "</blockquote>\n\n"
-    "<pre>┌─────────────────────────────┐\n"
-    "│  ۳. بدون محدودیت زمانی    │\n"
-    "└─────────────────────────────┘</pre>"
-    "<blockquote>"
-    "ربات‌ها هرگز خاموش نمی‌شوند؛ فقط سقف پلن محدودکننده است."
-    "</blockquote>\n\n"
-    "<pre>┌─────────────────────────────┐\n"
-    "│  ۴. کوین و ارتقا            │\n"
-    "└─────────────────────────────┘</pre>"
-    "<blockquote>"
-    "با دعوت دوستان کوین جمع کن و از <b>💎 پلن‌ها</b> ارتقا بده."
-    "</blockquote>"
-)
 
 
 def build_referral_text(user: dict) -> str:
@@ -1005,27 +862,52 @@ def build_referral_text(user: dict) -> str:
     board = storage.get_referral_leaderboard(10)
     medals = ["🥇", "🥈", "🥉"]
     lines = [
-        "╔════════════════════════════╗\n"
-        "║  <b>🔗 دعوت دوستان</b>              ║\n"
-        "╚════════════════════════════╝\n",
-        "<blockquote>"
-        f"با هر دعوت: <b>+{REFERRAL_BONUS_REFERRER} {COIN_SYMBOL}</b> برای تو "
-        f"و <b>+{REFERRAL_BONUS_NEWCOMER} {COIN_SYMBOL}</b> برای دوستت.\n"
-        f"🎯 هر کاربر یکتا در ربات‌هات: <b>+{DOWNLINE_BONUS_PER_USER} {COIN_SYMBOL}</b> "
-        f"(سقف {DOWNLINE_DAILY_CAP}/روز)"
+        "🔗 <b>دعوت دوستان و کسب کوین</b>\n",
+        "<blockquote expandable>"
+        f"با هر دعوت موفق <b>{REFERRAL_BONUS_REFERRER} {COIN_SYMBOL}</b> می‌گیری و دوستت "
+        f"<b>{REFERRAL_BONUS_NEWCOMER} {COIN_SYMBOL}</b> پاداش خوش‌آمد می‌گیره.\n"
+        f"🎯 به‌ازای هر کاربر یکتای جدید در هر کدوم از ربات‌هات، "
+        f"<b>{DOWNLINE_BONUS_PER_USER} {COIN_SYMBOL}</b> بیشتر (سقف {DOWNLINE_DAILY_CAP} در روز)."
         "</blockquote>\n",
-        f"<b>🔗 لینک اختصاصی:</b>\n<code>{ref_link}</code>\n",
-        f"<b>👥 دعوت‌شده‌ها:</b> {user.get('referral_count', 0)} نفر",
+        f"🔗 لینک اختصاصی شما:\n{ref_link}\n",
+        f"👥 تا این لحظه <b>{user.get('referral_count', 0)}</b> نفر با لینک شما پیوستن.",
     ]
     if board:
-        lines.append("\n<pre>┌─────────────────────────────┐\n"
-                    "│    🏆 برترین دعوت‌کنندگان   │\n"
-                    "└─────────────────────────────┘</pre>")
+        lines.append("\n🏆 <b>لیدربورد برترین دعوت‌کننده‌ها</b>")
         for i, u in enumerate(board, 1):
             name = esc(u.get("username") or u.get("full_name") or str(u["uid"]))
             rank = medals[i - 1] if i <= 3 else f"{i}."
-            lines.append(f"{rank} <b>{name}</b> — <code>{u.get('referral_count', 0)}</code> دعوت")
+            lines.append(f"{rank} {name} — {u.get('referral_count', 0)} دعوت")
     return "\n".join(lines)
+
+
+HELP_TEXT = (
+    "📖 <b>راهنمای GramSaz</b>\n\n"
+    "🚀 <b>۱. ساخت اولین ربات</b>\n"
+    "<blockquote expandable>"
+    "روی «➕ ساخت ربات» بزن، به @BotFather برو، با /newbot یک ربات تازه بساز "
+    "و توکنی که می‌ده رو همین‌جا بفرست. تمام — ربات‌ت بالاست."
+    "</blockquote>\n"
+    "⚙️ <b>۲. مدیریت هر ربات</b>\n"
+    "<blockquote expandable>"
+    "از «🤖 ربات‌های من» → «⚙️ مدیریت» به همه‌چیز دسترسی داری:\n"
+    "• پیام /start (متن + دکمه + در پلن‌های بالاتر عکس)\n"
+    "• دستور دلخواه مثل /info با پاسخ و دکمهٔ اختصاصی\n"
+    "• پاسخ اختصاصی برای هر دکمه\n"
+    "• پیام همگانی به کاربرهای همون ربات (پلن حرفه‌ای به بالا)\n"
+    "• عضویت اجباری مخصوص همون ربات (پلن حرفه‌ای به بالا)"
+    "</blockquote>\n"
+    "⏳ <b>۳. بدون محدودیت زمانی</b>\n"
+    "<blockquote expandable>"
+    "هیچ رباتی به‌خاطر گذر زمان خاموش نمی‌شه؛ فقط سقف تعداد ربات/دستور/دکمهٔ "
+    "پلن‌تون محدودتون می‌کنه — هر وقت خواستی ارتقا بده."
+    "</blockquote>\n"
+    "💎 <b>۴. کوین و ارتقای پلن</b>\n"
+    "<blockquote expandable>"
+    "با دعوت دوستان و رشد ربات‌هات کوین جمع می‌کنی و از «💎 پلن‌ها و ارتقا» "
+    "خرج ارتقا می‌کنی — کارت‌های پلن رو با دکمه‌های ◀️ ▶️ ورق بزن."
+    "</blockquote>"
+)
 
 
 def build_bot_detail(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
@@ -1100,7 +982,7 @@ def build_stats_text(bot: dict, owner_plan: dict) -> str:
         else:
             text += "\n📈 هنوز داده‌ای برای نمودار روزانه ثبت نشده."
     else:
-        text += "\n🔒 آنالیتیکس پیشرفته (روند روزانه) مخصوص پلن نقره‌ای به بالاست."
+        text += "\n🔒 آنالیتیکس پیشرفته (روند روزانه) مخصوص پلن حرفه‌ای به بالاست."
     return text
 
 
@@ -1301,13 +1183,9 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
             d["name"] = name; d["step"] = "text"
             await msg.reply_text(f"✅ نام: /{name}\n\nمتن پاسخ این دستور را بفرست:")
             return
-        # ✅ تغییر: نمایش راهنمای HTML جذاب
         if step == "text":
             d["response"] = text; d["step"] = "buttons"
-            await msg.reply_text(
-                f"<b>🔘 دکمه‌های دستور <code>/{d['name']}</code></b>\n\n" + BUTTON_GUIDE_HTML,
-                parse_mode=ParseMode.HTML
-            )
+            await msg.reply_text("🔘 دکمه‌ها را با فرمت زیر بفرست (هر خط = یک ردیف):\nمتن۱|id1, متن۲|id2\n\nیا /skip برای رد کردن:")
             return
         if step == "buttons":
             rows = None
@@ -1515,7 +1393,7 @@ async def show_bot_start_section(msg, bot_id: str):
     if owner_plan["media_welcome"]:
         rows.append([InlineKeyboardButton("🖼 ویرایش عکس خوش‌آمد", callback_data=f"bot:start_edit_photo:{bot_id}")])
     else:
-        rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن برنزی+)", callback_data="noop")])
+        rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن حرفه‌ای)", callback_data="noop")])
     rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
     await msg.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
 
@@ -1798,14 +1676,10 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="start_text", bot_id=bot_id)
         await q.edit_message_text("✏️ متن جدید پیام شروع را بفرست:\n(/cancel برای انصراف)"); return
-    # ✅ تغییر: نمایش راهنمای HTML جذاب
     if data.startswith("bot:start_edit_buttons:"):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="start_buttons", bot_id=bot_id)
-        await q.edit_message_text(
-            "<b>🔘 ویرایش دکمه‌های پیام /start</b>\n\n" + BUTTON_GUIDE_HTML,
-            parse_mode=ParseMode.HTML
-        )
+        await q.edit_message_text("🔘 دکمه‌ها را بفرست (هر خط = یک ردیف):\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
         return
     if data.startswith("bot:start_edit_photo:"):
         bot_id = data.split(":")[2]
@@ -1813,7 +1687,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not b or b["owner_uid"] != uid:
             return
         if not storage.get_plan(uid)["media_welcome"]:
-            await q.answer("🔒 این قابلیت مخصوص پلن برنزی به بالاست.", show_alert=True); return
+            await q.answer("🔒 این قابلیت مخصوص پلن حرفه‌ای به بالاست.", show_alert=True); return
         ctx.user_data.clear(); ctx.user_data.update(awaiting="start_photo", bot_id=bot_id)
         await q.edit_message_text("🖼 یک عکس برای پیام خوش‌آمد بفرست، یا /skip برای حذف عکس فعلی:\n(/cancel برای انصراف)")
         return
@@ -1875,14 +1749,10 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _, _, bot_id, name = data.split(":", 3)
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_text", bot_id=bot_id, name=name)
         await q.edit_message_text(f"✏️ متن جدید برای /{name}:\n(/cancel برای انصراف)"); return
-    # ✅ تغییر: نمایش راهنمای HTML جذاب
     if data.startswith("bot:cmd_edit_buttons:"):
         _, _, bot_id, name = data.split(":", 3)
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_buttons", bot_id=bot_id, name=name)
-        await q.edit_message_text(
-            f"<b>🔘 ویرایش دکمه‌های دستور <code>/{name}</code></b>\n\n" + BUTTON_GUIDE_HTML,
-            parse_mode=ParseMode.HTML
-        )
+        await q.edit_message_text(f"🔘 دکمه‌های جدید برای /{name}:\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
         return
     if data.startswith("bot:cmd_delete:") and "confirm" not in data:
         _, _, bot_id, name = data.split(":", 3)
@@ -1979,7 +1849,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         owner_plan = storage.get_plan(uid)
         if not owner_plan["broadcast"]:
-            await q.edit_message_text("🔒 پیام همگانی مخصوص پلن برنزی به بالاست.",
+            await q.edit_message_text("🔒 پیام همگانی مخصوص پلن حرفه‌ای به بالاست.",
                                        reply_markup=InlineKeyboardMarkup([
                                            [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
                                            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
@@ -1988,7 +1858,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if owner_plan["scheduled_broadcast"]:
             rows.append([InlineKeyboardButton("⏰ زمان‌بندی ارسال", callback_data=f"bot:bc_sched:{bot_id}")])
         else:
-            rows.append([InlineKeyboardButton("🔒 زمان‌بندی (نیاز به پلن نقره‌ای+)", callback_data="noop")])
+            rows.append([InlineKeyboardButton("🔒 زمان‌بندی (نیاز به پلن حرفه‌ای)", callback_data="noop")])
         rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
         await q.edit_message_text(f"📢 پیام همگانی\n\n👥 تعداد کاربران ربات: {len(b.get('bot_users', []))}",
                                    reply_markup=InlineKeyboardMarkup(rows))
@@ -2010,7 +1880,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         owner_plan = storage.get_plan(uid)
         if not owner_plan["custom_force_join"]:
-            await q.edit_message_text("🔒 عضویت اجباری اختصاصی مخصوص پلن نقره‌ای به بالاست.",
+            await q.edit_message_text("🔒 عضویت اجباری اختصاصی مخصوص پلن حرفه‌ای به بالاست.",
                                        reply_markup=InlineKeyboardMarkup([
                                            [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
                                            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
@@ -2127,6 +1997,20 @@ async def on_startup(app: Application):
     global PLATFORM_USERNAME
     mother_bot_ref["bot"] = app.bot
     await storage.load()
+    # 🔄 مهاجرت خودکار کاربران قدیمی از پلن‌های منسوخ‌شده
+    _MIGRATION = {
+        "free": "starter",
+        "bronze": "professional",
+        "silver": "professional",
+        "gold": "enterprise",
+        "diamond": "enterprise",
+    }
+    for u in storage.data["users"].values():
+        old_plan = u.get("plan")
+        if old_plan in _MIGRATION:
+            u["plan"] = _MIGRATION[old_plan]
+            storage.mark_dirty()
+    log.info("🔄 مهاجرت پلن‌های قدیمی انجام شد")
     me = await app.bot.get_me()
     PLATFORM_USERNAME = me.username or ""
     await factory.start_all_active()
