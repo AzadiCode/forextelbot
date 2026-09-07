@@ -1,1816 +1,2045 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ExchangeBot v8.1 — نسخه نهایی + سیستم Quota-Pool امن (Bot Probe)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GramSaz — پلتفرم حرفه‌ای ربات‌ساز تلگرام (v3.0)
+════════════════════════════════════════════════════════════════════════════
+فول async: python-telegram-bot (v20+) + Motor (MongoDB async، اختیاری)
+════════════════════════════════════════════════════════════════════════════
 """
-import os, sys, re, time, json, signal, atexit, logging, hashlib, unicodedata
-import asyncio, threading
+
+from __future__ import annotations
+import os
+import sys
+import json
+import time
+import html as html_lib
+import hashlib
+import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, List
+from typing import Optional
 
-from flask import Flask, request
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.constants import ParseMode
+from telegram.error import InvalidToken, Forbidden, RetryAfter, BadRequest
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, MessageHandler, filters,
+)
 
-from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
-                      Bot, ReplyKeyboardMarkup, KeyboardButton, ReactionTypeEmoji)
-from telegram.constants import ParseMode, ChatMemberStatus
-from telegram.error import BadRequest, Forbidden, TelegramError
-from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
-                          ContextTypes, filters, MessageHandler, MessageReactionHandler)
+try:
+    from motor.motor_asyncio import AsyncIOMotorClient
+    MOTOR_AVAILABLE = True
+except ImportError:
+    MOTOR_AVAILABLE = False
 
+
+# ══════════════════════════════════════════════════════════════════════
+# لاگ‌گذاری
+# ══════════════════════════════════════════════════════════════════════
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    level=logging.INFO,
-    stream=sys.stdout
+    level=logging.INFO, stream=sys.stdout,
 )
-log = logging.getLogger("ExchangeBot")
+log = logging.getLogger("GramSaz")
 
-# ═══════════════════════════════════════════════════════════════
-#                          CONFIG
-# ═══════════════════════════════════════════════════════════════
-BOT_TOKEN          = os.environ.get("BOT_TOKEN", "8649622614:AAFs3Hoz9EbjBGiFeua3wt8j_XJFRbtMNxA")
-PORT               = int(os.environ.get("PORT", 5000))
-ADMIN_IDS          = {int(x) for x in os.environ.get("ADMIN_IDS", "605611554").replace(" ", "").split(",") if x.strip()}
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testchanellaz")
 
-COIN               = "💎"
-SIGNUP_BONUS       = 100
-REFERRAL_BONUS     = 50
-DAILY_REWARD       = 10
-JOIN_REWARD        = 5
-JOIN_COST_MULT     = 2
-REACTION_REWARD    = 2
-REACTION_COST_MULT = 2
-ALLOWED_REACTIONS  = {"👍", "❤", "🔥", "👏", "🎉", "🤩", "💯", "⚡"}
-IRAN_TZ            = timezone(timedelta(hours=3, minutes=30))
-PENDING_TIMEOUT    = 900   # 15 دقیقه
-MAX_DESC_LENGTH    = 200
+# ══════════════════════════════════════════════════════════════════════
+# CONFIG
+# ══════════════════════════════════════════════════════════════════════
+PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "8649622614:AAFs3Hoz9EbjBGiFeua3wt8j_XJFRbtMNxA").strip()
+MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
+PORT = int(os.getenv("PORT", "10000"))
 
-# ✅ حداقل زمان انتظار بعد از «شروع تسک» قبل از فعال‌شدن دکمه «بررسی»
-#    (چون آپدیت message_reaction_count تلگرام ممکن است تا چند دقیقه تأخیر داشته باشد)
-MIN_REACTION_WAIT_SECONDS = 20
+ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS", "605611554").replace(" ", "").split(",")
+             if x.strip().lstrip("-").isdigit()}
 
-def now_ir():    return datetime.now(IRAN_TZ)
-def is_admin(u): return u in ADMIN_IDS
+# می‌تونه چند کانال باشه، با کاما جدا: "@channel1,-1001234567890"
+FORCE_JOIN_CHANNELS = [c.strip() for c in os.getenv("FORCE_JOIN_CHANNEL", "@testchanellaz").split(",") if c.strip()]
 
-def _normalize_emoji(emoji_str: str) -> str:
-    if not emoji_str:
-        return ""
-    cleaned = re.sub(r'[\ufe00-\ufe0f]', '', emoji_str)
-    return unicodedata.normalize('NFC', cleaned)
+COIN_SYMBOL = "GC"
+SIGNUP_BONUS = 50
+REFERRAL_BONUS_REFERRER = 80
+REFERRAL_BONUS_NEWCOMER = 20
+DOWNLINE_BONUS_PER_USER = 3
+DOWNLINE_DAILY_CAP = 15
+BROADCAST_DELAY_SEC = 0.045
+ADMIN_PAGE_SIZE = 8
+RESERVED_COMMANDS = {"start", "cancel", "help", "id"}
+IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
-def _normalize_chat_id(cid) -> int:
-    try:
-        return abs(int(cid))
-    except (ValueError, TypeError):
-        return 0
+if not PLATFORM_BOT_TOKEN:
+    log.critical("PLATFORM_BOT_TOKEN تنظیم نشده!")
+    sys.exit(1)
 
-# ═══════════════════════════════════════════════════════════════
-#                       CLOUD STORAGE
-# ═══════════════════════════════════════════════════════════════
-try:
-    from pymongo import MongoClient
-    MONGODB_AVAILABLE = True
-except ImportError:
-    MONGODB_AVAILABLE = False
 
-class CloudStorage:
-    _DEFAULTS = {
-        "users": {}, "orders": [], "tasks_completed": [],
-        "pending_likes": [], "transactions": [], "last_updated": None
-    }
+# ══════════════════════════════════════════════════════════════════════
+# توابع کمکی عمومی
+# ══════════════════════════════════════════════════════════════════════
+def esc(value) -> str:
+    return html_lib.escape(str(value), quote=False)
 
-    def __init__(self):
-        self._uri        = os.environ.get("MONGODB_URI", "")
-        self._client     = None
-        self._collection = None
-        self._lock       = threading.Lock()
-        self._dirty      = False
-        self._data       = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
-                            for k, v in self._DEFAULTS.items()}
 
-        if self._uri and MONGODB_AVAILABLE:
-            try:
-                self._client     = MongoClient(self._uri, serverSelectionTimeoutMS=10000)
-                self._client.admin.command("ping")
-                self._collection = self._client.get_database()["exchange_bot_data"]
-                log.info("MongoDB ✅ متصل شد")
-            except Exception as e:
-                log.error(f"MongoDB ❌: {e}")
+def now_ir() -> datetime:
+    return datetime.now(IRAN_TZ)
 
-    # ── persistence ──────────────────────────────────────────────────────────
-    def load(self):
-        if not self._collection: return
-        try:
-            doc = self._collection.find_one({"_id": "main"})
-            if doc:
-                doc.pop("_id", None)
-                with self._lock:
-                    for k, v in doc.items():
-                        self._data[k] = v
-                    for k, dv in self._DEFAULTS.items():
-                        self._data.setdefault(k, dict(dv) if isinstance(dv, dict) else list(dv))
-                log.info("📥 داده‌ها از MongoDB بارگذاری شد")
-        except Exception as e:
-            log.error(f"Load error: {e}")
 
-    def save(self, force=False):
-        if not self._collection: return
-        if not force and not self._dirty: return
-        with self._lock:
-            self._data["last_updated"] = now_ir().isoformat()
-            payload = {"_id": "main", **self._data}
-        try:
-            self._collection.replace_one({"_id": "main"}, payload, upsert=True)
+def today_str() -> str:
+    return now_ir().strftime("%Y-%m-%d")
+
+
+def is_admin(uid: int) -> bool:
+    return uid in ADMIN_IDS
+
+
+def fmt_timedelta(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    parts = []
+    if d: parts.append(f"{d} روز")
+    if h or d: parts.append(f"{h} ساعت")
+    parts.append(f"{m} دقیقه")
+    return " و ".join(parts)
+
+
+def to_chat_id(channel: str):
+    """تبدیل امن شناسه‌ی کانال: یوزرنیم (@x) دست‌نخورده می‌مونه، آیدی عددی
+    (چه با -100 چه بدون) به int واقعی تبدیل می‌شه — تلگرام برای
+    get_chat_member/get_chat فقط int یا @username قبول می‌کنه، رشته‌ی
+    عددی رو رد می‌کنه و این باعث می‌شد قبلاً چک عضویت بی‌سروصدا خراب بشه."""
+    c = str(channel).strip()
+    if c.startswith("@"):
+        return c
+    if c.lstrip("-").isdigit():
+        return int(c)
+    return c
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 💎 پلن‌های اشتراک (Starter / Professional / Enterprise)
+# ══════════════════════════════════════════════════════════════════════
+PLANS: dict[str, dict] = {
+    "starter": {
+        "order": 0, "label": "پایه", "badge": "🌱", "price": 0,
+        "max_bots": 1, "max_commands": 5, "max_callbacks": 8,
+        "broadcast": False, "scheduled_broadcast": False,
+        "custom_force_join": False, "media_welcome": False, "analytics": "ساده",
+        "tagline": "برای شروع و آشنایی با پلتفرم — یک ربات با امکانات پایه.",
+    },
+    "professional": {
+        "order": 1, "label": "حرفه‌ای", "badge": "🚀", "price": 1200,
+        "max_bots": 3, "max_commands": 30, "max_callbacks": 40,
+        "broadcast": True, "scheduled_broadcast": True,
+        "custom_force_join": True, "media_welcome": True, "analytics": "پیشرفته",
+        "tagline": "ابزار کامل برای کسب‌وکارهای در حال رشد — پیام همگانی، زمان‌بندی و عضویت اجباری.",
+    },
+    "enterprise": {
+        "order": 2, "label": "سازمانی", "badge": "💎", "price": 4500,
+        "max_bots": 999, "max_commands": 999, "max_callbacks": 999,
+        "broadcast": True, "scheduled_broadcast": True,
+        "custom_force_join": True, "media_welcome": True,
+        "analytics": "حرفه‌ای + پشتیبانی اختصاصی",
+        "tagline": "راهکار نامحدود برای کسب‌وکارهای بزرگ — بدون سقف، با پشتیبانی اولویت‌دار.",
+    },
+}
+PLAN_ORDER = sorted(PLANS.keys(), key=lambda p: PLANS[p]["order"])
+
+
+def plan_rank(plan_key: str) -> int:
+    return PLANS.get(plan_key, PLANS["free"])["order"]
+
+
+def fmt_limit(n: int) -> str:
+    return "نامحدود ♾" if n >= 900 else str(n)
+
+
+def progress_bar(current: int, maximum: int, length: int = 10) -> str:
+    if maximum >= 900:
+        return f"♾ نامحدود  ({current} استفاده‌شده)"
+    maximum = max(maximum, 1)
+    filled = int(length * min(current, maximum) / maximum)
+    return "▰" * filled + "▱" * (length - filled) + f"  {current}/{maximum}"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# لایه ذخیره‌سازی (Storage)
+# ══════════════════════════════════════════════════════════════════════
+class Storage:
+    """دیتای زنده در حافظه + سینک اختیاری با MongoDB."""
+
+    def __init__(self, mongo_uri: str = MONGODB_URI):
+        self._col = None
+        self._lock = asyncio.Lock()
+        self._dirty = False
+        self.data: dict = {"users": {}, "bots": {}}
+        if mongo_uri and MOTOR_AVAILABLE:
+            client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=10000)
+            self._col = client.get_default_database()["gramsaz_data"]
+
+    async def load(self):
+        if self._col is None:
+            return
+        doc = await self._col.find_one({"_id": "main"})
+        if not doc:
+            return
+        doc.pop("_id", None)
+        async with self._lock:
+            self.data.update(doc)
+            self.data.setdefault("users", {})
+            self.data.setdefault("bots", {})
+            for u in self.data["users"].values():
+                self._user_defaults(u)
+            for b in self.data["bots"].values():
+                self._bot_defaults(b)
+
+    @staticmethod
+    def _user_defaults(u: dict):
+        u.setdefault("signup_bonus_claimed", False)
+        u.setdefault("plan", "starter")
+        u.setdefault("referred_by", None)
+        u.setdefault("referral_count", 0)
+        u.setdefault("referral_earned_coins", 0)
+        u.setdefault("downline_bonus_date", None)
+        u.setdefault("downline_bonus_count", 0)
+        u.setdefault("is_banned", False)
+
+    @staticmethod
+    def _bot_defaults(b: dict):
+        b.setdefault("start_msg", "👋 سلام! به ربات ما خوش آمدید.")
+        b.setdefault("start_buttons", None)
+        b.setdefault("start_photo", None)
+        b.setdefault("commands", {})
+        b.setdefault("callbacks", {})
+        b.setdefault("force_join_channel", None)
+        b.setdefault("bot_users", [])
+        b.setdefault("stats", {"messages_received": 0, "messages_sent": 0, "unique_users": 0, "broadcasts_sent": 0})
+        b.setdefault("daily_stats", {})
+
+    async def save(self, force: bool = False):
+        if self._col is None or (not force and not self._dirty):
+            return
+        async with self._lock:
+            payload = {"_id": "main", **self.data, "last_updated": now_ir().isoformat()}
             self._dirty = False
-        except Exception as e:
-            log.error(f"Save error: {e}")
+        await self._col.replace_one({"_id": "main"}, payload, upsert=True)
 
-    # ── users ────────────────────────────────────────────────────────────────
-    def ensure_user(self, uid: int, username="", full_name=""):
-        key    = str(uid)
+    def mark_dirty(self):
+        self._dirty = True
+
+    async def autosave_loop(self):
+        while True:
+            await asyncio.sleep(300)
+            await self.save()
+
+    # ---- کاربران ----
+    async def ensure_user(self, uid: int, username: str = "", full_name: str = "",
+                           ref_code: Optional[str] = None) -> tuple[dict, bool, Optional[int]]:
+        key = str(uid)
         is_new = False
-        with self._lock:
-            if key not in self._data["users"]:
+        referrer_uid: Optional[int] = None
+        async with self._lock:
+            if key not in self.data["users"]:
                 is_new = True
-                self._data["users"][key] = {
-                    "uid":             uid,
-                    "username":        username or "",
-                    "full_name":       full_name or "",
-                    "balance":         SIGNUP_BONUS,
-                    "total_earned":    SIGNUP_BONUS,
-                    "referral_code":   hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:8],
-                    "referred_by":     None,
-                    "created_at":      now_ir().isoformat(),
-                    "last_daily_claim": None,
-                    "tasks_done":      0,
+                my_code = hashlib.md5(f"{uid}{time.time()}".encode()).hexdigest()[:8]
+                if ref_code:
+                    for other_key, u in self.data["users"].items():
+                        if u.get("referral_code") == ref_code and int(other_key) != uid:
+                            referrer_uid = int(other_key)
+                            break
+                self.data["users"][key] = {
+                    "uid": uid, "username": username, "full_name": full_name,
+                    "coin_balance": 0, "referral_code": my_code, "referred_by": referrer_uid,
+                    "created_at": now_ir().isoformat(), "bots_created": [],
+                    "signup_bonus_claimed": False, "plan": "starter",
+                    "referral_count": 0, "referral_earned_coins": 0,
+                    "downline_bonus_date": None, "downline_bonus_count": 0, "is_banned": False,
                 }
-                self._dirty = True
+                if referrer_uid is not None:
+                    ref = self.data["users"][str(referrer_uid)]
+                    ref["coin_balance"] += REFERRAL_BONUS_REFERRER
+                    ref["referral_count"] += 1
+                    ref["referral_earned_coins"] += REFERRAL_BONUS_REFERRER
+                self.mark_dirty()
             else:
-                u, changed = self._data["users"][key], False
-                if username  and u.get("username")  != username:  u["username"]  = username;  changed = True
-                if full_name and u.get("full_name") != full_name: u["full_name"] = full_name; changed = True
-                if changed: self._dirty = True
-        return dict(self._data["users"][key]), is_new
+                u = self.data["users"][key]
+                self._user_defaults(u)
+                if username and u.get("username") != username:
+                    u["username"] = username; self.mark_dirty()
+                if full_name and u.get("full_name") != full_name:
+                    u["full_name"] = full_name; self.mark_dirty()
+        return dict(self.data["users"][key]), is_new, referrer_uid
 
     def get_user(self, uid: int) -> Optional[dict]:
-        with self._lock:
-            u = self._data["users"].get(str(uid))
-            return dict(u) if u else None
+        u = self.data["users"].get(str(uid))
+        return dict(u) if u else None
 
-    def get_all_users(self) -> List[dict]:
-        with self._lock:
-            return [{"uid_str": k, **v} for k, v in self._data["users"].items()]
+    def get_plan(self, uid: int) -> dict:
+        u = self.get_user(uid) or {}
+        return PLANS.get(u.get("plan", "starter"), PLANS["starter"])
 
-    # ── coins ────────────────────────────────────────────────────────────────
-    def add_coin(self, uid: int, amount: int, reason: str) -> bool:
+    async def claim_signup_bonus(self, uid: int) -> int:
         key = str(uid)
-        with self._lock:
-            if key not in self._data["users"]: return False
-            self._data["users"][key]["balance"]      += amount
-            self._data["users"][key]["total_earned"] += amount
-            self._data["transactions"].append({
-                "uid": uid, "amount": amount,
-                "reason": reason, "timestamp": now_ir().isoformat()
-            })
-            self._data["transactions"] = self._data["transactions"][-2000:]
-            self._dirty = True
-            return True
+        async with self._lock:
+            u = self.data["users"].get(key)
+            if not u or u.get("signup_bonus_claimed"):
+                return 0
+            u["signup_bonus_claimed"] = True
+            bonus = SIGNUP_BONUS + (REFERRAL_BONUS_NEWCOMER if u.get("referred_by") else 0)
+            u["coin_balance"] += bonus
+            self.mark_dirty()
+        return bonus
 
-    def deduct_coin(self, uid: int, amount: int, reason: str) -> bool:
-        key = str(uid)
-        with self._lock:
-            u = self._data["users"].get(key)
-            if not u or u.get("balance", 0) < amount: return False
-            u["balance"] -= amount
-            self._data["transactions"].append({
-                "uid": uid, "amount": -amount,
-                "reason": reason, "timestamp": now_ir().isoformat()
-            })
-            self._dirty = True
-            return True
+    async def upgrade_plan(self, uid: int, target: str) -> tuple[bool, str]:
+        if target not in PLANS:
+            return False, "پلن نامعتبر."
+        async with self._lock:
+            u = self.data["users"].get(str(uid))
+            if not u:
+                return False, "کاربر یافت نشد."
+            cur = u.get("plan", "starter")
+            if plan_rank(target) <= plan_rank(cur):
+                return False, "شما همین الان این پلن یا بالاتر را دارید."
+            cost = PLANS[target]["price"] - PLANS[cur]["price"]
+            if u.get("coin_balance", 0) < cost:
+                return False, f"موجودی کافی نیست — {cost - u.get('coin_balance', 0)} {COIN_SYMBOL} دیگر لازم دارید."
+            u["coin_balance"] -= cost
+            u["plan"] = target
+            self.mark_dirty()
+        return True, f"پلن شما به {PLANS[target]['label']} ارتقا یافت!"
 
-    # ── orders ───────────────────────────────────────────────────────────────
-    def create_order(self, uid, order_type, target, count, cost_per,
-                     post_id=None, chat_id=None, description="", chat_type=None) -> Optional[dict]:
-        total = cost_per * count
-        if not self.deduct_coin(uid, total, f"create_{order_type}"): return None
-        order_id = hashlib.md5(f"{uid}{target}{time.time()}".encode()).hexdigest()[:12]
-        with self._lock:
-            order = {
-                "order_id":      order_id,
-                "owner_uid":     uid,
-                "type":          order_type,
-                "target":        target,
-                "post_id":       post_id,
-                "chat_id":       int(chat_id) if chat_id else None,
-                "chat_type":     chat_type,        # "channel" | "supergroup" | None
-                "total_count":   count,
-                "remaining_count": count,
-                "cost_per_unit": cost_per,
-                "description":   description[:MAX_DESC_LENGTH],
-                "created_at":    now_ir().isoformat(),
-                "status":        "active",
-                # ── فیلدهای مخصوص سیستم Quota-Pool (فقط برای reaction روی کانال) ──
-                "reaction_baseline":   None,   # مجموع لایک‌های مجاز در لحظه‌ی اولین رویداد بعد از ثبت سفارش
-                "reaction_last_total": None,   # آخرین مجموع دریافتی از تلگرام
-                "quota_claimed":       0,      # چند واحد از quota تا الان مصرف شده
-                # ✅ فلگ تکنیک Bot Probe
-                "bot_probe_active":    True if (order_type == "reaction" and chat_type == "channel") else False,
-            }
-            self._data["orders"].append(order)
-            self._dirty = True
-            log.info(f"✅ Order {order_id}: type={order_type} chat={chat_id}({chat_type}) post={post_id}")
-            return dict(order)
-
-    def get_active_orders(self, order_type=None) -> List[dict]:
-        with self._lock:
-            return [
-                dict(o) for o in self._data["orders"]
-                if o.get("status") == "active"
-                and o.get("remaining_count", 0) > 0
-                and (not order_type or o.get("type") == order_type)
-            ]
-
-    def get_order_by_id(self, order_id) -> Optional[dict]:
-        with self._lock:
-            return next((dict(o) for o in self._data["orders"]
-                         if o["order_id"] == order_id), None)
-
-    def complete_order_unit(self, order_id: str, worker_uid: int) -> tuple:
-        with self._lock:
-            order = next((o for o in self._data["orders"]
-                          if o["order_id"] == order_id), None)
-            if not order:
-                return False, "❌ سفارش یافت نشد"
-            if order["status"] != "active" or order["remaining_count"] <= 0:
-                return False, "❌ سفارش غیرفعال است"
-            if order["owner_uid"] == worker_uid:
-                return False, "⛔ نمی‌توانید تسک خودتان را انجام دهید"
-
-            key = f"{order_id}_{worker_uid}"
-            if key in self._data["tasks_completed"]:
-                return False, "✅ قبلاً این تسک را انجام داده‌اید"
-
-            order["remaining_count"] -= 1
-            if order["remaining_count"] <= 0:
-                order["status"] = "completed"
-            self._data["tasks_completed"].append(key)
-
-            u = self._data["users"].get(str(worker_uid))
-            if u:
-                u["tasks_done"] = u.get("tasks_done", 0) + 1
-            self._dirty = True
-
-        reward = JOIN_REWARD if order["type"] == "join" else REACTION_REWARD
-        self.add_coin(worker_uid, reward, f"task_{order_id}")
-        return True, reward
-
-    def is_task_done(self, order_id: str, worker_uid: int) -> bool:
-        with self._lock:
-            return f"{order_id}_{worker_uid}" in self._data["tasks_completed"]
-
-    def get_user_orders(self, uid: int) -> List[dict]:
-        with self._lock:
-            return [dict(o) for o in self._data["orders"]
-                    if o.get("owner_uid") == uid]
-
-    # ── pending likes ────────────────────────────────────────────────────────
-    def set_pending_like(self, order_id: str, worker_uid: int):
-        with self._lock:
-            self._data["pending_likes"] = [
-                p for p in self._data["pending_likes"]
-                if not (p["order_id"] == order_id and p["worker_uid"] == worker_uid)
-            ]
-            self._data["pending_likes"].append({
-                "order_id":   order_id,
-                "worker_uid": worker_uid,
-                "timestamp":  time.time(),
-                "expires":    time.time() + PENDING_TIMEOUT,
-            })
-            self._dirty = True
-            log.info(f"📌 Pending like set: order={order_id} user={worker_uid}")
-
-    def get_pending_like(self, order_id: str, worker_uid: int) -> Optional[dict]:
-        now = time.time()
-        with self._lock:
-            return next((p for p in self._data["pending_likes"]
-                         if p["order_id"] == order_id
-                         and p["worker_uid"] == worker_uid
-                         and p["expires"] > now), None)
-
-    def remove_pending_like(self, order_id: str, worker_uid: int):
-        with self._lock:
-            self._data["pending_likes"] = [
-                p for p in self._data["pending_likes"]
-                if not (p["order_id"] == order_id and p["worker_uid"] == worker_uid)
-            ]
-            self._dirty = True
-
-    def get_user_pendings(self, worker_uid: int) -> List[dict]:
-        now = time.time()
-        with self._lock:
-            return [p for p in self._data["pending_likes"]
-                    if p["worker_uid"] == worker_uid and p["expires"] > now]
-
-    def cleanup_expired_pendings(self):
-        now = time.time()
-        with self._lock:
-            before = len(self._data["pending_likes"])
-            self._data["pending_likes"] = [
-                p for p in self._data["pending_likes"] if p["expires"] > now
-            ]
-            if len(self._data["pending_likes"]) < before:
-                self._dirty = True
-
-    # ── Quota-Pool برای لایک کانال (امن، بدون تشخیص فردی) ───────────────────
-    def update_reaction_totals(self, chat_id, message_id, total: int):
-        """
-        هر بار آپدیت message_reaction_count از تلگرام می‌رسد، این تابع
-        مجموع فعلی ریکشن‌های مجاز روی آن پست را برای سفارش‌های مرتبط ثبت می‌کند.
-        ✅ نکته امنیتی: baseline فقط از *اولین* رویدادی که بعد از ساخته‌شدن
-        سفارش می‌رسد گرفته می‌شود — یعنی لایک‌های از‌قبل‌موجود روی پست
-        هرگز به‌عنوان quota قابل‌برداشت حساب نمی‌شوند.
-        🔥 منطق Bot Probe: اگر ربات خودش ریکشن گذاشته باشه، باید یکی از توتال کم کنه.
-        """
-        norm_chat = _normalize_chat_id(chat_id)
-        with self._lock:
-            for o in self._data["orders"]:
-                if o.get("type") != "reaction": continue
-                if o.get("chat_type") != "channel": continue
-                if _normalize_chat_id(o.get("chat_id")) != norm_chat: continue
-                try:
-                    if int(o.get("post_id", -1)) != int(message_id): continue
-                except (ValueError, TypeError):
-                    continue
-
-                if o.get("reaction_baseline") is None:
-                    # ✅ محاسبه سن سفارش برای اطمینان از اینکه پروب مربوط به همین سفارش است
-                    try:
-                        order_age = (now_ir() - datetime.fromisoformat(o["created_at"])).total_seconds()
-                    except:
-                        order_age = 999
-                        
-                    if o.get("bot_probe_active") and order_age < 15:
-                        o["reaction_baseline"] = max(0, total - 1)
-                        o["bot_probe_active"] = False
-                        log.info(f"📌 Baseline ثبت شد (probe) برای order={o['order_id']}: {o['reaction_baseline']}")
-                    else:
-                        # Fallback اگر پروب شکست خورد یا آپدیت خیلی دیر رسید
-                        o["reaction_baseline"] = total
-                        o["bot_probe_active"] = False
-                        log.info(f"📌 Baseline ثبت شد (fallback) برای order={o['order_id']}: {total}")
-                
-                o["reaction_last_total"] = total
-                self._dirty = True
-
-    def _available_quota_locked(self, order: dict) -> int:
-        if order.get("reaction_baseline") is None:
-            return 0
-        base    = order["reaction_baseline"]
-        total   = order.get("reaction_last_total", base)
-        claimed = order.get("quota_claimed", 0)
-        return max(0, (total - base) - claimed)
-
-    def get_available_quota(self, order_id: str) -> int:
-        with self._lock:
-            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
-            if not order: return 0
-            return self._available_quota_locked(order)
-
-    def has_reaction_baseline(self, order_id: str) -> bool:
-        with self._lock:
-            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
-            return bool(order and order.get("reaction_baseline") is not None)
-
-    def claim_quota_unit(self, order_id: str) -> bool:
-        """
-        مصرف اتمیک یک واحد از quota. اگر واحد واقعی موجود نبود، False برمی‌گردد
-        و هیچ پاداشی پرداخت نمی‌شود — این تنها نقطه‌ای است که تصمیم پرداخت
-        برای لایک کانال گرفته می‌شود، پس هرگز نباید بدون عبور از این تابع
-        به complete_order_unit برای سفارش‌های نوع کانال رسید.
-        """
-        with self._lock:
-            order = next((o for o in self._data["orders"] if o["order_id"] == order_id), None)
-            if not order: return False
-            if self._available_quota_locked(order) < 1: return False
-            order["quota_claimed"] = order.get("quota_claimed", 0) + 1
-            self._dirty = True
-            return True
-
-    # ── daily & referral ─────────────────────────────────────────────────────
-    def can_claim_daily(self, uid: int) -> bool:
-        u = self.get_user(uid)
-        if not u or not u.get("last_daily_claim"): return True
-        try:
-            return (now_ir() - datetime.fromisoformat(u["last_daily_claim"])).days >= 1
-        except:
-            return True
-
-    def claim_daily(self, uid: int) -> bool:
-        if not self.can_claim_daily(uid): return False
-        with self._lock:
-            k = str(uid)
-            if k in self._data["users"]:
-                self._data["users"][k]["last_daily_claim"] = now_ir().isoformat()
-                self._dirty = True
-        return self.add_coin(uid, DAILY_REWARD, "daily")
-
-    def find_uid_by_referral(self, ref_code: str) -> Optional[int]:
-        with self._lock:
-            for uid_str, u in self._data["users"].items():
-                if u.get("referral_code") == ref_code:
-                    return int(uid_str)
-        return None
-
-    def apply_referral(self, new_uid: int, ref_uid: int) -> bool:
-        if new_uid == ref_uid: return False
-        with self._lock:
-            n_k, r_k = str(new_uid), str(ref_uid)
-            users = self._data["users"]
-            if n_k not in users or r_k not in users: return False
-            if users[n_k].get("referred_by"):         return False
-            users[n_k]["referred_by"] = r_k
-            self._dirty = True
-            return True
-
-    def get_stats(self) -> dict:
-        with self._lock:
-            return {
-                "total_users":    len(self._data["users"]),
-                "active_orders":  sum(1 for o in self._data["orders"]
-                                      if o.get("status") == "active"),
-                "pending_count":  len(self._data["pending_likes"]),
-            }
-
-cloud = CloudStorage()
-
-# ═══════════════════════════════════════════════════════════════
-#                     HELPER FUNCTIONS
-# ═══════════════════════════════════════════════════════════════
-async def check_membership(bot: Bot, uid: int) -> bool:
-    if not FORCE_JOIN_CHANNEL: return True
-    try:
-        m = await bot.get_chat_member(FORCE_JOIN_CHANNEL, uid)
-        return m.status not in ("left", "kicked", "banned")
-    except:
+    async def admin_set_plan(self, uid: int, target: str) -> bool:
+        if target not in PLANS:
+            return False
+        async with self._lock:
+            u = self.data["users"].get(str(uid))
+            if not u:
+                return False
+            u["plan"] = target
+            self.mark_dirty()
         return True
 
-async def check_bot_admin(bot: Bot, channel: str) -> bool:
-    try:
-        me = await bot.get_me()
-        m  = await bot.get_chat_member(channel, me.id)
-        return m.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER)
-    except:
-        return False
+    async def admin_grant_coins(self, uid: int, amount: int) -> Optional[int]:
+        async with self._lock:
+            u = self.data["users"].get(str(uid))
+            if not u:
+                return None
+            u["coin_balance"] = max(0, u.get("coin_balance", 0) + amount)
+            self.mark_dirty()
+            return u["coin_balance"]
 
-async def init_reaction_baseline(bot: Bot, order_id: str, chat_id: int, post_id: int):
-    """
-    🔥 تکنیک Bot Probe: ربات موقتاً یک ریکشن می‌ذاره تا تلگرام رو مجبور کنه
-    آپدیت count رو بفرسته. بعدش یکی از توتال کم می‌کنه تا Baseline واقعی ثبت بشه.
-    """
+    async def set_banned(self, uid: int, banned: bool) -> bool:
+        async with self._lock:
+            u = self.data["users"].get(str(uid))
+            if not u:
+                return False
+            u["is_banned"] = banned
+            self.mark_dirty()
+            return True
+
+    def get_referral_leaderboard(self, top: int = 10) -> list[dict]:
+        users = sorted(self.data["users"].values(), key=lambda u: u.get("referral_count", 0), reverse=True)
+        return [dict(u) for u in users[:top] if u.get("referral_count", 0) > 0]
+
+    def get_all_user_ids(self) -> list[int]:
+        return [int(k) for k in self.data["users"].keys()]
+
+    # ---- ربات‌ها ----
+    async def create_bot(self, owner_uid: int, bot_token: str) -> dict:
+        bot_id = hashlib.md5(f"{owner_uid}{bot_token}{time.time()}".encode()).hexdigest()[:12]
+        async with self._lock:
+            bot_rec = {
+                "bot_id": bot_id, "owner_uid": owner_uid, "bot_token": bot_token,
+                "bot_username": "", "is_active": True, "created_at": now_ir().isoformat(),
+                "last_activity": None,
+            }
+            self._bot_defaults(bot_rec)
+            self.data["bots"][bot_id] = bot_rec
+            key = str(owner_uid)
+            if key in self.data["users"]:
+                self.data["users"][key]["bots_created"].append(bot_id)
+            self.mark_dirty()
+        return dict(self.data["bots"][bot_id])
+
+    def get_bot(self, bot_id: str) -> Optional[dict]:
+        b = self.data["bots"].get(bot_id)
+        return dict(b) if b else None
+
+    def get_user_bots(self, uid: int) -> list[dict]:
+        return [dict(b) for b in self.data["bots"].values() if b.get("owner_uid") == uid]
+
+    def get_all_bots(self) -> list[dict]:
+        return [dict(v) for v in self.data["bots"].values()]
+
+    async def update_bot_username(self, bot_id: str, username: str):
+        async with self._lock:
+            if bot_id in self.data["bots"]:
+                self.data["bots"][bot_id]["bot_username"] = username
+                self.mark_dirty()
+
+    async def delete_bot(self, bot_id: str, owner_uid: int) -> bool:
+        async with self._lock:
+            info = self.data["bots"].pop(bot_id, None)
+            if not info:
+                return False
+            u = self.data["users"].get(str(owner_uid))
+            if u and bot_id in u.get("bots_created", []):
+                u["bots_created"].remove(bot_id)
+            self.mark_dirty()
+        return True
+
+    async def set_bot_active(self, bot_id: str, active: bool):
+        async with self._lock:
+            if bot_id in self.data["bots"]:
+                self.data["bots"][bot_id]["is_active"] = active
+                self.mark_dirty()
+
+    def _bump_daily(self, b: dict, field: str, n: int = 1):
+        day = today_str()
+        d = b.setdefault("daily_stats", {})
+        d.setdefault(day, {"received": 0, "sent": 0, "new_users": 0})
+        d[day][field] = d[day].get(field, 0) + n
+        if len(d) > 14:
+            for old in sorted(d.keys())[:-14]:
+                d.pop(old, None)
+
+    async def update_bot_stats(self, bot_id: str, received: int = 0, sent: int = 0):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if not b:
+                return
+            b["stats"]["messages_received"] += received
+            b["stats"]["messages_sent"] += sent
+            b["last_activity"] = now_ir().isoformat()
+            if received: self._bump_daily(b, "received", received)
+            if sent: self._bump_daily(b, "sent", sent)
+            self.mark_dirty()
+
+    async def add_bot_user(self, bot_id: str, uid: int) -> bool:
+        is_new = False
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if not b:
+                return False
+            users = b.setdefault("bot_users", [])
+            if uid not in users:
+                is_new = True
+                users.append(uid)
+                b["stats"]["unique_users"] = len(users)
+                self._bump_daily(b, "new_users", 1)
+                owner = self.data["users"].get(str(b["owner_uid"]))
+                if owner:
+                    day = today_str()
+                    if owner.get("downline_bonus_date") != day:
+                        owner["downline_bonus_date"] = day
+                        owner["downline_bonus_count"] = 0
+                    if owner["downline_bonus_count"] < DOWNLINE_DAILY_CAP:
+                        owner["coin_balance"] = owner.get("coin_balance", 0) + DOWNLINE_BONUS_PER_USER
+                        owner["downline_bonus_count"] += 1
+                self.mark_dirty()
+        return is_new
+
+    # ---- محتوای ربات: پیام شروع / دستورها / کال‌بک‌ها ----
+    async def set_start_msg(self, bot_id: str, text: str):
+        await self._patch_bot(bot_id, start_msg=text)
+
+    async def set_start_buttons(self, bot_id: str, rows: Optional[list]):
+        await self._patch_bot(bot_id, start_buttons=rows)
+
+    async def set_start_photo(self, bot_id: str, file_id: Optional[str]):
+        await self._patch_bot(bot_id, start_photo=file_id)
+
+    async def _patch_bot(self, bot_id: str, **fields):
+        async with self._lock:
+            if bot_id in self.data["bots"]:
+                self.data["bots"][bot_id].update(fields)
+                self.mark_dirty()
+
+    async def set_command(self, bot_id: str, name: str, response: str, buttons: Optional[list] = None):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is not None:
+                b.setdefault("commands", {})[name] = {"response": response, "buttons": buttons}
+                self.mark_dirty()
+
+    async def delete_command(self, bot_id: str, name: str):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is not None:
+                b.get("commands", {}).pop(name, None)
+                self.mark_dirty()
+
+    def get_commands(self, bot_id: str) -> dict:
+        b = self.data["bots"].get(bot_id)
+        return dict(b.get("commands", {})) if b else {}
+
+    async def set_callback(self, bot_id: str, cb_id: str, response: str):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is not None:
+                b.setdefault("callbacks", {})[cb_id] = response
+                self.mark_dirty()
+
+    async def delete_callback(self, bot_id: str, cb_id: str):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is not None:
+                b.get("callbacks", {}).pop(cb_id, None)
+                self.mark_dirty()
+
+    def get_callbacks(self, bot_id: str) -> dict:
+        b = self.data["bots"].get(bot_id)
+        return dict(b.get("callbacks", {})) if b else {}
+
+    async def set_bot_force_join(self, bot_id: str, channel: Optional[str]):
+        await self._patch_bot(bot_id, force_join_channel=channel)
+
+    async def record_broadcast(self, bot_id: str, sent: int):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b:
+                b["stats"]["broadcasts_sent"] += 1
+                b["stats"]["messages_sent"] += sent
+                self.mark_dirty()
+
+    def get_platform_stats(self) -> dict:
+        plan_counts: dict[str, int] = {p: 0 for p in PLANS}
+        total_coins = 0
+        for u in self.data["users"].values():
+            plan_counts[u.get("plan", "starter")] = plan_counts.get(u.get("plan", "starter"), 0) + 1
+            total_coins += u.get("coin_balance", 0)
+        bots = self.data["bots"]
+        return {
+            "total_users": len(self.data["users"]), "total_bots": len(bots),
+            "active_bots": sum(1 for b in bots.values() if b.get("is_active")),
+            "plan_counts": plan_counts, "total_coins": total_coins,
+        }
+
+
+storage = Storage()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# BotFactory — مدیریت نمونه‌های Application ساب‌بات‌ها
+# ══════════════════════════════════════════════════════════════════════
+class BotFactory:
+    def __init__(self, storage: Storage):
+        self.storage = storage
+        self._running: dict[str, asyncio.Task] = {}
+        self._apps: dict[str, Application] = {}
+        self._lock = asyncio.Lock()
+
+    async def start_bot(self, bot_id: str, bot_token: str):
+        async with self._lock:
+            if bot_id in self._running:
+                return
+            try:
+                app = Application.builder().token(bot_token).build()
+                app.add_handler(CommandHandler("start", lambda u, c: handle_subbot_start(u, c, bot_id)))
+                app.add_handler(CallbackQueryHandler(lambda u, c: handle_subbot_callback(u, c, bot_id)))
+                app.add_handler(MessageHandler(filters.TEXT & filters.COMMAND,
+                                                lambda u, c: handle_subbot_command(u, c, bot_id)))
+                await app.initialize()
+                me = await app.bot.get_me()
+                await self.storage.update_bot_username(bot_id, me.username or "")
+                self._running[bot_id] = asyncio.create_task(self._run(app, bot_id))
+                self._apps[bot_id] = app
+                log.info(f"🟢 ساب‌بات @{me.username} ({bot_id}) استارت شد")
+            except InvalidToken:
+                log.error(f"❌ توکن نامعتبر برای ربات {bot_id}")
+            except Exception as e:
+                log.error(f"❌ استارت ساب‌بات {bot_id} ناموفق: {e}")
+
+    async def stop_bot(self, bot_id: str):
+        async with self._lock:
+            task = self._running.pop(bot_id, None)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            app = self._apps.pop(bot_id, None)
+            if app:
+                try:
+                    await app.shutdown()
+                except Exception:
+                    pass
+
+    async def restart_bot(self, bot_id: str):
+        bot_data = self.storage.get_bot(bot_id)
+        if not bot_data:
+            return
+        await self.stop_bot(bot_id)
+        if bot_data.get("is_active"):
+            await asyncio.sleep(0.5)
+            await self.start_bot(bot_id, bot_data["bot_token"])
+
+    async def _run(self, app: Application, bot_id: str):
+        try:
+            await app.start()
+            await app.updater.start_polling(drop_pending_updates=True)
+            while True:
+                await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.error(f"ساب‌بات {bot_id} با خطا متوقف شد: {e}")
+        finally:
+            try:
+                await app.updater.stop()
+                await app.stop()
+            except Exception:
+                pass
+
+    def get_bot_instance(self, bot_id: str) -> Optional[Bot]:
+        app = self._apps.get(bot_id)
+        return app.bot if app else None
+
+    async def start_all_active(self):
+        for b in self.storage.get_all_bots():
+            if b.get("is_active"):
+                await self.start_bot(b["bot_id"], b["bot_token"])
+
+    async def stop_all(self):
+        for bot_id in list(self._running.keys()):
+            await self.stop_bot(bot_id)
+
+
+factory = BotFactory(storage)
+mother_bot_ref: dict = {}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🚫 عضویت اجباری — پلتفرم و اختصاصی هر ربات
+# ══════════════════════════════════════════════════════════════════════
+_invite_link_cache: dict[str, tuple[str, float]] = {}
+_INVITE_TTL_SEC = 3600
+force_join_broken = False  # پرچم سراسری برای هشدار در پنل ادمین
+
+
+async def get_join_url(bot: Bot, channel: str) -> str:
+    if channel.startswith("@"):
+        return f"https://t.me/{channel.lstrip('@')}"
+    chat_id = to_chat_id(channel)
+    cached = _invite_link_cache.get(channel)
+    now = time.time()
+    if cached and now - cached[1] < _INVITE_TTL_SEC:
+        return cached[0]
+    link = None
     try:
-        log.info(f"🔍 در حال ثبت baseline برای سفارش {order_id}...")
-        await bot.set_message_reaction(
-            chat_id=chat_id, message_id=post_id,
-            reaction=[ReactionTypeEmoji(emoji="👍")]
-        )
-        await asyncio.sleep(1.5) # صبر برای رسیدن آپدیت
-        await bot.set_message_reaction(chat_id=chat_id, message_id=post_id, reaction=[])
-        log.info(f"✅ probe کامل شد برای سفارش {order_id}")
-    except Forbidden:
-        log.warning(f"⛔ ربات دسترسی ادمین برای ریکشن را در {chat_id} ندارد")
+        chat = await bot.get_chat(chat_id)
+        link = chat.invite_link
     except Exception as e:
-        log.error(f"❌ خطا در ثبت baseline برای {order_id}: {e}")
+        log.warning(f"[ForceJoin] get_chat برای {channel} ناموفق: {e}")
+    if not link:
+        try:
+            link = (await bot.create_chat_invite_link(chat_id=chat_id, creates_join_request=False)).invite_link
+        except Exception as e:
+            log.error(f"[ForceJoin] ساخت لینک دعوت برای {channel} ناموفق: {e}")
+            link = f"https://t.me/c/{str(channel).replace('-100', '')}"
+    _invite_link_cache[channel] = (link, now)
+    return link
 
-# ═══════════════════════════════════════════════════════════════
-#                     KEYBOARD BUILDERS
-# ═══════════════════════════════════════════════════════════════
-def kb_join_channel():
-    if not FORCE_JOIN_CHANNEL: return None
+
+async def check_membership_one(bot: Bot, channel: str, uid: int) -> Optional[bool]:
+    """True=عضو، False=قطعاً عضو نیست، None=خطای فنی (این حالت دیگه هیچ‌وقت
+    بی‌سروصدا به‌عنوان «عضو است» تفسیر نمی‌شه)."""
+    try:
+        member = await bot.get_chat_member(to_chat_id(channel), uid)
+        return member.status not in ("left", "kicked")
+    except Exception as e:
+        log.warning(f"[ForceJoin] بررسی عضویت {channel} برای {uid} ناموفق: {e}")
+        return None
+
+
+async def enforce_force_join(bot: Bot, uid: int) -> bool:
+    global force_join_broken
+    if not FORCE_JOIN_CHANNELS:
+        return True
+    any_error = False
+    for ch in FORCE_JOIN_CHANNELS:
+        result = await check_membership_one(bot, ch, uid)
+        if result is False:
+            force_join_broken = any_error
+            return False
+        if result is None:
+            any_error = True
+    force_join_broken = any_error
+    return True
+
+
+async def force_join_kb(bot: Bot) -> InlineKeyboardMarkup:
+    rows = []
+    for ch in FORCE_JOIN_CHANNELS:
+        url = await get_join_url(bot, ch)
+        label = ch if ch.startswith("@") else "کانال عضویت اجباری"
+        rows.append([InlineKeyboardButton(f"📢 عضویت در {label}", url=url)])
+    rows.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن", callback_data="fj:check")])
+    return InlineKeyboardMarkup(rows)
+
+
+FORCE_JOIN_TEXT = (
+    "🚫 <b>یک قدم مونده!</b>\n\n"
+    "برای استفاده از GramSaz، اول باید عضو کانال(های) زیر بشی.\n"
+    "بعدش روی «✅ عضو شدم، بررسی کن» بزن."
+)
+
+
+async def enforce_subbot_force_join(bot: Bot, uid: int, channel: Optional[str]) -> bool:
+    if not channel:
+        return True
+    return await check_membership_one(bot, channel, uid) is not False
+
+
+async def subbot_force_join_kb(bot: Bot, bot_id: str, channel: str) -> InlineKeyboardMarkup:
+    url = await get_join_url(bot, channel)
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 عضویت در کانال",
-                              url=f"https://t.me/{FORCE_JOIN_CHANNEL.lstrip('@')}")],
-        [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")],
+        [InlineKeyboardButton("📢 عضویت در کانال", url=url)],
+        [InlineKeyboardButton("✅ عضو شدم، بررسی کن", callback_data=f"sfj:check:{bot_id}")],
     ])
 
-def kb_main(uid=0):
+
+# ══════════════════════════════════════════════════════════════════════
+# UI — کیبوردها
+# ══════════════════════════════════════════════════════════════════════
+PLATFORM_USERNAME = ""
+
+
+def parse_button_rows(raw_text: str) -> list:
+    rows = []
+    for line in raw_text.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = []
+        for part in line.split(","):
+            part = part.strip()
+            if "|" not in part:
+                raise ValueError(f"فرمت نادرست: «{part}» — باید «متن|شناسه» باشه")
+            btext, bid = (p.strip() for p in part.rsplit("|", 1))
+            if not bid or not btext:
+                raise ValueError(f"فرمت نادرست: «{part}»")
+            row.append({"id": bid, "text": btext})
+        if row:
+            rows.append(row)
+    return rows
+
+
+def build_inline_from_rows(rows: Optional[list]) -> Optional[InlineKeyboardMarkup]:
+    if not rows:
+        return None
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(btn["text"], callback_data=btn["id"]) for btn in row] for row in rows
+    ])
+
+
+def preview_buttons(rows: Optional[list]) -> str:
+    if not rows:
+        return "ندارد"
+    return "، ".join(btn["text"] for row in rows for btn in row) or "ندارد"
+
+
+def main_menu_kb(uid: int) -> InlineKeyboardMarkup:
     rows = [
-        [KeyboardButton("🎯 کسب درآمد"),    KeyboardButton("➕ ثبت سفارش")],
-        [KeyboardButton("📦 سفارش‌های من"), KeyboardButton("👥 زیرمجموعه")],
-        [KeyboardButton("👤 پروفایل"),       KeyboardButton("📖 راهنما")],
+        [InlineKeyboardButton("🤖 ربات‌های من", callback_data="nav:mybots"),
+         InlineKeyboardButton("➕ ساخت ربات", callback_data="nav:create")],
+        [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans"),
+         InlineKeyboardButton("👤 حساب من", callback_data="nav:account")],
+        [InlineKeyboardButton("🔗 دعوت دوستان", callback_data="nav:referral"),
+         InlineKeyboardButton("📖 راهنما", callback_data="nav:help")],
     ]
-    if uid and is_admin(uid):
-        rows.append([KeyboardButton("👑 پنل ادمین")])
-    # ✅ کشویی: is_persistent=False یعنی کیبورد همیشه باز نمی‌ماند و از طریق
-    # آیکون کنار پیام قابل باز/بسته‌شدن است.
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=False)
+    if is_admin(uid):
+        rows.append([InlineKeyboardButton("🛠 پنل مدیریت", callback_data="admin:panel")])
+    return InlineKeyboardMarkup(rows)
 
-REPLY_MAP = {
-    "🎯 کسب درآمد":    "menu:earn",
-    "➕ ثبت سفارش":    "menu:new_order",
-    "📦 سفارش‌های من": "menu:my_orders",
-    "👥 زیرمجموعه":    "menu:referral",
-    "👤 پروفایل":       "menu:profile",
-    "📖 راهنما":        "menu:help",
-    "👑 پنل ادمین":     "admin:panel",
-}
 
-# ═══════════════════════════════════════════════════════════════
-#                      TEXT BUILDERS
-# ═══════════════════════════════════════════════════════════════
-def build_welcome(uid: int) -> str:
-    u   = cloud.get_user(uid)
-    bal = u.get("balance", 0) if u else 0
+def back_kb(dest: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data=dest)]])
+
+
+def cancel_kb(dest: str = "nav:home") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ لغو", callback_data=dest)]])
+
+
+def confirm_kb(yes_cb: str, no_cb: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ بله، مطمئنم", callback_data=yes_cb),
+        InlineKeyboardButton("❌ انصراف", callback_data=no_cb),
+    ]])
+
+
+# ══════════════════════════════════════════════════════════════════════
+# UI — متن‌ها (لحن فروشنده و جذاب، مشابه استایل نمونه)
+# ══════════════════════════════════════════════════════════════════════
+def build_welcome_text(user: dict, bonus_given: int) -> str:
+    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
+    bonus_line = f"\n🎁 <b>{bonus_given} {COIN_SYMBOL}</b> هدیهٔ خوش‌آمدگویی به کیفتون اضافه شد!\n" if bonus_given else ""
     return (
-        f"✨ <b>به ExchangeBot خوش آمدید</b>\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"💰 موجودی شما: <code>{bal:,} {COIN}</code>\n\n"
-        f"🎯 <b>کسب درآمد</b> — با عضویت و لایک، سکه جمع کن\n"
-        f"➕ <b>ثبت سفارش</b> — رشد کانال یا پست خودت\n"
-        f"👥 <b>زیرمجموعه</b> — {REFERRAL_BONUS} {COIN} به ازای هر دعوت\n\n"
-        f"از منوی پایین شروع کن 👇"
+        "🤖 <b>به GramSaz خوش اومدی!</b>\n"
+        f"{bonus_line}"
+        "<blockquote expandable>"
+        "بدون یک خط کدنویسی، در چند دقیقه یک ربات تلگرام کامل می‌سازی:\n"
+        "• دستور دلخواه و دکمه‌های شیشه‌ای اختصاصی\n"
+        "• خوش‌آمدگویی با متن و عکس\n"
+        "• پیام همگانی برای اطلاع‌رسانی سریع به کاربرات\n"
+        "• آنالیتیکس روزانه برای رصد رشد ربات\n"
+        "هیچ رباتی هم به‌خاطر گذر زمان از کار نمی‌افته — فقط سقف پلن‌تون محدودتون می‌کنه."
+        "</blockquote>\n"
+        f"پلن فعلی شما: <b>{plan['label']}</b>\n\n"
+        "👇 از منوی زیر شروع کن:"
     )
 
-def build_profile(uid: int) -> str:
-    u = cloud.get_user(uid)
-    if not u: return "❌ پروفایل یافت نشد."
-    refs  = sum(1 for x in cloud.get_all_users() if x.get("referred_by") == str(uid))
-    daily = "✅ قابل دریافت" if cloud.can_claim_daily(uid) else "⏳ فردا"
-    name  = u.get("full_name") or f"@{u.get('username')}" or "—"
+
+def build_dashboard_text(uid: int, user: dict) -> str:
+    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
+    bots = storage.get_user_bots(uid)
+    ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
     return (
-        f"👤 <b>پروفایل شما</b>\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"📛 نام: <b>{name}</b>\n"
-        f"🆔 شناسه: <code>{uid}</code>\n\n"
-        f"💰 موجودی: <code>{u.get('balance', 0):,} {COIN}</code>\n"
-        f"📈 کل درآمد: <code>{u.get('total_earned', 0):,} {COIN}</code>\n"
-        f"✅ تسک‌های انجام‌شده: <b>{u.get('tasks_done', 0)}</b>\n"
-        f"👥 زیرمجموعه: <b>{refs} نفر</b>\n"
-        f"🎁 جایزه روزانه: {daily}"
+        "👤 <b>پنل حساب من</b>\n\n"
+        f"🆔 آیدی: <code>{user['uid']}</code>\n"
+        f"{plan['badge']} پلن فعلی: <b>{plan['label']}</b>\n"
+        f"💰 موجودی: <b>{user.get('coin_balance', 0)} {COIN_SYMBOL}</b>\n\n"
+        f"🤖 <b>مصرف ربات‌ها</b>\n{progress_bar(len(bots), plan['max_bots'])}\n\n"
+        "🔗 <b>دعوت و درآمد</b>\n"
+        f"کد دعوت: <code>{user.get('referral_code', '—')}</code>\n"
+        f"لینک اختصاصی: {ref_link}\n"
+        f"👥 {user.get('referral_count', 0)} نفر دعوت‌شده "
+        f"(+{user.get('referral_earned_coins', 0)} {COIN_SYMBOL} تا این لحظه)"
     )
 
-def build_referral(uid: int, bot_username: str) -> str:
-    u    = cloud.ensure_user(uid)[0]
-    link = f"https://t.me/{bot_username}?start=ref_{u['referral_code']}"
-    refs = sum(1 for x in cloud.get_all_users() if x.get("referred_by") == str(uid))
+
+def _feature_line(icon: str, label: str, enabled: bool) -> str:
+    return f"{icon} {label}: {'✅ فعال' if enabled else '⛔️ قفل'}"
+
+
+def build_plan_card_text(plan_key: str, user: dict) -> str:
+    d = PLANS[plan_key]
+    cur = user.get("plan", "free")
+    dots = "".join("◉" if p == cur else ("●" if p == plan_key else "○") for p in PLAN_ORDER)
+    status_line = ("🟢 <b>پلن فعلی شماست</b>" if plan_key == cur else
+                   "🔒 پایین‌تر از پلن فعلی شماست" if plan_rank(plan_key) < plan_rank(cur) else "⬆️ قابل ارتقا")
+    price_line = "رایگان برای همیشه 🎉" if d["price"] == 0 else f"<b>{d['price']} {COIN_SYMBOL}</b>"
     return (
-        f"👥 <b>زیرمجموعه‌گیری</b>\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"لینک اختصاصی خودت را برای دوستانت بفرست:\n"
-        f"<code>{link}</code>\n\n"
-        f"🎁 پاداش هر دعوت: <b>{REFERRAL_BONUS} {COIN}</b>\n"
-        f"👥 تعداد زیرمجموعه فعلی: <b>{refs} نفر</b>"
+        f"{d['badge']}  <b>{d['label']}</b>\n{dots}\n\n"
+        f"<blockquote>{d['tagline']}</blockquote>\n"
+        f"💳 قیمت: {price_line}\n{status_line}\n\n"
+        f"🤖 ربات هم‌زمان: <b>{fmt_limit(d['max_bots'])}</b>\n"
+        f"🔧 دستور دلخواه: <b>{fmt_limit(d['max_commands'])}</b>\n"
+        f"⚡ دکمهٔ سراسری: <b>{fmt_limit(d['max_callbacks'])}</b>\n\n"
+        f"{_feature_line('📢', 'پیام همگانی', d['broadcast'])}\n"
+        f"{_feature_line('⏰', 'زمان‌بندی پیام همگانی', d['scheduled_broadcast'])}\n"
+        f"{_feature_line('🚫', 'عضویت اجباری اختصاصی هر ربات', d['custom_force_join'])}\n"
+        f"{_feature_line('🖼', 'خوش‌آمد با عکس', d['media_welcome'])}\n"
+        f"📊 آنالیتیکس: <b>{d['analytics']}</b>\n\n"
+        f"💰 موجودی شما: <b>{user.get('coin_balance', 0)} {COIN_SYMBOL}</b>"
     )
 
-def build_help() -> str:
-    return (
-        f"📖 <b>راهنمای ExchangeBot</b>\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"<b>💰 کسب درآمد</b>\n"
-        f"👥 عضویت در کانال: <b>{JOIN_REWARD} {COIN}</b>\n"
-        f"❤ لایک پست: <b>{REACTION_REWARD} {COIN}</b>\n"
-        f"🎁 جایزه روزانه: <b>{DAILY_REWARD} {COIN}</b>\n"
-        f"👥 هر رفرال: <b>{REFERRAL_BONUS} {COIN}</b>\n\n"
-        f"<b>📦 ثبت سفارش</b>\n"
-        f"👥 هزینه هر ممبر: <b>{JOIN_REWARD * JOIN_COST_MULT} {COIN}</b>\n"
-        f"❤ هزینه هر لایک: <b>{REACTION_REWARD * REACTION_COST_MULT} {COIN}</b>\n\n"
-        f"<b>⚠ نکات مهم</b>\n"
-        f"• برای سفارش لایک، ربات باید <b>ادمین کانال/گروه</b> باشد\n"
-        f"• لایک‌های معتبر: {' '.join(ALLOWED_REACTIONS)}\n"
-        f"• پاداش فقط پس از تأیید واقعی از تلگرام واریز می‌شود\n\n"
-        f"<b>🔍 روند تأیید لایک</b>\n"
-        f"۱. «🚀 شروع تسک» را بزن\n"
-        f"۲. پست را باز کن و لایک بزن\n"
-        f"۳. حداقل {MIN_REACTION_WAIT_SECONDS} ثانیه صبر کن (تلگرام با کمی تأخیر خبر می‌دهد)\n"
-        f"۴. «🔍 بررسی لایک» را بزن یا منتظر پیام خودکار بمان"
-    )
 
-def build_my_orders(uid: int) -> str:
-    orders = cloud.get_user_orders(uid)
-    if not orders:
-        return (
-            "📦 <b>سفارشی ثبت نکرده‌اید</b>\n\n"
-            "💡 از دکمه «➕ ثبت سفارش» یک سفارش جدید بسازید."
-        )
-    text = "📦 <b>سفارش‌های شما</b>\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-    for o in reversed(orders[-10:]):
-        icon = "🟢" if o["status"] == "active" else "🔴"
-        t    = "👥 ممبر" if o["type"] == "join" else "❤ لایک"
-        done = o["total_count"] - o["remaining_count"]
-        post = f"  📝 پست: <code>{o['post_id']}</code>\n" if o.get("post_id") else ""
-        desc = f"  💬 {o.get('description','')[:60]}\n"  if o.get("description")  else ""
-        text += (
-            f"{icon} <b>{t}</b>  |  📢 <code>{o['target']}</code>\n"
-            f"  📊 {done}/{o['total_count']} انجام شده\n"
-            f"{post}{desc}\n"
-        )
+def plan_card_kb(plan_key: str, user: dict) -> InlineKeyboardMarkup:
+    cur = user.get("plan", "free")
+    idx = PLAN_ORDER.index(plan_key)
+    nav_row = []
+    if idx > 0:
+        nav_row.append(InlineKeyboardButton("◀️ ارزان‌تر", callback_data=f"plan:view:{PLAN_ORDER[idx - 1]}"))
+    if idx < len(PLAN_ORDER) - 1:
+        nav_row.append(InlineKeyboardButton("گران‌تر ▶️", callback_data=f"plan:view:{PLAN_ORDER[idx + 1]}"))
+    rows = [nav_row] if nav_row else []
+    if plan_rank(plan_key) > plan_rank(cur):
+        cost = PLANS[plan_key]["price"] - PLANS[cur]["price"]
+        rows.append([InlineKeyboardButton(f"🚀 ارتقا به {PLANS[plan_key]['label']} — {cost} {COIN_SYMBOL}",
+                                           callback_data=f"plan:upgrade:{plan_key}")])
+    elif plan_key == cur:
+        rows.append([InlineKeyboardButton("✅ پلن فعلی شماست", callback_data="noop")])
+    rows.append([InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_referral_text(user: dict) -> str:
+    ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
+    board = storage.get_referral_leaderboard(10)
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [
+        "🔗 <b>دعوت دوستان و کسب کوین</b>\n",
+        "<blockquote expandable>"
+        f"با هر دعوت موفق <b>{REFERRAL_BONUS_REFERRER} {COIN_SYMBOL}</b> می‌گیری و دوستت "
+        f"<b>{REFERRAL_BONUS_NEWCOMER} {COIN_SYMBOL}</b> پاداش خوش‌آمد می‌گیره.\n"
+        f"🎯 به‌ازای هر کاربر یکتای جدید در هر کدوم از ربات‌هات، "
+        f"<b>{DOWNLINE_BONUS_PER_USER} {COIN_SYMBOL}</b> بیشتر (سقف {DOWNLINE_DAILY_CAP} در روز)."
+        "</blockquote>\n",
+        f"🔗 لینک اختصاصی شما:\n{ref_link}\n",
+        f"👥 تا این لحظه <b>{user.get('referral_count', 0)}</b> نفر با لینک شما پیوستن.",
+    ]
+    if board:
+        lines.append("\n🏆 <b>لیدربورد برترین دعوت‌کننده‌ها</b>")
+        for i, u in enumerate(board, 1):
+            name = esc(u.get("username") or u.get("full_name") or str(u["uid"]))
+            rank = medals[i - 1] if i <= 3 else f"{i}."
+            lines.append(f"{rank} {name} — {u.get('referral_count', 0)} دعوت")
+    return "\n".join(lines)
+
+
+HELP_TEXT = (
+    "📖 <b>راهنمای GramSaz</b>\n\n"
+    "🚀 <b>۱. ساخت اولین ربات</b>\n"
+    "<blockquote expandable>"
+    "روی «➕ ساخت ربات» بزن، به @BotFather برو، با /newbot یک ربات تازه بساز "
+    "و توکنی که می‌ده رو همین‌جا بفرست. تمام — ربات‌ت بالاست."
+    "</blockquote>\n"
+    "⚙️ <b>۲. مدیریت هر ربات</b>\n"
+    "<blockquote expandable>"
+    "از «🤖 ربات‌های من» → «⚙️ مدیریت» به همه‌چیز دسترسی داری:\n"
+    "• پیام /start (متن + دکمه + در پلن‌های بالاتر عکس)\n"
+    "• دستور دلخواه مثل /info با پاسخ و دکمهٔ اختصاصی\n"
+    "• پاسخ اختصاصی برای هر دکمه\n"
+    "• پیام همگانی به کاربرهای همون ربات (پلن حرفه‌ای به بالا)\n"
+    "• عضویت اجباری مخصوص همون ربات (پلن حرفه‌ای به بالا)"
+    "</blockquote>\n"
+    "⏳ <b>۳. بدون محدودیت زمانی</b>\n"
+    "<blockquote expandable>"
+    "هیچ رباتی به‌خاطر گذر زمان خاموش نمی‌شه؛ فقط سقف تعداد ربات/دستور/دکمهٔ "
+    "پلن‌تون محدودتون می‌کنه — هر وقت خواستی ارتقا بده."
+    "</blockquote>\n"
+    "💎 <b>۴. کوین و ارتقای پلن</b>\n"
+    "<blockquote expandable>"
+    "با دعوت دوستان و رشد ربات‌هات کوین جمع می‌کنی و از «💎 پلن‌ها و ارتقا» "
+    "خرج ارتقا می‌کنی — کارت‌های پلن رو با دکمه‌های ◀️ ▶️ ورق بزن."
+    "</blockquote>"
+)
+
+
+def build_bot_detail(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    bot_id = bot["bot_id"]
+    owner_plan = storage.get_plan(bot["owner_uid"])
+    stats = bot.get("stats", {})
+    fj = bot.get("force_join_channel")
+    status_badge = "🟢 روشن" if bot.get("is_active") else "🔴 خاموش"
+    text = (
+        f"⚙️ <b>مدیریت @{esc(bot.get('bot_username', '—'))}</b>  ·  {status_badge}\n\n"
+        f"🔧 دستورها\n{progress_bar(len(bot.get('commands', {})), owner_plan['max_commands'])}\n"
+        f"⚡ دکمه‌های سراسری\n{progress_bar(len(bot.get('callbacks', {})), owner_plan['max_callbacks'])}\n\n"
+        f"👥 کاربران: <b>{len(bot.get('bot_users', []))}</b>   "
+        f"📩 دریافتی: {stats.get('messages_received', 0)}   "
+        f"📤 ارسالی: {stats.get('messages_sent', 0)}\n"
+        f"🚫 عضویت اجباری اختصاصی: <b>{esc(fj) if fj else 'غیرفعال'}</b>"
+    )
+    toggle_label = "🔴 خاموش کردن" if bot.get("is_active") else "🟢 روشن کردن"
+    rows = [
+        [InlineKeyboardButton("📝 پیام شروع (/start)", callback_data=f"bot:start:{bot_id}")],
+        [InlineKeyboardButton("🔧 دستورهای دلخواه", callback_data=f"bot:commands:{bot_id}"),
+         InlineKeyboardButton("⚡ پاسخ دکمه‌ها", callback_data=f"bot:callbacks:{bot_id}")],
+        [InlineKeyboardButton("📢 پیام همگانی", callback_data=f"bot:bc_menu:{bot_id}"),
+         InlineKeyboardButton("📊 آنالیتیکس", callback_data=f"bot:stats:{bot_id}")],
+        [InlineKeyboardButton("🚫 عضویت اجباری اختصاصی", callback_data=f"bot:fj_menu:{bot_id}")],
+        [InlineKeyboardButton("💾 پشتیبان‌گیری (Export)", callback_data=f"bot:export:{bot_id}")],
+        [InlineKeyboardButton(toggle_label, callback_data=f"bot:toggle:{bot_id}")],
+        [InlineKeyboardButton("🗑 حذف ربات", callback_data=f"bot:delete:{bot_id}")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:mybots")],
+    ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_mybots_text_kb(uid: int) -> tuple[str, InlineKeyboardMarkup]:
+    bots = storage.get_user_bots(uid)
+    plan = storage.get_plan(uid)
+    if not bots:
+        return ("🤖 <b>ربات‌های شما</b>\n\nهنوز رباتی نساختی. همین الان اولین ربات‌ت رو بساز 👇",
+                InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="nav:create")],
+                    [InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")],
+                ]))
+    text = f"🤖 <b>ربات‌های شما</b>  ({progress_bar(len(bots), plan['max_bots'])})\n\n"
+    rows = []
+    for b in bots:
+        badge = "🟢" if b.get("is_active") else "🔴"
+        uname = f"@{b['bot_username']}" if b.get("bot_username") else "—"
+        text += f"{badge} {uname}\n"
+        rows.append([InlineKeyboardButton(f"⚙️ مدیریت {uname}", callback_data=f"bot:manage:{b['bot_id']}")])
+    if len(bots) < plan["max_bots"]:
+        rows.append([InlineKeyboardButton("➕ ساخت ربات جدید", callback_data="nav:create")])
+    rows.append([InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")])
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_stats_text(bot: dict, owner_plan: dict) -> str:
+    stats = bot.get("stats", {})
+    text = (
+        f"📊 <b>آنالیتیکس @{bot.get('bot_username', '—')}</b>\n\n"
+        f"📩 کل پیام دریافتی: {stats.get('messages_received', 0)}\n"
+        f"📤 کل پیام ارسالی: {stats.get('messages_sent', 0)}\n"
+        f"👥 کل کاربران یکتا: {stats.get('unique_users', 0)}\n"
+        f"📢 پیام‌های همگانی ارسال‌شده: {stats.get('broadcasts_sent', 0)}\n"
+    )
+    if owner_plan.get("analytics") in ("پیشرفته", "حرفه‌ای + پشتیبانی ویژه"):
+        daily = bot.get("daily_stats", {})
+        if daily:
+            text += "\n📈 <b>روند ۷ روز اخیر</b>\n"
+            for day in sorted(daily.keys())[-7:]:
+                d = daily[day]
+                text += f"  {day} → دریافتی: {d.get('received', 0)}  |  کاربر جدید: {d.get('new_users', 0)}\n"
+        else:
+            text += "\n📈 هنوز داده‌ای برای نمودار روزانه ثبت نشده."
+    else:
+        text += "\n🔒 آنالیتیکس پیشرفته (روند روزانه) مخصوص پلن حرفه‌ای به بالاست."
     return text
 
-def build_task_card(order: dict, uid: int,
-                    current_index: int, total: int,
-                    order_type: str) -> tuple:
-    is_reaction  = order["type"] == "reaction"
-    reward       = REACTION_REWARD if is_reaction else JOIN_REWARD
-    done_count   = order["total_count"] - order["remaining_count"]
-    already_done = cloud.is_task_done(order["order_id"], uid)
-    pending      = cloud.get_pending_like(order["order_id"], uid) if is_reaction else None
-    chat_type    = order.get("chat_type") or "channel"
 
-    if is_reaction:
-        post_id    = order.get("post_id", "")
-        target_url = f"https://t.me/{order['target'].lstrip('@')}/{post_id}"
-        target_line = f"📢 <code>{order['target']}</code>  |  📝 پست <code>{post_id}</code>"
-    else:
-        target_url  = f"https://t.me/{order['target'].lstrip('@')}"
-        target_line = f"📢 <code>{order['target']}</code>"
-
-    # ── وضعیت تسک ──
-    if already_done:
-        status_line = "✅ <b>انجام شده — پاداش دریافت شد</b>"
-    elif pending:
-        remaining_sec = max(0, int(pending["expires"] - time.time()))
-        remaining_min = remaining_sec // 60
-        elapsed = time.time() - pending["timestamp"]
-        if chat_type == "supergroup":
-            status_line = (
-                f"⏳ <b>در انتظار تأیید خودکار</b>\n"
-                f"   ⏱ مهلت: {remaining_min} دقیقه دیگر\n"
-                f"   📌 به‌محض ثبت لایک، پاداش خودش واریز می‌شود"
-            )
-        else:
-            wait_left = max(0, int(MIN_REACTION_WAIT_SECONDS - elapsed))
-            if wait_left > 0:
-                status_line = (
-                    f"⏳ <b>در انتظار تأیید لایک</b>\n"
-                    f"   ⏱ مهلت کلی: {remaining_min} دقیقه دیگر\n"
-                    f"   ⌛ دکمه بررسی تا {wait_left} ثانیه دیگر فعال می‌شود"
-                )
-            else:
-                status_line = (
-                    f"⏳ <b>در انتظار تأیید لایک</b>\n"
-                    f"   ⏱ مهلت: {remaining_min} دقیقه دیگر\n"
-                    f"   📌 اگر لایک زدی، «🔍 بررسی لایک» را بزن"
-                )
-    elif is_reaction:
-        emojis = "  ".join(list(ALLOWED_REACTIONS)[:4])
-        status_line = (
-            f"📌 <b>راهنما:</b>\n"
-            f"  ۱. «🚀 شروع تسک» را بزن\n"
-            f"  ۲. پست را باز کن\n"
-            f"  ۳. با {emojis} لایک بزن\n"
-            f"  ۴. چند ثانیه صبر کن و «🔍 بررسی لایک» بزن"
-        )
-    else:
-        status_line = (
-            f"📌 <b>راهنما:</b>\n"
-            f"  ۱. عضو کانال شو\n"
-            f"  ۲. «✅ تأیید عضویت» را بزن"
-        )
-
-    desc = order.get("description", "").strip()
-    desc_block = f"\n💬 <i>{desc[:100]}</i>\n" if desc else ""
-
-    card_text = (
-        f"{'❤ لایک پست' if is_reaction else '👥 عضویت در کانال'}\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"🎁 پاداش: <code>{reward} {COIN}</code>\n"
-        f"📊 انجام‌شده: <code>{done_count}/{order['total_count']}</code>\n"
-        f"🎯 {target_line}"
-        f"{desc_block}\n"
-        f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-        f"{status_line}\n\n"
-        f"📄 صفحه {current_index + 1} از {total}"
+def build_admin_panel_text() -> str:
+    stats = storage.get_platform_stats()
+    plan_lines = "\n".join(
+        f"   {PLANS[p]['badge']} {PLANS[p]['label']}: {stats['plan_counts'].get(p, 0)} کاربر" for p in PLAN_ORDER)
+    fj_status = ("✅ فعال روی: " + "، ".join(FORCE_JOIN_CHANNELS)) if FORCE_JOIN_CHANNELS else "❌ غیرفعال"
+    warn = ("\n⚠️ هشدار: بررسی عضویت اجباری با خطای فنی مواجه شده (احتمالاً ربات ادمین کانال نیست) — چک کن!"
+            if force_join_broken else "")
+    return (
+        "🛠 <b>پنل مدیریت</b>\n\n"
+        f"👥 تعداد کاربران: {stats['total_users']}\n"
+        f"🤖 تعداد کل ربات‌ها: {stats['total_bots']}\n"
+        f"🟢 ربات‌های فعال: {stats['active_bots']}\n"
+        f"🪙 مجموع کوین در گردش: {stats['total_coins']} {COIN_SYMBOL}\n\n"
+        f"📊 <b>توزیع پلن‌ها</b>\n{plan_lines}\n\n"
+        f"🚫 عضویت اجباری پلتفرم: {fj_status}{warn}"
     )
 
-    # ── کیبورد ──
-    rows = []
 
-    def _ftab(label, ft, idx):
-        marker = "✅ " if ft == order_type else ""
-        return InlineKeyboardButton(f"{marker}{label}",
-                                    callback_data=f"tasks:filter:{ft}:{idx}")
-
-    rows.append([
-        _ftab("همه",   "all",      current_index),
-        _ftab("ممبر",  "join",     0),
-        _ftab("لایک",  "reaction", 0),
+def admin_panel_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 اعطای کوین", callback_data="admin:grantcoin"),
+         InlineKeyboardButton("⭐ اعطای پلن", callback_data="admin:grantplan")],
+        [InlineKeyboardButton("🚫 مسدودسازی کاربر", callback_data="admin:ban"),
+         InlineKeyboardButton("✅ رفع مسدودی", callback_data="admin:unban")],
+        [InlineKeyboardButton("📢 پیام همگانی پلتفرم", callback_data="admin:broadcast")],
+        [InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")],
     ])
 
-    if already_done:
-        rows.append([InlineKeyboardButton("✅ انجام شده", callback_data="noop")])
-    elif not is_reaction:
-        rows.append([
-            InlineKeyboardButton("🔗 عضویت", url=target_url),
-            InlineKeyboardButton("✅ تأیید عضویت",
-                callback_data=f"tasks:verify_join:{order['order_id']}:{order_type}:{current_index}"),
-        ])
-    elif pending:
-        rows.append([InlineKeyboardButton(
-            "🔍 بررسی لایک",
-            callback_data=f"tasks:check_reaction:{order['order_id']}:{order_type}:{current_index}"
-        )])
-        rows.append([InlineKeyboardButton("🔗 باز کردن پست", url=target_url)])
-    else:
-        rows.append([InlineKeyboardButton("🔗 باز کردن پست", url=target_url)])
-        rows.append([InlineKeyboardButton(
-            "🚀 شروع تسک",
-            callback_data=f"tasks:start_reaction:{order['order_id']}:{order_type}:{current_index}"
-        )])
 
-    # ✅ ناوبری: فقط وقتی واقعاً کاربردی است نمایش داده می‌شود (بدون دکمه‌های غیرفعال بی‌مصرف)
-    nav = []
-    if current_index > 0:
-        nav.append(InlineKeyboardButton("◀ قبلی", callback_data=f"tasks:page:{current_index-1}:{order_type}"))
-    if current_index < total - 1:
-        nav.append(InlineKeyboardButton("بعدی ▶", callback_data=f"tasks:page:{current_index+1}:{order_type}"))
-    if nav:
-        rows.append(nav)
+# ══════════════════════════════════════════════════════════════════════
+# هندلرهای ربات مادر — نمایش منو و /start
+# ══════════════════════════════════════════════════════════════════════
+async def show_main_menu(msg_target, uid: int, edit: bool = False):
+    user = storage.get_user(uid)
+    bonus_given = 0
+    if user and not user.get("signup_bonus_claimed"):
+        bonus_given = await storage.claim_signup_bonus(uid)
+        if bonus_given:
+            user = storage.get_user(uid)
+    text, kb = build_welcome_text(user, bonus_given), main_menu_kb(uid)
+    if edit:
+        try:
+            await msg_target.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await msg_target.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
-    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")])
 
-    return card_text, InlineKeyboardMarkup(rows)
-
-async def show_task_card(q, uid: int, index: int, order_type: str):
-    orders = [o for o in cloud.get_active_orders(
-        None if order_type == "all" else order_type
-    ) if o["owner_uid"] != uid]
-
-    if not orders:
-        await q.edit_message_text(
-            "📭 <b>تسکی موجود نیست</b>\n\n"
-            "فعلاً سفارش فعالی برای انجام وجود ندارد.\n"
-            "کمی دیگر دوباره بررسی کن 🙂",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 بروزرسانی",
-                                      callback_data=f"tasks:filter:{order_type}:0")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-            ])
-        )
-        return
-
-    index = max(0, min(index, len(orders) - 1))
-    card_text, card_kb = build_task_card(orders[index], uid, index, len(orders), order_type)
-
-    try:
-        await q.edit_message_text(card_text, parse_mode=ParseMode.HTML, reply_markup=card_kb)
-    except BadRequest as e:
-        if "not modified" not in str(e).lower():
-            raise
-
-# ═══════════════════════════════════════════════════════════════
-#                    COMMAND HANDLERS
-# ═══════════════════════════════════════════════════════════════
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    uid   = update.effective_user.id
-    uname = update.effective_user.username or ""
-    fname = f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip()
-    u, is_new = cloud.ensure_user(uid, uname, fname)
-
-    if not await check_membership(ctx.bot, uid):
-        if ctx.args and ctx.args[0].startswith("ref_"):
-            ctx.user_data["pending_ref"] = ctx.args[0][4:]
-        await update.effective_message.reply_text(
-            "⛔ برای استفاده از ربات، ابتدا عضو کانال شو!",
-            parse_mode=ParseMode.HTML,
-            reply_markup=kb_join_channel()
-        )
+    user = update.effective_user
+    ref_code = ctx.args[0].strip() if ctx.args else None
+    _, is_new, referrer_uid = await storage.ensure_user(
+        user.id, user.username or "", (user.full_name or "").strip(), ref_code)
+    u = storage.get_user(user.id)
+    if u and u.get("is_banned"):
+        await update.effective_message.reply_text("🚫 حساب شما در این پلتفرم مسدود شده است.")
         return
+    if is_new and referrer_uid:
+        try:
+            await ctx.bot.send_message(
+                referrer_uid,
+                f"🎉 یکی از دعوت‌شدگان شما به GramSaz پیوست!\n💰 {REFERRAL_BONUS_REFERRER} {COIN_SYMBOL} به موجودی شما اضافه شد.")
+        except Exception:
+            pass
+    if not await enforce_force_join(ctx.bot, user.id):
+        await update.effective_message.reply_text(FORCE_JOIN_TEXT, parse_mode=ParseMode.HTML,
+                                                    reply_markup=await force_join_kb(ctx.bot))
+        return
+    ctx.user_data.clear()
+    await show_main_menu(update.effective_message, user.id)
 
-    if ctx.args and is_new and ctx.args[0].startswith("ref_"):
-        ref_code = ctx.args[0][4:]
-        ref_uid  = cloud.find_uid_by_referral(ref_code)
-        if ref_uid and cloud.apply_referral(uid, ref_uid):
-            cloud.add_coin(ref_uid, REFERRAL_BONUS, "referral")
-            cloud.save(force=True)
-
-    await update.effective_message.reply_text(
-        build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid)
-    )
-    cloud.save()
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    ctx.user_data.pop("awaiting",       None)
-    ctx.user_data.pop("pending_ref",    None)
-    ctx.user_data.pop("temp_order",     None)
-    ctx.user_data.pop("temp_chat_type", None)
-    await update.message.reply_text(
-        "❌ عملیات لغو شد.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=kb_main(update.effective_user.id)
-    )
+    ctx.user_data.clear()
+    await update.effective_message.reply_text("❌ لغو شد.")
+    await show_main_menu(update.effective_message, update.effective_user.id)
 
-async def cmd_debug(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+
+# ══════════════════════════════════════════════════════════════════════
+# هندلر پیام آزاد — همه‌ی جریان‌های چندمرحله‌ای از اینجا با context.user_data
+# مدیریت می‌شن (بدون هیچ کلاس FlowManager جداگانه)
+# ══════════════════════════════════════════════════════════════════════
+async def main_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not is_admin(uid):
+    msg = update.effective_message
+    text = (msg.text or msg.caption or "").strip()
+    await storage.ensure_user(uid, update.effective_user.username or "", (update.effective_user.full_name or "").strip())
+
+    u = storage.get_user(uid)
+    if u and u.get("is_banned"):
+        await msg.reply_text("🚫 حساب شما مسدود شده است.")
         return
-    bot = ctx.bot
+    if not await enforce_force_join(ctx.bot, uid):
+        await msg.reply_text(FORCE_JOIN_TEXT, parse_mode=ParseMode.HTML, reply_markup=await force_join_kb(ctx.bot))
+        return
+
+    awaiting = ctx.user_data.get("awaiting")
+    if not awaiting:
+        await show_main_menu(msg, uid)
+        return
+    await handle_awaited_input(update, ctx, uid, text, awaiting)
+
+
+async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, uid: int, text: str, awaiting: str):
+    msg = update.effective_message
+    d = ctx.user_data
+    stripped = text.strip()
+
+    # ── ساخت ربات: منتظر توکن ──
+    if awaiting == "token":
+        plan = storage.get_plan(uid)
+        if len(storage.get_user_bots(uid)) >= plan["max_bots"]:
+            ctx.user_data.clear()
+            await msg.reply_text(f"⚠️ حداکثر {fmt_limit(plan['max_bots'])} ربات برای پلن {plan['label']} مجاز است.")
+            await show_main_menu(msg, uid)
+            return
+        if ":" not in stripped or len(stripped) < 30:
+            await msg.reply_text("❌ توکن نامعتبر است. دوباره بفرست یا /cancel:")
+            return
+        try:
+            me = await Bot(token=stripped).get_me()
+        except InvalidToken:
+            await msg.reply_text("❌ توکن معتبر نیست. دوباره بفرست یا /cancel:")
+            return
+        bot_rec = await storage.create_bot(uid, stripped)
+        await storage.update_bot_username(bot_rec["bot_id"], me.username or "")
+        await factory.start_bot(bot_rec["bot_id"], stripped)
+        ctx.user_data.clear()
+        await msg.reply_text(
+            f"✅ <b>ربات شما آماده شد!</b>\n\n🤖 @{me.username}\n\nبرای مدیریت، از «🤖 ربات‌های من» استفاده کن.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🤖 ربات‌های من", callback_data="nav:mybots")]]))
+        return
+
+    # ── پیام شروع (متن/دکمه/عکس) ──
+    if awaiting == "start_text":
+        await storage.set_start_msg(d["bot_id"], text)
+        bot_id = d["bot_id"]; ctx.user_data.clear()
+        await msg.reply_text("✅ پیام شروع ذخیره شد.")
+        await show_bot_start_section(msg, bot_id)
+        return
+
+    if awaiting == "start_buttons":
+        bot_id = d["bot_id"]
+        if stripped.lower() == "/skip":
+            await storage.set_start_buttons(bot_id, None)
+            await msg.reply_text("✅ دکمه‌ها حذف شدند.")
+        else:
+            try:
+                rows = parse_button_rows(text)
+            except ValueError as e:
+                await msg.reply_text(f"❌ {e}\nدوباره بفرست یا /cancel:")
+                return
+            await storage.set_start_buttons(bot_id, rows)
+            await msg.reply_text("✅ دکمه‌ها ذخیره شدند.")
+        ctx.user_data.clear()
+        await show_bot_start_section(msg, bot_id)
+        return
+
+    if awaiting == "start_photo":
+        bot_id = d["bot_id"]
+        if stripped.lower() == "/skip":
+            await storage.set_start_photo(bot_id, None)
+            ctx.user_data.clear()
+            await msg.reply_text("✅ عکس خوش‌آمد حذف شد.")
+            await show_bot_start_section(msg, bot_id)
+            return
+        if not msg.photo:
+            await msg.reply_text("❌ یک عکس بفرست، یا /skip برای حذف عکس فعلی:")
+            return
+        await storage.set_start_photo(bot_id, msg.photo[-1].file_id)
+        ctx.user_data.clear()
+        await msg.reply_text("✅ عکس خوش‌آمد ذخیره شد.")
+        await show_bot_start_section(msg, bot_id)
+        return
+
+    # ── افزودن دستور جدید (سه‌مرحله‌ای: نام → متن → دکمه) ──
+    if awaiting == "cmd_add":
+        step, bot_id = d["step"], d["bot_id"]
+        owner_plan = storage.get_plan(uid)
+        if step == "name":
+            name = stripped.lower().lstrip("/")
+            if not name or " " in name:
+                await msg.reply_text("❌ نام نامعتبر است. دوباره بفرست یا /cancel:")
+                return
+            if name in RESERVED_COMMANDS or name in storage.get_commands(bot_id):
+                await msg.reply_text("❌ این نام رزرو شده یا از قبل وجود دارد. نام دیگری بفرست:")
+                return
+            if len(storage.get_commands(bot_id)) >= owner_plan["max_commands"]:
+                ctx.user_data.clear()
+                await msg.reply_text(f"❌ حداکثر {fmt_limit(owner_plan['max_commands'])} دستور برای پلن {owner_plan['label']} مجاز است.")
+                await show_bot_commands_section(msg, bot_id)
+                return
+            d["name"] = name; d["step"] = "text"
+            await msg.reply_text(f"✅ نام: /{name}\n\nمتن پاسخ این دستور را بفرست:")
+            return
+        if step == "text":
+            d["response"] = text; d["step"] = "buttons"
+            await msg.reply_text("🔘 دکمه‌ها را با فرمت زیر بفرست (هر خط = یک ردیف):\nمتن۱|id1, متن۲|id2\n\nیا /skip برای رد کردن:")
+            return
+        if step == "buttons":
+            rows = None
+            if stripped.lower() != "/skip":
+                try:
+                    rows = parse_button_rows(text)
+                except ValueError as e:
+                    await msg.reply_text(f"❌ {e}\nدوباره بفرست یا /skip:")
+                    return
+            await storage.set_command(bot_id, d["name"], d["response"], rows)
+            name = d["name"]; ctx.user_data.clear()
+            await msg.reply_text(f"✅ دستور /{name} ذخیره شد.")
+            await show_bot_commands_section(msg, bot_id)
+            return
+
+    if awaiting == "cmd_edit_text":
+        bot_id, name = d["bot_id"], d["name"]
+        cmd = storage.get_commands(bot_id).get(name, {})
+        await storage.set_command(bot_id, name, text, cmd.get("buttons"))
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ متن دستور /{name} به‌روز شد.")
+        await show_cmd_detail(msg, bot_id, name)
+        return
+
+    if awaiting == "cmd_edit_buttons":
+        bot_id, name = d["bot_id"], d["name"]
+        cmd = storage.get_commands(bot_id).get(name, {})
+        rows = None
+        if stripped.lower() != "/skip":
+            try:
+                rows = parse_button_rows(text)
+            except ValueError as e:
+                await msg.reply_text(f"❌ {e}\nدوباره بفرست یا /skip:")
+                return
+        await storage.set_command(bot_id, name, cmd.get("response", ""), rows)
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ دکمه‌های دستور /{name} به‌روز شدند.")
+        await show_cmd_detail(msg, bot_id, name)
+        return
+
+    # ── افزودن پاسخ دکمه سراسری (دو‌مرحله‌ای: آیدی → متن) ──
+    if awaiting == "cb_add":
+        step, bot_id = d["step"], d["bot_id"]
+        owner_plan = storage.get_plan(uid)
+        if step == "id":
+            cb_id = stripped
+            if not cb_id or " " in cb_id or cb_id in storage.get_callbacks(bot_id):
+                await msg.reply_text("❌ آیدی نامعتبر یا تکراری است. آیدی دیگری بفرست یا /cancel:")
+                return
+            if len(storage.get_callbacks(bot_id)) >= owner_plan["max_callbacks"]:
+                ctx.user_data.clear()
+                await msg.reply_text(f"❌ حداکثر {fmt_limit(owner_plan['max_callbacks'])} برای پلن {owner_plan['label']} مجاز است.")
+                await show_bot_callbacks_section(msg, bot_id)
+                return
+            d["cb_id"] = cb_id; d["step"] = "text"
+            await msg.reply_text("✅ متن پاسخ این دکمه را بفرست:")
+            return
+        if step == "text":
+            await storage.set_callback(bot_id, d["cb_id"], text)
+            cb_id = d["cb_id"]; ctx.user_data.clear()
+            await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» ذخیره شد.")
+            await show_bot_callbacks_section(msg, bot_id)
+            return
+
+    if awaiting == "cb_edit_text":
+        bot_id, cb_id = d["bot_id"], d["cb_id"]
+        await storage.set_callback(bot_id, cb_id, text)
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» به‌روز شد.")
+        await show_cb_detail(msg, bot_id, cb_id)
+        return
+
+    # ── عضویت اجباری اختصاصی ربات ──
+    if awaiting == "subbot_forcejoin":
+        bot_id = d["bot_id"]
+        if stripped.lower() == "/skip":
+            await storage.set_bot_force_join(bot_id, None)
+            await msg.reply_text("✅ عضویت اجباری اختصاصی این ربات غیرفعال شد.")
+        else:
+            channel = stripped
+            if not (channel.startswith("@") or channel.lstrip("-").isdigit()):
+                await msg.reply_text("❌ فرمت نامعتبر. یوزرنیم (@channel) یا آیدی عددی (-100...) بفرست، یا /skip:")
+                return
+            await storage.set_bot_force_join(bot_id, channel)
+            await msg.reply_text(f"✅ عضویت اجباری این ربات روی «{channel}» تنظیم شد.")
+        ctx.user_data.clear()
+        b = storage.get_bot(bot_id)
+        if b:
+            t, kb = build_bot_detail(b)
+            await msg.reply_text(t, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── پیام همگانی فوری/زمان‌بندی‌شده ──
+    if awaiting == "broadcast_now":
+        bot_id = d["bot_id"]; ctx.user_data.clear()
+        await run_broadcast(msg, bot_id, text)
+        return
+
+    if awaiting == "broadcast_sched_minutes":
+        if not stripped.isdigit() or int(stripped) <= 0:
+            await msg.reply_text("❌ یک عدد صحیح مثبت (دقیقه) بفرست یا /cancel:")
+            return
+        d["minutes"] = int(stripped)
+        ctx.user_data["awaiting"] = "broadcast_sched_text"
+        await msg.reply_text(f"⏰ بعد از {d['minutes']} دقیقه ارسال می‌شود.\nمتن پیام همگانی را بفرست:")
+        return
+
+    if awaiting == "broadcast_sched_text":
+        bot_id, minutes = d["bot_id"], d["minutes"]
+        ctx.user_data.clear()
+        await msg.reply_text(f"⏰ پیام همگانی شما برای {minutes} دقیقه دیگر زمان‌بندی شد.")
+        asyncio.create_task(scheduled_broadcast_task(uid, bot_id, text, minutes))
+        return
+
+    # ── پنل ادمین ──
+    if awaiting == "admin_grantcoin_uid":
+        if not stripped.lstrip("-").isdigit():
+            await msg.reply_text("❌ یک آیدی عددی معتبر بفرست یا /cancel:")
+            return
+        d["target_uid"] = int(stripped); ctx.user_data["awaiting"] = "admin_grantcoin_amount"
+        await msg.reply_text("💰 چند کوین اعطا شود؟ (عدد؛ منفی برای کسر) یا /cancel:")
+        return
+
+    if awaiting == "admin_grantcoin_amount":
+        if not stripped.lstrip("-").isdigit():
+            await msg.reply_text("❌ یک عدد معتبر بفرست یا /cancel:")
+            return
+        target_uid = d["target_uid"]
+        new_balance = await storage.admin_grant_coins(target_uid, int(stripped))
+        ctx.user_data.clear()
+        if new_balance is None:
+            await msg.reply_text("❌ کاربر یافت نشد.")
+        else:
+            await msg.reply_text(f"✅ انجام شد. موجودی جدید کاربر {target_uid}: {new_balance} {COIN_SYMBOL}")
+            try:
+                await ctx.bot.send_message(target_uid, f"💰 موجودی کوین شما توسط مدیریت به‌روزرسانی شد: {new_balance} {COIN_SYMBOL}")
+            except Exception:
+                pass
+        return
+
+    if awaiting == "admin_grantplan_uid":
+        if not stripped.lstrip("-").isdigit():
+            await msg.reply_text("❌ یک آیدی عددی معتبر بفرست یا /cancel:")
+            return
+        d["target_uid"] = int(stripped); ctx.user_data["awaiting"] = "admin_grantplan_choice"
+        await msg.reply_text(f"⭐ نام پلن را بفرست ({'، '.join(PLAN_ORDER)}) یا /cancel:")
+        return
+
+    if awaiting == "admin_grantplan_choice":
+        target_uid, target_plan = d["target_uid"], stripped.lower()
+        if target_plan not in PLANS:
+            await msg.reply_text("❌ نام پلن نامعتبر. دوباره بفرست یا /cancel:")
+            return
+        ok = await storage.admin_set_plan(target_uid, target_plan)
+        ctx.user_data.clear()
+        if ok:
+            await msg.reply_text(f"✅ پلن کاربر {target_uid} روی {PLANS[target_plan]['label']} تنظیم شد.")
+            try:
+                await ctx.bot.send_message(target_uid, f"🎉 پلن شما توسط مدیریت به {PLANS[target_plan]['label']} ارتقا یافت!")
+            except Exception:
+                pass
+        else:
+            await msg.reply_text("❌ کاربر یافت نشد.")
+        return
+
+    if awaiting in ("admin_ban_uid", "admin_unban_uid"):
+        if not stripped.lstrip("-").isdigit():
+            await msg.reply_text("❌ یک آیدی عددی معتبر بفرست یا /cancel:")
+            return
+        ok = await storage.set_banned(int(stripped), awaiting == "admin_ban_uid")
+        ctx.user_data.clear()
+        await msg.reply_text("✅ انجام شد." if ok else "❌ کاربر یافت نشد.")
+        return
+
+    if awaiting == "admin_broadcast":
+        ctx.user_data.clear()
+        await msg.reply_text("📢 در حال ارسال پیام همگانی پلتفرم...")
+        sent, failed = 0, 0
+        for target_uid in storage.get_all_user_ids():
+            try:
+                await ctx.bot.send_message(target_uid, text)
+                sent += 1
+            except RetryAfter as e:
+                await asyncio.sleep(e.retry_after)
+            except Exception:
+                failed += 1
+            await asyncio.sleep(BROADCAST_DELAY_SEC)
+        await msg.reply_text(f"✅ پیام همگانی تمام شد.\nموفق: {sent}   ناموفق: {failed}")
+        return
+
+
+# ── نمایش زیربخش‌های مدیریت یک ربات (استفاده مشترک از پیام و کال‌بک) ──
+async def show_bot_start_section(msg, bot_id: str):
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    owner_plan = storage.get_plan(b["owner_uid"])
+    text = (f"📝 پیام شروع (/start):\n{b.get('start_msg', '')}\n\n"
+            f"🔘 دکمه‌ها: {preview_buttons(b.get('start_buttons'))}\n"
+            f"🖼 عکس خوش‌آمد: {'دارد' if b.get('start_photo') else 'ندارد'}")
+    rows = [
+        [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:start_edit_text:{bot_id}")],
+        [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:start_edit_buttons:{bot_id}")],
+    ]
+    if owner_plan["media_welcome"]:
+        rows.append([InlineKeyboardButton("🖼 ویرایش عکس خوش‌آمد", callback_data=f"bot:start_edit_photo:{bot_id}")])
+    else:
+        rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن حرفه‌ای)", callback_data="noop")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
+    await msg.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def show_bot_commands_section(msg, bot_id: str):
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    owner_plan = storage.get_plan(b["owner_uid"])
+    cmds = storage.get_commands(bot_id)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🔧 /{name}", callback_data=f"bot:cmd_detail:{bot_id}:{name}")] for name in cmds
+    ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
+         if len(cmds) < owner_plan["max_commands"] else [])
+      + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+    text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
+        ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
+    await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+
+async def show_cmd_detail(msg, bot_id: str, name: str):
+    cmd = storage.get_commands(bot_id).get(name)
+    if not cmd:
+        await show_bot_commands_section(msg, bot_id)
+        return
+    text = f"🔧 دستور: /{name}\n\n💬 پاسخ:\n{cmd.get('response', '')}\n\n🔘 دکمه‌ها: {preview_buttons(cmd.get('buttons'))}"
+    await msg.reply_text(text, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}"),
+         InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
+        [InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:commands:{bot_id}")],
+    ]))
+
+
+async def show_bot_callbacks_section(msg, bot_id: str):
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    owner_plan = storage.get_plan(b["owner_uid"])
+    cbs = storage.get_callbacks(bot_id)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"⚡ {cid}", callback_data=f"bot:cb_detail:{bot_id}:{cid}")] for cid in cbs
+    ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
+         if len(cbs) < owner_plan["max_callbacks"] else [])
+      + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+    text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
+        ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
+    await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+
+async def show_cb_detail(msg, bot_id: str, cb_id: str):
+    resp = storage.get_callbacks(bot_id).get(cb_id)
+    if resp is None:
+        await show_bot_callbacks_section(msg, bot_id)
+        return
+    await msg.reply_text(f"⚡ دکمه: {cb_id}\n\nپاسخ:\n{resp}", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ ویرایش", callback_data=f"bot:cb_edit:{bot_id}:{cb_id}")],
+        [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cb_delete:{bot_id}:{cb_id}")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:callbacks:{bot_id}")],
+    ]))
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 📢 پیام همگانی
+# ══════════════════════════════════════════════════════════════════════
+async def run_broadcast(msg, bot_id: str, text: str):
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    sub_bot = factory.get_bot_instance(bot_id)
+    if not sub_bot:
+        await msg.reply_text("❌ ربات در حال حاضر خاموش است. اول آن را روشن کن.")
+        return
+    users = b.get("bot_users", [])
+    await msg.reply_text(f"📢 شروع ارسال پیام همگانی به {len(users)} کاربر...")
+    sent, failed = 0, 0
+    for target_uid in users:
+        try:
+            await sub_bot.send_message(target_uid, text)
+            sent += 1
+        except RetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except (Forbidden, BadRequest):
+            failed += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(BROADCAST_DELAY_SEC)
+    await storage.record_broadcast(bot_id, sent)
+    await msg.reply_text(f"✅ پیام همگانی تمام شد.\nموفق: {sent}   ناموفق: {failed}")
+
+
+async def scheduled_broadcast_task(uid: int, bot_id: str, text: str, minutes: int):
+    await asyncio.sleep(minutes * 60)
+    b = storage.get_bot(bot_id)
+    sub_bot = factory.get_bot_instance(bot_id)
+    if not b or not sub_bot:
+        return
+    sent, failed = 0, 0
+    for target_uid in b.get("bot_users", []):
+        try:
+            await sub_bot.send_message(target_uid, text)
+            sent += 1
+        except RetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except Exception:
+            failed += 1
+        await asyncio.sleep(BROADCAST_DELAY_SEC)
+    await storage.record_broadcast(bot_id, sent)
     try:
-        wh = await bot.get_webhook_info()
-        wh_url = wh.url or "set nshode"
-        wh_updates = list(wh.allowed_updates or [])
-        has_reaction   = "message_reaction" in wh_updates
-        has_react_cnt  = "message_reaction_count" in wh_updates
-        wh_status = (
-            f"reaction={has_reaction} reaction_count={has_react_cnt} allowed={wh_updates}"
-        )
-    except Exception as e:
-        wh_url, wh_status = f"khata: {e}", "FAIL"
+        await mother_bot_ref["bot"].send_message(
+            uid, f"⏰ پیام همگانی زمان‌بندی‌شدهٔ ربات @{b.get('bot_username', '')} ارسال شد.\nموفق: {sent}   ناموفق: {failed}")
+    except Exception:
+        pass
 
-    reaction_orders = cloud.get_active_orders("reaction")
-    orders_text = ""
-    for o in reaction_orders[:5]:
-        quota = cloud.get_available_quota(o["order_id"])
-        orders_text += (
-            f"\n  order={o['order_id']} type={o.get('chat_type')} ch={o.get('chat_id')} "
-            f"post={o.get('post_id')} baseline={o.get('reaction_baseline')} "
-            f"last={o.get('reaction_last_total')} claimed={o.get('quota_claimed')} quota={quota}"
-        )
-    if not orders_text:
-        orders_text = " hich"
 
-    now = time.time()
-    pendings = [p for p in cloud._data.get("pending_likes", []) if p["expires"] > now]
-    pending_text = ""
-    for p in pendings:
-        remaining = int(p["expires"] - now)
-        pending_text += f"\n  user={p['worker_uid']} order={p['order_id']} ({remaining}s)"
-    if not pending_text:
-        pending_text = " hich"
-
-    msg = (
-        f"DEBUG\n\n"
-        f"Webhook: {wh_url[:50]}\n"
-        f"{wh_status}\n\n"
-        f"Reaction Orders:{orders_text}\n\n"
-        f"Pendings:{pending_text}"
-    )
-    await update.message.reply_text(msg)
-
-# ═══════════════════════════════════════════════════════════════
-#                  CALLBACK QUERY HANDLER
-# ═══════════════════════════════════════════════════════════════
-async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q    = update.callback_query
+# ══════════════════════════════════════════════════════════════════════
+# هندلر دکمه‌های ربات مادر
+# ══════════════════════════════════════════════════════════════════════
+async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
     data = q.data or ""
-    uid  = q.from_user.id
-    cloud.ensure_user(
-        uid,
-        q.from_user.username or "",
-        f"{q.from_user.first_name or ''} {q.from_user.last_name or ''}".strip()
-    )
+    uid = q.from_user.id
+    await storage.ensure_user(uid, q.from_user.username or "", (q.from_user.full_name or "").strip())
+
+    u = storage.get_user(uid)
+    if u and u.get("is_banned"):
+        await q.answer("🚫 حساب شما مسدود شده است.", show_alert=True)
+        return
 
     if data == "noop":
-        await q.answer()
+        await q.answer("🔒 این قابلیت مخصوص پلن‌های بالاتر است.", show_alert=True)
         return
 
-    if data != "check_join" and not await check_membership(q.get_bot(), uid):
+    if data == "fj:check":
+        if await enforce_force_join(ctx.bot, uid):
+            await q.answer("✅ تایید شد!")
+            await show_main_menu(q.message, uid, edit=True)
+        else:
+            await q.answer("❌ هنوز عضو نشدی!", show_alert=True)
+        return
+
+    if not await enforce_force_join(ctx.bot, uid):
         await q.answer()
         try:
-            await q.edit_message_text(
-                "⛔ برای استفاده ابتدا عضو کانال شو!",
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb_join_channel()
-            )
-        except: pass
-        return
-
-    # ── عضویت کانال اجباری ──────────────────────────────────────────────────
-    if data == "check_join":
-        if await check_membership(q.get_bot(), uid):
-            await q.answer("✅ تأیید شد!")
-            pending_ref = ctx.user_data.pop("pending_ref", None)
-            if pending_ref:
-                ref_uid = cloud.find_uid_by_referral(pending_ref)
-                if ref_uid and cloud.apply_referral(uid, ref_uid):
-                    cloud.add_coin(ref_uid, REFERRAL_BONUS, "referral")
-                cloud.save(force=True)
-            try:
-                await q.edit_message_text(
-                    build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid)
-                )
-            except: pass
-        else:
-            await q.answer("⛔ هنوز عضو نشدی!", show_alert=True)
-        return
-
-    # ── ناوبری ──────────────────────────────────────────────────────────────
-    if data.startswith("nav:"):
-        dest = data[4:]
-        await q.answer()
-        if dest == "home":
-            await q.edit_message_text(
-                build_welcome(uid), parse_mode=ParseMode.HTML, reply_markup=kb_main(uid)
-            )
-        elif dest == "profile":
-            await _show_profile(q, uid)
-        elif dest == "referral":
-            me = await q.get_bot().get_me()
-            await q.edit_message_text(
-                build_referral(uid, me.username), parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
-                ]])
-            )
-        elif dest == "help":
-            await q.edit_message_text(
-                build_help(), parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
-                ]])
-            )
-        elif dest == "my_orders":
-            await q.edit_message_text(
-                build_my_orders(uid), parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ ثبت جدید", callback_data="menu:new_order")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-                ])
-            )
-        return
-
-    # ── منوها ───────────────────────────────────────────────────────────────
-    if data == "menu:profile":
-        await q.answer(); await _show_profile(q, uid); return
-
-    if data == "menu:referral":
-        await q.answer()
-        me = await q.get_bot().get_me()
-        await q.edit_message_text(
-            build_referral(uid, me.username), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")]])
-        )
-        return
-
-    if data == "menu:help":
-        await q.answer()
-        await q.edit_message_text(
-            build_help(), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")]])
-        )
-        return
-
-    if data == "menu:my_orders":
-        await q.answer()
-        await q.edit_message_text(
-            build_my_orders(uid), parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ ثبت جدید", callback_data="menu:new_order")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-            ])
-        )
-        return
-
-    if data == "menu:earn":
-        await q.answer()
-        await show_task_card(q, uid, 0, "all")
-        return
-
-    # ── روزانه ──────────────────────────────────────────────────────────────
-    if data == "daily:claim":
-        if cloud.can_claim_daily(uid):
-            cloud.claim_daily(uid)
-            cloud.save(force=True)
-            u = cloud.get_user(uid)
-            await q.answer(f"✅ +{DAILY_REWARD} {COIN} دریافت شد!", show_alert=True)
-            try:
-                await q.edit_message_text(
-                    f"🎉 <b>جایزه روزانه دریافت شد!</b>\n\n"
-                    f"<code>+{DAILY_REWARD} {COIN}</code>\n"
-                    f"💰 موجودی: <code>{u.get('balance', 0)} {COIN}</code>",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")
-                    ]])
-                )
-            except: pass
-        else:
-            await q.answer("⏳ جایزه روزانه را فردا دریافت کنید!", show_alert=True)
-        return
-
-    # ── تسک‌ها: صفحه‌بندی / فیلتر ──────────────────────────────────────────
-    if data.startswith("tasks:page:"):
-        _, _, idx, ot = data.split(":")
-        await q.answer()
-        await show_task_card(q, uid, int(idx), ot)
-        return
-
-    if data.startswith("tasks:filter:"):
-        parts = data.split(":")
-        ot    = parts[2]
-        idx   = int(parts[3]) if len(parts) > 3 else 0
-        await q.answer()
-        await show_task_card(q, uid, idx, ot)
-        return
-
-    # ── تأیید عضویت (join) ──────────────────────────────────────────────────
-    if data.startswith("tasks:verify_join:"):
-        parts    = data.split(":")
-        order_id = parts[2]
-        ot       = parts[3] if len(parts) > 3 else "all"
-        cur_idx  = int(parts[4]) if len(parts) > 4 else 0
-
-        order = cloud.get_order_by_id(order_id)
-        if not order:
-            await q.answer("❌ سفارش یافت نشد", show_alert=True); return
-
-        try:
-            m = await q.get_bot().get_chat_member(order["target"], uid)
-            is_member = m.status not in ("left", "kicked", "banned")
-        except:
-            await q.answer("⚠ خطا در بررسی کانال", show_alert=True); return
-
-        if not is_member:
-            await q.answer("⛔ هنوز عضو کانال نشده‌اید!", show_alert=True); return
-
-        ok, result = cloud.complete_order_unit(order_id, uid)
-        cloud.save(force=True)
-        if ok:
-            await q.answer(f"✅ +{JOIN_REWARD} {COIN} دریافت شد!", show_alert=True)
-        else:
-            await q.answer(str(result) if isinstance(result, str) else "❌ خطا", show_alert=True)
-
-        await show_task_card(q, uid, cur_idx, ot)
-        return
-
-    # ── شروع تسک لایک (ثبت pending) ─────────────────────────────────────────
-    if data.startswith("tasks:start_reaction:"):
-        parts    = data.split(":")
-        order_id = parts[2]
-        ot       = parts[3] if len(parts) > 3 else "all"
-        cur_idx  = int(parts[4]) if len(parts) > 4 else 0
-
-        order = cloud.get_order_by_id(order_id)
-        if not order:
-            await q.answer("❌ سفارش یافت نشد", show_alert=True); return
-        if cloud.is_task_done(order_id, uid):
-            await q.answer("✅ قبلاً انجام داده‌اید", show_alert=True); return
-        if order["owner_uid"] == uid:
-            await q.answer("⛔ نمی‌توانید تسک خودتان را انجام دهید", show_alert=True); return
-
-        cloud.set_pending_like(order_id, uid)
-        cloud.save()
-        await q.answer(
-            "✅ ثبت شد!\nحالا پست را باز کن و لایک بزن.\nچند ثانیه صبر کن، بعد «بررسی لایک» را بزن.",
-            show_alert=True
-        )
-        await show_task_card(q, uid, cur_idx, ot)
-        return
-
-    # ── بررسی لایک ───────────────────────────────────────────────────────────
-    if data.startswith("tasks:check_reaction:"):
-        parts    = data.split(":")
-        order_id = parts[2]
-        ot       = parts[3] if len(parts) > 3 else "all"
-        cur_idx  = int(parts[4]) if len(parts) > 4 else 0
-
-        order = cloud.get_order_by_id(order_id)
-        if not order:
-            await q.answer("❌ سفارش یافت نشد", show_alert=True); return
-
-        if cloud.is_task_done(order_id, uid):
-            cloud.remove_pending_like(order_id, uid)
-            await q.answer("✅ پاداش قبلاً دریافت شده", show_alert=True)
-            await show_task_card(q, uid, cur_idx, ot)
-            return
-
-        pending = cloud.get_pending_like(order_id, uid)
-        if not pending:
-            await q.answer(
-                "⚠ ابتدا «🚀 شروع تسک» را بزن، سپس لایک کن.",
-                show_alert=True
-            )
-            return
-
-        chat_type = order.get("chat_type") or "channel"
-
-        # ── حالت سوپرگروه: تشخیص دقیق فرد به فرد از طریق on_reaction است ──
-        if chat_type != "channel":
-            await q.answer(
-                "⏳ هنوز لایک واقعی از تلگرام تأیید نشده.\n"
-                "مطمئن شو ربات ادمین گروه است و لایکت را زدی، سپس دوباره امتحان کن.",
-                show_alert=True
-            )
-            return
-
-        # ── حالت کانال: سیستم Quota-Pool ──
-        elapsed = time.time() - pending["timestamp"]
-        if elapsed < MIN_REACTION_WAIT_SECONDS:
-            wait_left = int(MIN_REACTION_WAIT_SECONDS - elapsed)
-            await q.answer(
-                f"⏳ {wait_left} ثانیه دیگر صبر کن، تلگرام هنوز داده را نفرستاده.",
-                show_alert=True
-            )
-            return
-
-        if not cloud.has_reaction_baseline(order_id):
-            await q.answer(
-                "⏳ هنوز داده اولیه‌ی لایک‌های این پست از تلگرام نرسیده.\n"
-                "چند لحظه صبر کن و دوباره امتحان کن.",
-                show_alert=True
-            )
-            return
-
-        # ✅ نقطه‌ی حیاتی امنیت: فقط اگر واقعاً یک واحد لایک جدید و مصرف‌نشده
-        # روی این پست وجود داشته باشد، پاداش پرداخت می‌شود.
-        if cloud.claim_quota_unit(order_id):
-            ok, result = cloud.complete_order_unit(order_id, uid)
-            if ok:
-                cloud.remove_pending_like(order_id, uid)
-                cloud.save(force=True)
-                await q.answer(f"🎉 +{REACTION_REWARD} {COIN} دریافت شد!", show_alert=True)
-            else:
-                msg = result if isinstance(result, str) else "❌ خطا در ثبت"
-                await q.answer(msg, show_alert=True)
-        else:
-            await q.answer(
-                "⏳ هنوز لایک جدیدی روی پست ثبت نشده!\n\n"
-                "مطمئن شو:\n"
-                "۱. ربات ادمین کانال هست\n"
-                "۲. واقعاً لایک زدی (نه فقط باز کردی)\n"
-                "۳. کمی صبر کن، آپدیت تلگرام ممکنه چند دقیقه طول بکشه",
-                show_alert=True
-            )
-
-        await show_task_card(q, uid, cur_idx, ot)
-        return
-
-    # ── ثبت سفارش جدید ──────────────────────────────────────────────────────
-    if data == "menu:new_order":
-        await q.answer()
-        u = cloud.get_user(uid)
-        await q.edit_message_text(
-            f"➕ <b>ثبت سفارش جدید</b>\n"
-            f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-            f"💰 موجودی: <code>{u.get('balance', 0) if u else 0} {COIN}</code>\n\n"
-            f"نوع سفارش را انتخاب کن:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 سفارش ممبر",     callback_data="order:type:join")],
-                [InlineKeyboardButton("❤ سفارش لایک پست", callback_data="order:type:reaction")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-            ])
-        )
-        return
-
-    if data.startswith("order:type:"):
-        ot = data.split(":")[2]
-        await q.answer()
-        if ot == "join":
-            ctx.user_data["awaiting"] = "order_join"
-            cost = JOIN_REWARD * JOIN_COST_MULT
-            await q.edit_message_text(
-                f"👥 <b>سفارش ممبر</b>\n\n"
-                f"💰 هزینه هر ممبر: <b>{cost} {COIN}</b>\n\n"
-                f"فرمت ارسال:\n<code>@channel | تعداد</code>\n\n"
-                f"مثال: <code>@mychannel | 100</code>\n\n"
-                f"/cancel برای لغو",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            ctx.user_data["awaiting"] = "order_reaction_channel"
-            cost = REACTION_REWARD * REACTION_COST_MULT
-            await q.edit_message_text(
-                f"❤ <b>سفارش لایک پست</b>\n\n"
-                f"💰 هزینه هر لایک: <b>{cost} {COIN}</b>\n\n"
-                f"⚠ <b>شرط مهم:</b> ربات باید ادمین کانال/گروه شما باشد\n\n"
-                f"یوزرنیم کانال یا گروه را ارسال کن:\n<code>@mychannel</code>\n\n"
-                f"/cancel برای لغو",
-                parse_mode=ParseMode.HTML
-            )
-        return
-
-    if data.startswith("order:check_admin:"):
-        channel = data.split(":", 3)[2]
-        await q.answer("در حال بررسی...")
-        is_adm = await check_bot_admin(q.get_bot(), channel)
-        if is_adm:
-            ctx.user_data["awaiting"] = f"order_reaction_post_{channel}"
-            await q.edit_message_text(
-                f"✅ ربات در <code>{channel}</code> ادمین است!\n\n"
-                f"حالا لینک پست را ارسال کن:\n"
-                f"<code>https://t.me/{channel.lstrip('@')}/123</code>\n\n"
-                f"یا پست را فوروارد کن.\n\n/cancel برای لغو",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            me = await q.get_bot().get_me()
-            await q.edit_message_text(
-                f"❌ ربات در <code>{channel}</code> ادمین نیست!\n\n"
-                f"ابتدا @{me.username} را ادمین کن.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 بررسی مجدد",
-                                          callback_data=f"order:check_admin:{channel}")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:new_order")],
-                ])
-            )
-        return
-
-    # ── پنل ادمین ────────────────────────────────────────────────────────────
-    if data == "admin:panel":
-        if not is_admin(uid):
-            await q.answer("⛔ دسترسی ندارید", show_alert=True); return
-        await q.answer()
-        stats = cloud.get_stats()
-        await q.edit_message_text(
-            f"👑 <b>پنل ادمین</b>\n"
-            f"┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
-            f"👥 کاربران: {stats['total_users']}\n"
-            f"📦 سفارش‌های فعال: {stats['active_orders']}\n"
-            f"⏳ Pending لایک‌ها: {stats['pending_count']}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin:broadcast")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-            ])
-        )
-        return
-
-    if data == "admin:broadcast":
-        if not is_admin(uid):
-            await q.answer("⛔", show_alert=True); return
-        ctx.user_data["awaiting"] = "broadcast"
-        await q.answer()
-        await q.edit_message_text(
-            "📢 متن پیام همگانی را ارسال کن:\n\n/cancel برای لغو",
-            parse_mode=ParseMode.HTML
-        )
+            await q.edit_message_text(FORCE_JOIN_TEXT, parse_mode=ParseMode.HTML, reply_markup=await force_join_kb(ctx.bot))
+        except Exception:
+            pass
         return
 
     await q.answer()
 
-# ── helper ───────────────────────────────────────────────────────────────────
-async def _show_profile(q, uid: int):
-    await q.edit_message_text(
-        build_profile(uid), parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎁 دریافت روزانه", callback_data="daily:claim")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
-        ])
-    )
-
-# ═══════════════════════════════════════════════════════════════
-#   MESSAGE REACTION HANDLER — تشخیص دقیق فرد به فرد (سوپرگروه/PV)
-# ═══════════════════════════════════════════════════════════════
-async def on_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    reaction = update.message_reaction
-    if not reaction:
+    # ── ناوبری اصلی ──
+    if data == "nav:home":
+        ctx.user_data.clear()
+        await show_main_menu(q.message, uid, edit=True)
         return
-
-    chat_id    = reaction.chat.id
-    message_id = reaction.message_id
-
-    if not reaction.user:
-        log.warning(
-            f"⚠️ ریکشن ناشناس (Privacy/Anonymous) در چت {chat_id} پیام {message_id} دریافت شد. "
-            f"به دلیل محدودیت تلگرام، امکان پرداخت پاداش وجود ندارد."
-        )
+    if data == "nav:mybots":
+        text, kb = build_mybots_text_kb(uid)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
-
-    user_id = reaction.user.id
-
-    new_reactions = getattr(reaction, "new_reaction", None)
-    if not new_reactions:
-        log.debug(f"کاربر {user_id} ریکشن خود را حذف کرد یا تغییر نداد.")
+    if data == "nav:account":
+        await q.edit_message_text(build_dashboard_text(uid, storage.get_user(uid)), parse_mode=ParseMode.HTML,
+                                   reply_markup=back_kb("nav:home"))
         return
-
-    normalized_allowed = {_normalize_emoji(e) for e in ALLOWED_REACTIONS}
-    has_valid = False
-    for r in new_reactions:
-        raw_emoji = getattr(r, "emoji", None)
-        if raw_emoji and _normalize_emoji(raw_emoji) in normalized_allowed:
-            has_valid = True
-            break
-
-    raw_emojis = [getattr(r, 'emoji', '?') for r in new_reactions]
-    log.info(
-        f"🔔 REACTION UPDATE: user={user_id} chat={chat_id} msg={message_id} "
-        f"valid={has_valid} emojis={raw_emojis}"
-    )
-
-    if not has_valid:
+    if data == "nav:plans":
+        user = storage.get_user(uid)
+        plan_key = user.get("plan", "free")
+        await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
+                                   reply_markup=plan_card_kb(plan_key, user))
         return
-
-    pendings = cloud.get_user_pendings(user_id)
-    if not pendings:
-        return
-
-    norm_chat = _normalize_chat_id(chat_id)
-
-    for p in pendings:
-        order = cloud.get_order_by_id(p["order_id"])
-        if not order or order.get("status") != "active":
-            continue
-        # ✅ این مسیر فقط برای سفارش‌های غیر-کانال (سوپرگروه) معتبر است؛
-        # برای کانال، فقط سیستم Quota-Pool (on_reaction_count) تصمیم می‌گیرد.
-        if order.get("chat_type") == "channel":
-            continue
-
-        order_chat_id = order.get("chat_id")
-        order_post_id = order.get("post_id")
-        if not order_chat_id or not order_post_id:
-            continue
-
-        norm_order_chat = _normalize_chat_id(order_chat_id)
-        try:
-            chat_match = norm_order_chat == norm_chat
-            post_match = int(order_post_id) == int(message_id)
-        except (ValueError, TypeError):
-            continue
-
-        if chat_match and post_match:
-            log.info(f"✅ MATCH! order={p['order_id']} user={user_id}")
-            ok, result = cloud.complete_order_unit(p["order_id"], user_id)
-            if ok:
-                cloud.remove_pending_like(p["order_id"], user_id)
-                cloud.save(force=True)
-                u = cloud.get_user(user_id)
-                try:
-                    await ctx.bot.send_message(
-                        user_id,
-                        f"🎉 <b>لایک شما تأیید شد!</b>\n\n"
-                        f"✅ <code>+{REACTION_REWARD} {COIN}</code>\n"
-                        f"💰 موجودی: <code>{u.get('balance', 0)} {COIN}</code>",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=InlineKeyboardMarkup([[
-                            InlineKeyboardButton("🎯 تسک بعدی", callback_data="menu:earn")
-                        ]])
-                    )
-                except Exception as e:
-                    log.error(f"Reward notify error: {e}")
-            break
-
-# ═══════════════════════════════════════════════════════════════
-#   MESSAGE REACTION COUNT HANDLER — Quota-Pool امن برای کانال‌ها
-# ═══════════════════════════════════════════════════════════════
-async def on_reaction_count(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """
-    برای پست‌های کانال، تلگرام هرگز نمی‌گوید چه کسی لایک زده، فقط این
-    آپدیت را می‌فرستد که "این پست الان مجموعاً این تعداد از هر ایموجی را دارد".
-    این تابع آن مجموع را برای سفارش‌های مرتبط ذخیره می‌کند تا claim_quota_unit
-    بتواند تشخیص دهد آیا واقعاً یک لایک جدید و مصرف‌نشده وجود دارد یا نه.
-    """
-    rc = update.message_reaction_count
-    if not rc:
-        return
-
-    normalized_allowed = {_normalize_emoji(e) for e in ALLOWED_REACTIONS}
-    total = 0
-    for r in rc.reactions:
-        rtype = getattr(r, "type", None)
-        emoji = getattr(rtype, "emoji", None) if rtype is not None else getattr(r, "emoji", None)
-        if emoji and _normalize_emoji(emoji) in normalized_allowed:
-            total += getattr(r, "total_count", 0)
-
-    cloud.update_reaction_totals(rc.chat.id, rc.message_id, total)
-    cloud.save()
-    log.info(f"📊 REACTION COUNT: chat={rc.chat.id} msg={rc.message_id} total_allowed={total}")
-
-# ═══════════════════════════════════════════════════════════════
-#                    MESSAGE HANDLER
-# ═══════════════════════════════════════════════════════════════
-async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not update.message: return
-    uid     = update.effective_user.id
-    text_in = (update.message.text or "").strip()
-    awaiting = ctx.user_data.get("awaiting", "")
-
-    cloud.ensure_user(
-        uid,
-        update.effective_user.username or "",
-        f"{update.effective_user.first_name or ''} {update.effective_user.last_name or ''}".strip()
-    )
-
-    if text_in == "/cancel":
-        await cmd_cancel(update, ctx)
-        return
-
-    # ── دکمه‌های کیبورد اصلی ────────────────────────────────────────────────
-    if text_in in REPLY_MAP and not awaiting:
-        action = REPLY_MAP[text_in]
-
-        class _FakeQ:
-            def __init__(self):
-                self.data      = action
-                self.from_user = update.effective_user
-                self._bot      = ctx.bot
-                self._last_msg = None
-
-            async def answer(self, *a, **kw): pass
-
-            async def edit_message_text(self, text, **kw):
-                if self._last_msg:
-                    try:
-                        await self._last_msg.edit_text(text, **kw)
-                        return
-                    except: pass
-                self._last_msg = await update.message.reply_text(text, **kw)
-
-            def get_bot(self): return self._bot
-
-        class _FakeUpdate:
-            def __init__(self):
-                self.callback_query = _FakeQ()
-                self.effective_user = update.effective_user
-
-        await on_callback(_FakeUpdate(), ctx)
-        return
-
-    # ── ورودی سفارش join ────────────────────────────────────────────────────
-    if awaiting == "order_join":
-        ctx.user_data.pop("awaiting", None)
-        parts = [p.strip() for p in text_in.split("|")]
-        if len(parts) != 2:
-            await update.message.reply_text(
-                "❌ فرمت اشتباه!\nمثال: <code>@mychannel | 100</code>",
-                parse_mode=ParseMode.HTML
-            )
+    if data.startswith("plan:view:"):
+        plan_key = data.split(":")[2]
+        if plan_key not in PLANS:
             return
-        target, count_str = parts
-        if not target.startswith("@"):
-            await update.message.reply_text("❌ یوزرنیم باید با @ شروع شود."); return
-        try:
-            count = int(count_str)
-            if count < 1: raise ValueError()
-        except:
-            await update.message.reply_text("❌ تعداد معتبر وارد کنید."); return
-
-        try:
-            chat = await ctx.bot.get_chat(target)
-            if chat.type not in ("channel", "supergroup"): raise Exception()
-        except:
-            await update.message.reply_text("❌ کانال نامعتبر یا خصوصی!"); return
-
-        cost_per = JOIN_REWARD * JOIN_COST_MULT
-        total    = cost_per * count
-        u        = cloud.get_user(uid)
-        if u.get("balance", 0) < total:
-            await update.message.reply_text(
-                f"❌ موجودی کافی نیست!\nنیاز: <code>{total} {COIN}</code>\n"
-                f"موجودی: <code>{u.get('balance', 0)} {COIN}</code>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        ctx.user_data["temp_order"]  = {
-            "type": "join", "target": target,
-            "count": count, "cost_per": cost_per, "chat_id": chat.id,
-            "chat_type": chat.type,
-        }
-        ctx.user_data["awaiting"] = "order_description"
-        await update.message.reply_text(
-            f"✅ اطلاعات دریافت شد!\n\n"
-            f"📊 {count} ممبر × {cost_per} {COIN} = <b>{total} {COIN}</b>\n\n"
-            f"📝 توضیحات (اختیاری):\n"
-            f"یا <code>skip</code> برای رد کردن:",
-            parse_mode=ParseMode.HTML
-        )
+        user = storage.get_user(uid)
+        await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
+                                   reply_markup=plan_card_kb(plan_key, user))
+        return
+    if data == "nav:referral":
+        await q.edit_message_text(build_referral_text(storage.get_user(uid)), parse_mode=ParseMode.HTML,
+                                   reply_markup=back_kb("nav:home"))
+        return
+    if data == "nav:help":
+        await q.edit_message_text(HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=back_kb("nav:home"))
+        return
+    if data.startswith("plan:upgrade:"):
+        target = data.split(":")[2]
+        ok, message = await storage.upgrade_plan(uid, target)
+        user = storage.get_user(uid)
+        shown_plan = target if ok else user.get("plan", "free")
+        head = f"✅ <b>{esc(message)}</b>\n\n" if ok else f"⚠️ {esc(message)}\n\n"
+        await q.edit_message_text(head + build_plan_card_text(shown_plan, user), parse_mode=ParseMode.HTML,
+                                   reply_markup=plan_card_kb(shown_plan, user))
         return
 
-    # ── کانال سفارش لایک ────────────────────────────────────────────────────
-    if awaiting == "order_reaction_channel":
-        ctx.user_data.pop("awaiting", None)
-        channel = text_in.strip()
-        if not channel.startswith("@"):
-            await update.message.reply_text("❌ یوزرنیم باید با @ شروع شود."); return
-        try:
-            chat = await ctx.bot.get_chat(channel)
-            if chat.type not in ("channel", "supergroup"): raise Exception()
-        except:
-            await update.message.reply_text("❌ کانال نامعتبر یا خصوصی!"); return
+    # ── پنل ادمین ──
+    if data == "admin:panel":
+        if not is_admin(uid):
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:home")); return
+        await q.edit_message_text(build_admin_panel_text(), parse_mode=ParseMode.HTML, reply_markup=admin_panel_kb())
+        return
+    if data.startswith("admin:") and not is_admin(uid):
+        await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:home")); return
+    if data == "admin:grantcoin":
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_grantcoin_uid"
+        await q.edit_message_text("💰 آیدی عددی کاربر را بفرست:\n(/cancel برای انصراف)"); return
+    if data == "admin:grantplan":
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_grantplan_uid"
+        await q.edit_message_text("⭐ آیدی عددی کاربر را بفرست:\n(/cancel برای انصراف)"); return
+    if data == "admin:ban":
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_ban_uid"
+        await q.edit_message_text("🚫 آیدی عددی کاربر برای مسدودسازی را بفرست:\n(/cancel برای انصراف)"); return
+    if data == "admin:unban":
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_unban_uid"
+        await q.edit_message_text("✅ آیدی عددی کاربر برای رفع مسدودی را بفرست:\n(/cancel برای انصراف)"); return
+    if data == "admin:broadcast":
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_broadcast"
+        await q.edit_message_text("📢 متن پیام همگانی پلتفرم (برای همهٔ کاربران) را بفرست:\n(/cancel برای انصراف)"); return
 
-        is_adm = await check_bot_admin(ctx.bot, channel)
-        if not is_adm:
-            me = await ctx.bot.get_me()
-            await update.message.reply_text(
-                f"❌ ربات در <code>{channel}</code> ادمین نیست!\n"
-                f"@{me.username} را ادمین کن.",
-                parse_mode=ParseMode.HTML,
+    # ── ساخت ربات ──
+    if data == "nav:create":
+        plan = storage.get_plan(uid)
+        user_bots = storage.get_user_bots(uid)
+        if len(user_bots) >= plan["max_bots"]:
+            await q.edit_message_text(
+                f"⚠️ در حال حاضر {len(user_bots)}/{fmt_limit(plan['max_bots'])} ربات داری (پلن {plan['label']}).\n"
+                "برای ساخت ربات بیشتر، پلن‌ت رو ارتقا بده.",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 بررسی مجدد",
-                                          callback_data=f"order:check_admin:{channel}")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="menu:new_order")],
-                ])
-            )
+                    [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:mybots")]]))
             return
-
-        # ✅ نوع چت (channel/supergroup) را برای مرحله بعد نگه می‌داریم
-        ctx.user_data["temp_chat_type"] = chat.type
-        ctx.user_data["awaiting"] = f"order_reaction_post_{channel}"
-        await update.message.reply_text(
-            f"✅ ربات در <code>{channel}</code> ادمین است!\n\n"
-            f"لینک پست را ارسال کن:\n"
-            f"<code>https://t.me/{channel.lstrip('@')}/123</code>",
-            parse_mode=ParseMode.HTML
-        )
+        ctx.user_data.clear(); ctx.user_data["awaiting"] = "token"
+        await q.edit_message_text("🔑 توکن ربات‌ت رو از @BotFather بگیر و همینجا بفرست:\n(/cancel برای انصراف)")
         return
 
-    # ── لینک پست لایک ───────────────────────────────────────────────────────
-    if awaiting and awaiting.startswith("order_reaction_post_"):
-        channel = awaiting[len("order_reaction_post_"):]
-        ctx.user_data.pop("awaiting", None)
-        post_id = None
-
-        if update.message.text:
-            m = re.search(r"https://t\.me/[^/]+/(\d+)", update.message.text)
-            if m: post_id = int(m.group(1))
-        if post_id is None and update.message.forward_from_chat:
-            fc = update.message.forward_from_chat
-            if (fc.username or "").lower() == channel.lstrip("@").lower():
-                post_id = update.message.forward_from_message_id
-
-        if not post_id:
-            await update.message.reply_text(
-                "❌ لینک پست نامعتبر!\nمثال: <code>https://t.me/channel/123</code>",
-                parse_mode=ParseMode.HTML
-            )
-            return
-
-        try:
-            # ✅ فیکس باگ دوبار صدا زدن API
-            chat = await ctx.bot.get_chat(channel)
-            chat_id = chat.id
-        except:
-            await update.message.reply_text("❌ خطا در دسترسی به کانال!"); return
-
-        chat_type = ctx.user_data.get("temp_chat_type") or chat.type
-        cost_per  = REACTION_REWARD * REACTION_COST_MULT
-        ctx.user_data["awaiting"] = f"order_reaction_count_{channel}_{post_id}_{chat_id}_{chat_type}"
-        note = (
-            "🔒 نکته امنیتی: برای پست کانال، امکان تشخیص کاربر به کاربر وجود ندارد؛ "
-            "سیستم مجموع لایک‌های واقعی جدید را ردیابی می‌کند تا هیچ پاداشی بیش از "
-            "لایک واقعی رخ‌داده پرداخت نشود.\n\n"
-        ) if chat_type == "channel" else ""
-        await update.message.reply_text(
-            f"✅ پست شناسایی شد: <code>{post_id}</code>\n"
-            f"📢 کانال: <code>{channel}</code>\n\n"
-            f"{note}"
-            f"💰 هزینه هر لایک: <b>{cost_per} {COIN}</b>\n\n"
-            f"تعداد لایک مورد نظر را وارد کن:",
-            parse_mode=ParseMode.HTML
-        )
+    # ── مدیریت یک ربات ──
+    if data.startswith("bot:manage:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:mybots")); return
+        text, kb = build_bot_detail(b)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    # ── تعداد لایک ──────────────────────────────────────────────────────────
-    if awaiting and awaiting.startswith("order_reaction_count_"):
-        raw   = awaiting[len("order_reaction_count_"):]
-        parts = raw.split("_")
-        if len(parts) < 4:
-            ctx.user_data.pop("awaiting", None); return
-        channel, post_id_str, chat_id_str, chat_type = parts[0], parts[1], parts[2], parts[3]
-        ctx.user_data.pop("awaiting", None)
-        ctx.user_data.pop("temp_chat_type", None)
-
-        try:
-            count = int(text_in)
-            if count < 1: raise ValueError()
-        except:
-            await update.message.reply_text("❌ تعداد معتبر وارد کنید."); return
-
-        cost_per = REACTION_REWARD * REACTION_COST_MULT
-        total    = cost_per * count
-        u        = cloud.get_user(uid)
-        if u.get("balance", 0) < total:
-            await update.message.reply_text(
-                f"❌ موجودی کافی نیست!\nنیاز: <code>{total} {COIN}</code>",
-                parse_mode=ParseMode.HTML
-            )
+    if data.startswith("bot:toggle:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
             return
-
-        ctx.user_data["temp_order"] = {
-            "type":      "reaction",
-            "target":    channel,
-            "count":     count,
-            "cost_per":  cost_per,
-            "chat_id":   int(chat_id_str),
-            "post_id":   int(post_id_str),
-            "chat_type": chat_type,
-        }
-        ctx.user_data["awaiting"] = "order_description"
-        await update.message.reply_text(
-            f"✅ اطلاعات دریافت شد!\n\n"
-            f"📊 {count} لایک × {cost_per} {COIN} = <b>{total} {COIN}</b>\n\n"
-            f"📝 توضیحات (اختیاری):\n"
-            f"یا <code>skip</code> برای رد کردن:",
-            parse_mode=ParseMode.HTML
-        )
+        new_state = not b.get("is_active", True)
+        await storage.set_bot_active(bot_id, new_state)
+        await (factory.start_bot(bot_id, b["bot_token"]) if new_state else factory.stop_bot(bot_id))
+        text, kb = build_bot_detail(storage.get_bot(bot_id))
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    # ── توضیحات و ثبت نهایی ─────────────────────────────────────────────────
-    if awaiting == "order_description":
-        ctx.user_data.pop("awaiting", None)
-        temp = ctx.user_data.pop("temp_order", None)
-        if not temp:
-            await update.message.reply_text("❌ اطلاعات سفارش منقضی شد!"); return
+    if data.startswith("bot:delete:") and not data.startswith("bot:delete_confirm:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        await q.edit_message_text(f"❗️ حذف @{b.get('bot_username', '')}؟ غیرقابل بازگشت است.",
+                                   reply_markup=confirm_kb(f"bot:delete_confirm:{bot_id}", f"bot:manage:{bot_id}"))
+        return
 
-        desc  = "" if text_in.lower() == "skip" else text_in[:MAX_DESC_LENGTH]
-        order = cloud.create_order(
-            uid, temp["type"], temp["target"], temp["count"], temp["cost_per"],
-            post_id=temp.get("post_id"), chat_id=temp.get("chat_id"),
-            description=desc, chat_type=temp.get("chat_type")
-        )
-        if order:
-            cloud.save(force=True)
-            type_text = "ممبر" if temp["type"] == "join" else "لایک"
-            total     = temp["cost_per"] * temp["count"]
-            post_info = f"\n📝 پست: <code>{temp['post_id']}</code>" if temp.get("post_id") else ""
-            desc_info = f"\n💬 <i>{desc[:60]}</i>" if desc else ""
-            await update.message.reply_text(
-                f"✅ <b>سفارش ثبت شد!</b>\n\n"
-                f"🎯 نوع: <b>{type_text}</b>\n"
-                f"📢 کانال: <code>{temp['target']}</code>{post_info}\n"
-                f"👥 تعداد: {temp['count']}\n"
-                f"💰 کسر شد: <code>{total} {COIN}</code>{desc_info}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📦 سفارش‌های من", callback_data="menu:my_orders")
-                ]])
-            )
-            
-            # 🔥 شروع پروسه Baseline Probe برای کانال‌ها
-            if temp["type"] == "reaction" and temp.get("chat_type") == "channel":
-                asyncio.create_task(init_reaction_baseline(ctx.bot, order["order_id"], temp["chat_id"], temp["post_id"]))
+    if data.startswith("bot:delete_confirm:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        await factory.stop_bot(bot_id)
+        await storage.delete_bot(bot_id, uid)
+        text, kb = build_mybots_text_kb(uid)
+        await q.edit_message_text("🗑 ربات حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── پیام شروع ──
+    if data.startswith("bot:start_edit_text:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_text", bot_id=bot_id)
+        await q.edit_message_text("✏️ متن جدید پیام شروع را بفرست:\n(/cancel برای انصراف)"); return
+    if data.startswith("bot:start_edit_buttons:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_buttons", bot_id=bot_id)
+        await q.edit_message_text("🔘 دکمه‌ها را بفرست (هر خط = یک ردیف):\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
+        return
+    if data.startswith("bot:start_edit_photo:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        if not storage.get_plan(uid)["media_welcome"]:
+            await q.answer("🔒 این قابلیت مخصوص پلن حرفه‌ای به بالاست.", show_alert=True); return
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_photo", bot_id=bot_id)
+        await q.edit_message_text("🖼 یک عکس برای پیام خوش‌آمد بفرست، یا /skip برای حذف عکس فعلی:\n(/cancel برای انصراف)")
+        return
+    if data.startswith("bot:start:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        text = (f"📝 پیام شروع (/start):\n{b.get('start_msg', '')}\n\n"
+                f"🔘 دکمه‌ها: {preview_buttons(b.get('start_buttons'))}\n"
+                f"🖼 عکس خوش‌آمد: {'دارد' if b.get('start_photo') else 'ندارد'}")
+        rows = [
+            [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:start_edit_text:{bot_id}")],
+            [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:start_edit_buttons:{bot_id}")],
+        ]
+        if owner_plan["media_welcome"]:
+            rows.append([InlineKeyboardButton("🖼 ویرایش عکس خوش‌آمد", callback_data=f"bot:start_edit_photo:{bot_id}")])
         else:
-            await update.message.reply_text("❌ خطا در ثبت سفارش. موجودی کافی نیست یا خطای سرور.")
+            rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن برنزی+)", callback_data="noop")])
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
+        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
         return
 
-    # ── پیام همگانی (ادمین) ──────────────────────────────────────────────────
-    if is_admin(uid) and awaiting == "broadcast":
-        ctx.user_data.pop("awaiting", None)
-        users = cloud.get_all_users()
-        sent  = 0
-        for u in users:
-            try:
-                await ctx.bot.send_message(
-                    int(u.get("uid_str") or u.get("uid")),
-                    text_in, parse_mode=ParseMode.HTML
-                )
-                sent += 1
-                await asyncio.sleep(0.05)
-            except: pass
-        await update.message.reply_text(f"✅ ارسال شد: {sent}/{len(users)}")
+    # ── دستورهای دلخواه ──
+    if data.startswith("bot:commands:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        cmds = storage.get_commands(bot_id)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"🔧 /{n}", callback_data=f"bot:cmd_detail:{bot_id}:{n}")] for n in cmds
+        ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
+             if len(cmds) < owner_plan["max_commands"] else [])
+          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+        text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
+            ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    if data.startswith("bot:cmd_add:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_add", bot_id=bot_id, step="name")
+        await q.edit_message_text("➕ نام دستور جدید را بدون / بفرست (مثلاً info):\n(/cancel برای انصراف)"); return
+    if data.startswith("bot:cmd_detail:"):
+        _, _, bot_id, name = data.split(":", 3)
+        cmd = storage.get_commands(bot_id).get(name)
+        if not cmd:
+            return
+        text = f"🔧 دستور: /{name}\n\n💬 پاسخ:\n{cmd.get('response', '')}\n\n🔘 دکمه‌ها: {preview_buttons(cmd.get('buttons'))}"
+        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}"),
+             InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
+            [InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:commands:{bot_id}")]]))
+        return
+    if data.startswith("bot:cmd_edit_text:"):
+        _, _, bot_id, name = data.split(":", 3)
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_text", bot_id=bot_id, name=name)
+        await q.edit_message_text(f"✏️ متن جدید برای /{name}:\n(/cancel برای انصراف)"); return
+    if data.startswith("bot:cmd_edit_buttons:"):
+        _, _, bot_id, name = data.split(":", 3)
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_buttons", bot_id=bot_id, name=name)
+        await q.edit_message_text(f"🔘 دکمه‌های جدید برای /{name}:\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
+        return
+    if data.startswith("bot:cmd_delete:") and "confirm" not in data:
+        _, _, bot_id, name = data.split(":", 3)
+        await q.edit_message_text(f"🗑 حذف دستور /{name}؟",
+                                   reply_markup=confirm_kb(f"bot:cmd_delete_confirm:{bot_id}:{name}", f"bot:cmd_detail:{bot_id}:{name}"))
+        return
+    if data.startswith("bot:cmd_delete_confirm:"):
+        _, _, bot_id, name = data.split(":", 3)
+        await storage.delete_command(bot_id, name)
+        owner_plan = storage.get_plan(uid)
+        cmds = storage.get_commands(bot_id)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"🔧 /{n}", callback_data=f"bot:cmd_detail:{bot_id}:{n}")] for n in cmds
+        ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
+             if len(cmds) < owner_plan["max_commands"] else [])
+          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+        text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
+            ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-# ═══════════════════════════════════════════════════════════════
-#                       LIFECYCLE
-# ═══════════════════════════════════════════════════════════════
+    # ── پاسخ دکمه‌های سراسری ──
+    if data.startswith("bot:callbacks:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        cbs = storage.get_callbacks(bot_id)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"⚡ {c}", callback_data=f"bot:cb_detail:{bot_id}:{c}")] for c in cbs
+        ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
+             if len(cbs) < owner_plan["max_callbacks"] else [])
+          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+        text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
+            ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    if data.startswith("bot:cb_add:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_add", bot_id=bot_id, step="id")
+        await q.edit_message_text(
+            "➕ آیدی دکمه را بفرست (همون callback_data که در دکمه‌های /start یا دستورها استفاده کردی):\n(/cancel برای انصراف)")
+        return
+    if data.startswith("bot:cb_detail:"):
+        _, _, bot_id, cid = data.split(":", 3)
+        resp = storage.get_callbacks(bot_id).get(cid)
+        if resp is None:
+            return
+        await q.edit_message_text(f"⚡ دکمه: {cid}\n\nپاسخ:\n{resp}", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✏️ ویرایش", callback_data=f"bot:cb_edit:{bot_id}:{cid}")],
+            [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cb_delete:{bot_id}:{cid}")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:callbacks:{bot_id}")]]))
+        return
+    if data.startswith("bot:cb_edit:"):
+        _, _, bot_id, cid = data.split(":", 3)
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_edit_text", bot_id=bot_id, cb_id=cid)
+        await q.edit_message_text(f"✏️ پاسخ جدید برای «{cid}»:\n(/cancel برای انصراف)"); return
+    if data.startswith("bot:cb_delete:") and "confirm" not in data:
+        _, _, bot_id, cid = data.split(":", 3)
+        await q.edit_message_text(f"🗑 حذف پاسخ دکمه «{cid}»؟",
+                                   reply_markup=confirm_kb(f"bot:cb_delete_confirm:{bot_id}:{cid}", f"bot:cb_detail:{bot_id}:{cid}"))
+        return
+    if data.startswith("bot:cb_delete_confirm:"):
+        _, _, bot_id, cid = data.split(":", 3)
+        await storage.delete_callback(bot_id, cid)
+        owner_plan = storage.get_plan(uid)
+        cbs = storage.get_callbacks(bot_id)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"⚡ {c}", callback_data=f"bot:cb_detail:{bot_id}:{c}")] for c in cbs
+        ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
+             if len(cbs) < owner_plan["max_callbacks"] else [])
+          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
+        text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
+            ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── آنالیتیکس ──
+    if data.startswith("bot:stats:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        await q.edit_message_text(build_stats_text(b, storage.get_plan(uid)), parse_mode=ParseMode.HTML,
+                                   reply_markup=back_kb(f"bot:manage:{bot_id}"))
+        return
+
+    # ── پیام همگانی ──
+    if data.startswith("bot:bc_menu:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        if not owner_plan["broadcast"]:
+            await q.edit_message_text("🔒 پیام همگانی مخصوص پلن حرفه‌ای به بالاست.",
+                                       reply_markup=InlineKeyboardMarkup([
+                                           [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
+                                           [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
+            return
+        rows = [[InlineKeyboardButton("🚀 ارسال فوری", callback_data=f"bot:bc_now:{bot_id}")]]
+        if owner_plan["scheduled_broadcast"]:
+            rows.append([InlineKeyboardButton("⏰ زمان‌بندی ارسال", callback_data=f"bot:bc_sched:{bot_id}")])
+        else:
+            rows.append([InlineKeyboardButton("🔒 زمان‌بندی (نیاز به پلن حرفه‌ای)", callback_data="noop")])
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
+        await q.edit_message_text(f"📢 پیام همگانی\n\n👥 تعداد کاربران ربات: {len(b.get('bot_users', []))}",
+                                   reply_markup=InlineKeyboardMarkup(rows))
+        return
+    if data.startswith("bot:bc_now:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="broadcast_now", bot_id=bot_id)
+        await q.edit_message_text("🚀 متن پیام همگانی را بفرست:\n(/cancel برای انصراف)"); return
+    if data.startswith("bot:bc_sched:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="broadcast_sched_minutes", bot_id=bot_id)
+        await q.edit_message_text("⏰ بعد از چند دقیقه ارسال شود؟ (فقط عدد):\n(/cancel برای انصراف)"); return
+
+    # ── عضویت اجباری اختصاصی ربات ──
+    if data.startswith("bot:fj_menu:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        if not owner_plan["custom_force_join"]:
+            await q.edit_message_text("🔒 عضویت اجباری اختصاصی مخصوص پلن حرفه‌ای به بالاست.",
+                                       reply_markup=InlineKeyboardMarkup([
+                                           [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
+                                           [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
+            return
+        cur = b.get("force_join_channel") or "غیرفعال"
+        ctx.user_data.clear(); ctx.user_data.update(awaiting="subbot_forcejoin", bot_id=bot_id)
+        await q.edit_message_text(
+            f"🚫 عضویت اجباری فعلی این ربات: {cur}\n\n"
+            "یوزرنیم کانال (@channel) یا آیدی عددی (-100...) را بفرست، یا /skip برای غیرفعال‌کردن:\n(/cancel برای انصراف)")
+        return
+
+    # ── پشتیبان‌گیری (Export) ──
+    if data.startswith("bot:export:"):
+        bot_id = data.split(":")[2]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        export_data = {
+            "bot_username": b.get("bot_username"), "start_msg": b.get("start_msg"),
+            "start_buttons": b.get("start_buttons"), "commands": b.get("commands"),
+            "callbacks": b.get("callbacks"), "force_join_channel": b.get("force_join_channel"),
+        }
+        payload = json.dumps(export_data, ensure_ascii=False, indent=2)
+        if len(payload) > 3500:
+            payload = payload[:3500] + "\n… (بریده‌شده)"
+        await q.edit_message_text(f"💾 پشتیبان تنظیمات @{b.get('bot_username', '')}:\n\n<pre>{esc(payload)}</pre>",
+                                   parse_mode=ParseMode.HTML, reply_markup=back_kb(f"bot:manage:{bot_id}"))
+        return
+
+
+# ══════════════════════════════════════════════════════════════════════
+# هندلرهای ربات‌های زیرمجموعه — فقط اجرا، بدون منطق نویسندگی
+# ══════════════════════════════════════════════════════════════════════
+async def handle_subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
+    uid = update.effective_user.id
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    await storage.add_bot_user(bot_id, uid)
+    await storage.update_bot_stats(bot_id, received=1)
+    fj = b.get("force_join_channel")
+    if fj and not await enforce_subbot_force_join(ctx.bot, uid, fj):
+        await update.effective_message.reply_text(
+            "🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
+            reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj))
+        return
+    kb = build_inline_from_rows(b.get("start_buttons"))
+    photo = b.get("start_photo")
+    if photo:
+        await update.effective_message.reply_photo(photo, caption=b.get("start_msg", "سلام 👋"), reply_markup=kb)
+    else:
+        await update.effective_message.reply_text(b.get("start_msg", "سلام 👋"), reply_markup=kb)
+    await storage.update_bot_stats(bot_id, sent=1)
+
+
+async def handle_subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
+    uid = update.effective_user.id
+    text = (update.effective_message.text or "").strip()
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    await storage.add_bot_user(bot_id, uid)
+    await storage.update_bot_stats(bot_id, received=1)
+    fj = b.get("force_join_channel")
+    if fj and not await enforce_subbot_force_join(ctx.bot, uid, fj):
+        await update.effective_message.reply_text(
+            "🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
+            reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj))
+        return
+    cmd_name = text.lstrip("/").split()[0].lower() if text.startswith("/") else ""
+    cmd = b.get("commands", {}).get(cmd_name)
+    if cmd:
+        await update.effective_message.reply_text(cmd.get("response", ""), reply_markup=build_inline_from_rows(cmd.get("buttons")))
+        await storage.update_bot_stats(bot_id, sent=1)
+
+
+async def handle_subbot_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
+    q = update.callback_query
+    uid = q.from_user.id
+    data = q.data or ""
+
+    if data == f"sfj:check:{bot_id}":
+        b = storage.get_bot(bot_id)
+        fj = b.get("force_join_channel") if b else None
+        if await enforce_subbot_force_join(ctx.bot, uid, fj):
+            await q.answer("✅ تایید شد!")
+            await handle_subbot_start(update, ctx, bot_id)
+        else:
+            await q.answer("❌ هنوز عضو نشدی!", show_alert=True)
+        return
+
+    await q.answer()
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    fj = b.get("force_join_channel")
+    if fj and not await enforce_subbot_force_join(ctx.bot, uid, fj):
+        try:
+            await q.message.reply_text("🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
+                                        reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj))
+        except Exception:
+            pass
+        return
+    resp = storage.get_callbacks(bot_id).get(data)
+    if resp is not None:
+        await q.message.reply_text(resp)
+        await storage.update_bot_stats(bot_id, sent=1)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# استارتاپ / شات‌داون / main
+# ══════════════════════════════════════════════════════════════════════
 async def on_startup(app: Application):
-    cloud.load()
+    global PLATFORM_USERNAME
+    mother_bot_ref["bot"] = app.bot
+    await storage.load()
+    # 🔄 مهاجرت خودکار کاربران قدیمی از پلن‌های منسوخ‌شده
+    _MIGRATION = {
+        "free": "starter",
+        "bronze": "professional",
+        "silver": "professional",
+        "gold": "enterprise",
+        "diamond": "enterprise",
+    }
+    for u in storage.data["users"].values():
+        old_plan = u.get("plan")
+        if old_plan in _MIGRATION:
+            u["plan"] = _MIGRATION[old_plan]
+            storage.mark_dirty()
+    log.info("🔄 مهاجرت پلن‌های قدیمی انجام شد")
+    me = await app.bot.get_me()
+    PLATFORM_USERNAME = me.username or ""
+    await factory.start_all_active()
+    asyncio.create_task(storage.autosave_loop())
+    log.info(f"🟢 GramSaz v3 آماده — @{PLATFORM_USERNAME} — {len(factory._running)} ربات فعال")
 
-    async def _cleanup_loop():
-        while True:
-            await asyncio.sleep(60)
-            cloud.cleanup_expired_pendings()
-            cloud.save()
-
-    asyncio.create_task(_cleanup_loop())
-    log.info("🚀 ExchangeBot v8.1 آماده است ✅")
 
 async def on_shutdown(app: Application):
-    cloud.save(force=True)
-    log.info("💾 ذخیره نهایی انجام شد.")
+    await factory.stop_all()
+    await storage.save(force=True)
 
-# ═══════════════════════════════════════════════════════════════
-#                         MAIN
-# ═══════════════════════════════════════════════════════════════
+
 def main():
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_TOKEN_HERE":
-        log.critical("❌ BOT_TOKEN تنظیم نشده!"); sys.exit(1)
+    app = (Application.builder().token(PLATFORM_BOT_TOKEN)
+           .post_init(on_startup).post_shutdown(on_shutdown).build())
 
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(on_startup)
-        .post_shutdown(on_shutdown)
-        .build()
-    )
-
-    # ✅ هر دو نوع آپدیت ریکشن باید در allowed_updates باشند
-    ALLOWED_UPDATES = ["message", "callback_query", "message_reaction", "message_reaction_count"]
-
-    app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
-    app.add_handler(CommandHandler("debug",  cmd_debug))
-    app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(CallbackQueryHandler(main_callback_handler))
+    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, main_message_handler))
 
-    # ✅ صریحاً مشخص می‌کنیم کدام هندلر کدام نوع آپدیت ریکشن را می‌گیرد
-    app.add_handler(MessageReactionHandler(
-        on_reaction, message_reaction_types=MessageReactionHandler.MESSAGE_REACTION_UPDATED
-    ))
-    app.add_handler(MessageReactionHandler(
-        on_reaction_count, message_reaction_types=MessageReactionHandler.MESSAGE_REACTION_COUNT_UPDATED
-    ))
-
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        on_message
-    ))
-    app.add_handler(MessageHandler(
-        filters.FORWARDED & filters.ChatType.PRIVATE,
-        on_message
-    ))
-
-    def _sig(s, f):
-        cloud.save(force=True)
-        sys.exit(0)
-    signal.signal(signal.SIGTERM, _sig)
-    signal.signal(signal.SIGINT,  _sig)
-    atexit.register(lambda: cloud.save(force=True))
-
-    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if webhook_url:
-        log.info("🌐 حالت Webhook")
-        main_loop = asyncio.new_event_loop()
-        threading.Thread(
-            target=lambda: asyncio.set_event_loop(main_loop) or main_loop.run_forever(),
-            daemon=True
-        ).start()
-
-        flask_app = Flask(__name__)
-
-        @flask_app.route("/")
-        def index():
-            return "🤖 ExchangeBot v8.1 Online!", 200
-
-        @flask_app.route("/debug")
-        def debug():
-            import html as htmllib
-            stats = cloud.get_stats()
-            pendings = cloud._data.get("pending_likes", [])
-            orders   = [o for o in cloud._data.get("orders", []) if o.get("status") == "active"]
-            lines = [
-                "<pre>",
-                f"=== ExchangeBot v8.1 DEBUG ===",
-                f"Users:          {stats['total_users']}",
-                f"Active orders:  {stats['active_orders']}",
-                f"Pending likes:  {stats['pending_count']}",
-                "",
-                "--- ACTIVE REACTION ORDERS ---",
-            ]
-            for o in orders:
-                if o.get("type") == "reaction":
-                    quota = cloud.get_available_quota(o["order_id"])
-                    lines.append(
-                        f"  order={o['order_id']} channel={o['target']} type={o.get('chat_type')} "
-                        f"chat_id={o.get('chat_id')} post_id={o.get('post_id')} "
-                        f"baseline={o.get('reaction_baseline')} last={o.get('reaction_last_total')} "
-                        f"claimed={o.get('quota_claimed')} quota_now={quota} "
-                        f"remaining={o.get('remaining_count')} probe={o.get('bot_probe_active')}"
-                    )
-            lines += ["", "--- PENDING LIKES ---"]
-            now = time.time()
-            for p in pendings:
-                remaining = max(0, int(p["expires"] - now))
-                lines.append(
-                    f"  order={p['order_id']} user={p['worker_uid']} "
-                    f"expires_in={remaining}s"
-                )
-            lines += [
-                "",
-                "--- WEBHOOK INFO ---",
-                "Check: https://api.telegram.org/bot<TOKEN>/getWebhookInfo",
-                "Must have message_reaction AND message_reaction_count in allowed_updates",
-                "</pre>"
-            ]
-            return "\n".join(lines), 200, {"Content-Type": "text/html; charset=utf-8"}
-
-        @flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
-        def webhook():
-            try:
-                data = request.get_json(force=True)
-                upd  = Update.de_json(data, app.bot)
-                asyncio.run_coroutine_threadsafe(app.process_update(upd), main_loop)
-            except Exception as e:
-                log.error(f"Webhook error: {e}")
-            return "OK", 200
-
-        async def _setup():
-            url = webhook_url.rstrip("/") + "/" + BOT_TOKEN
-            await app.bot.delete_webhook(drop_pending_updates=True)
-            await asyncio.sleep(1)
-            await app.bot.set_webhook(
-                url=url,
-                allowed_updates=ALLOWED_UPDATES,
-                drop_pending_updates=True
-            )
-            log.info(f"✅ Webhook set: {url}")
-
-        async def _init():
-            await app.initialize()
-            await app.start()
-            await on_startup(app)
-
-        asyncio.run_coroutine_threadsafe(_setup(), main_loop).result(timeout=30)
-        asyncio.run_coroutine_threadsafe(_init(),  main_loop).result(timeout=30)
-        flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+    if WEBHOOK_URL:
+        log.info(f"🌐 اجرا با وب‌هوک: {WEBHOOK_URL}/{PLATFORM_BOT_TOKEN}")
+        app.run_webhook(listen="0.0.0.0", port=PORT, url_path=PLATFORM_BOT_TOKEN,
+                         webhook_url=f"{WEBHOOK_URL}/{PLATFORM_BOT_TOKEN}", drop_pending_updates=True)
     else:
-        log.warning("⚠ حالت Polling")
-        app.run_polling(
-            allowed_updates=ALLOWED_UPDATES,
-            drop_pending_updates=True
-        )
+        log.info("📡 اجرا با polling (برای وب‌هوک، WEBHOOK_URL رو در env ست کن)")
+        app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
