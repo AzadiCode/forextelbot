@@ -775,7 +775,7 @@ def confirm_kb(yes_cb: str, no_cb: str) -> InlineKeyboardMarkup:
 # UI — متن‌ها (لحن فروشنده و جذاب، مشابه استایل نمونه)
 # ══════════════════════════════════════════════════════════════════════
 def build_welcome_text(user: dict, bonus_given: int) -> str:
-    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
+    plan = PLANS.get(user.get("plan", "starter"), PLANS["starter"])
     bonus_line = f"\n🎁 <b>{bonus_given} {COIN_SYMBOL}</b> هدیهٔ خوش‌آمدگویی به کیفتون اضافه شد!\n" if bonus_given else ""
     return (
         "🤖 <b>به GramSaz خوش اومدی!</b>\n"
@@ -794,7 +794,7 @@ def build_welcome_text(user: dict, bonus_given: int) -> str:
 
 
 def build_dashboard_text(uid: int, user: dict) -> str:
-    plan = PLANS.get(user.get("plan", "free"), PLANS["free"])
+    plan = PLANS.get(user.get("plan", "starter"), PLANS["starter"])
     bots = storage.get_user_bots(uid)
     ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
     return (
@@ -817,7 +817,7 @@ def _feature_line(icon: str, label: str, enabled: bool) -> str:
 
 def build_plan_card_text(plan_key: str, user: dict) -> str:
     d = PLANS[plan_key]
-    cur = user.get("plan", "free")
+    cur = user.get("plan", "starter")
     dots = "".join("◉" if p == cur else ("●" if p == plan_key else "○") for p in PLAN_ORDER)
     status_line = ("🟢 <b>پلن فعلی شماست</b>" if plan_key == cur else
                    "🔒 پایین‌تر از پلن فعلی شماست" if plan_rank(plan_key) < plan_rank(cur) else "⬆️ قابل ارتقا")
@@ -839,7 +839,7 @@ def build_plan_card_text(plan_key: str, user: dict) -> str:
 
 
 def plan_card_kb(plan_key: str, user: dict) -> InlineKeyboardMarkup:
-    cur = user.get("plan", "free")
+    cur = user.get("plan", "starter")
     idx = PLAN_ORDER.index(plan_key)
     nav_row = []
     if idx > 0:
@@ -1560,7 +1560,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if data == "nav:plans":
         user = storage.get_user(uid)
-        plan_key = user.get("plan", "free")
+        plan_key = user.get("plan", "starter")
         await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
                                    reply_markup=plan_card_kb(plan_key, user))
         return
@@ -1583,7 +1583,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         target = data.split(":")[2]
         ok, message = await storage.upgrade_plan(uid, target)
         user = storage.get_user(uid)
-        shown_plan = target if ok else user.get("plan", "free")
+        shown_plan = target if ok else user.get("plan", "starter")
         head = f"✅ <b>{esc(message)}</b>\n\n" if ok else f"⚠️ {esc(message)}\n\n"
         await q.edit_message_text(head + build_plan_card_text(shown_plan, user), parse_mode=ParseMode.HTML,
                                    reply_markup=plan_card_kb(shown_plan, user))
