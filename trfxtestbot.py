@@ -1,28 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ExchangeBot v8.0 — نسخه امن‌تر + رابط کاربری تمیزتر
+ExchangeBot v8.1 — نسخه نهایی + سیستم Quota-Pool امن (Bot Probe)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-تغییرات نسبت به v7.0:
-
-✅ سیستم جدید تأیید لایک برای «کانال» (Quota-Pool مبتنی بر message_reaction_count):
-   - چون تلگرام هیچ‌وقت مشخص نمی‌کند «کدام کاربر» به پست کانال لایک زده
-     (ریکشن‌های کانال ذاتاً ناشناس‌اند)، امکان اثبات هویت فرد به فرد وجود ندارد.
-   - به‌جای آن، مجموع واقعی لایک‌های جدید روی پست (از لحظه‌ی baseline) را
-     ردیابی می‌کنیم و پاداش فقط به اندازه‌ی همان تعداد واقعی، و فقط یک واحد
-     در هر بار، پرداخت می‌شود. یعنی هیچ‌وقت پاداش بیشتر از لایک واقعی رخ‌داده
-     پرداخت نمی‌شود (سقف اقتصادی امن) — حتی اگر ندانیم دقیقاً چه کسی لایک زده.
-   - baseline فقط از اولین رویداد message_reaction_count بعد از ثبت سفارش
-     برداشته می‌شود (نه صفر فرضی)، تا لایک‌های قدیمیِ از قبل موجود روی پست
-     هرگز به‌عنوان پاداشِ رایگان قابل برداشت نباشند.
-✅ برای «سوپرگروه‌ها» چون تلگرام واقعاً می‌داند چه کسی لایک زده، همان مکانیزم
-   دقیق قبلی (MessageReactionHandler روی message_reaction) حفظ شده.
-✅ کیبورد اصلی حالا کشویی است (is_persistent=False) نه همیشه باز.
-✅ دکمه‌های بی‌کاربرد (نشانگر noop صفحه، فلش‌های غیرفعال ⏮/⏭) حذف شدند؛
-   شماره صفحه داخل متن کارت نمایش داده می‌شود.
-✅ پالایش ظاهری/متنی برای حرفه‌ای‌تر شدن UI.
 """
-
 import os, sys, re, time, json, signal, atexit, logging, hashlib, unicodedata
 import asyncio, threading
 from datetime import datetime, timedelta, timezone
@@ -31,7 +12,7 @@ from typing import Optional, Dict, List
 from flask import Flask, request
 
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
-                      Bot, ReplyKeyboardMarkup, KeyboardButton)
+                      Bot, ReplyKeyboardMarkup, KeyboardButton, ReactionTypeEmoji)
 from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
@@ -234,6 +215,8 @@ class CloudStorage:
                 "reaction_baseline":   None,   # مجموع لایک‌های مجاز در لحظه‌ی اولین رویداد بعد از ثبت سفارش
                 "reaction_last_total": None,   # آخرین مجموع دریافتی از تلگرام
                 "quota_claimed":       0,      # چند واحد از quota تا الان مصرف شده
+                # ✅ فلگ تکنیک Bot Probe
+                "bot_probe_active":    True if (order_type == "reaction" and chat_type == "channel") else False,
             }
             self._data["orders"].append(order)
             self._dirty = True
@@ -348,6 +331,7 @@ class CloudStorage:
         ✅ نکته امنیتی: baseline فقط از *اولین* رویدادی که بعد از ساخته‌شدن
         سفارش می‌رسد گرفته می‌شود — یعنی لایک‌های از‌قبل‌موجود روی پست
         هرگز به‌عنوان quota قابل‌برداشت حساب نمی‌شوند.
+        🔥 منطق Bot Probe: اگر ربات خودش ریکشن گذاشته باشه، باید یکی از توتال کم کنه.
         """
         norm_chat = _normalize_chat_id(chat_id)
         with self._lock:
@@ -361,8 +345,22 @@ class CloudStorage:
                     continue
 
                 if o.get("reaction_baseline") is None:
-                    o["reaction_baseline"] = total
-                    log.info(f"📌 Baseline ثبت شد برای order={o['order_id']}: {total}")
+                    # ✅ محاسبه سن سفارش برای اطمینان از اینکه پروب مربوط به همین سفارش است
+                    try:
+                        order_age = (now_ir() - datetime.fromisoformat(o["created_at"])).total_seconds()
+                    except:
+                        order_age = 999
+                        
+                    if o.get("bot_probe_active") and order_age < 15:
+                        o["reaction_baseline"] = max(0, total - 1)
+                        o["bot_probe_active"] = False
+                        log.info(f"📌 Baseline ثبت شد (probe) برای order={o['order_id']}: {o['reaction_baseline']}")
+                    else:
+                        # Fallback اگر پروب شکست خورد یا آپدیت خیلی دیر رسید
+                        o["reaction_baseline"] = total
+                        o["bot_probe_active"] = False
+                        log.info(f"📌 Baseline ثبت شد (fallback) برای order={o['order_id']}: {total}")
+                
                 o["reaction_last_total"] = total
                 self._dirty = True
 
@@ -465,6 +463,25 @@ async def check_bot_admin(bot: Bot, channel: str) -> bool:
         return m.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER)
     except:
         return False
+
+async def init_reaction_baseline(bot: Bot, order_id: str, chat_id: int, post_id: int):
+    """
+    🔥 تکنیک Bot Probe: ربات موقتاً یک ریکشن می‌ذاره تا تلگرام رو مجبور کنه
+    آپدیت count رو بفرسته. بعدش یکی از توتال کم می‌کنه تا Baseline واقعی ثبت بشه.
+    """
+    try:
+        log.info(f"🔍 در حال ثبت baseline برای سفارش {order_id}...")
+        await bot.set_message_reaction(
+            chat_id=chat_id, message_id=post_id,
+            reaction=[ReactionTypeEmoji(emoji="👍")]
+        )
+        await asyncio.sleep(1.5) # صبر برای رسیدن آپدیت
+        await bot.set_message_reaction(chat_id=chat_id, message_id=post_id, reaction=[])
+        log.info(f"✅ probe کامل شد برای سفارش {order_id}")
+    except Forbidden:
+        log.warning(f"⛔ ربات دسترسی ادمین برای ریکشن را در {chat_id} ندارد")
+    except Exception as e:
+        log.error(f"❌ خطا در ثبت baseline برای {order_id}: {e}")
 
 # ═══════════════════════════════════════════════════════════════
 #                     KEYBOARD BUILDERS
@@ -1069,8 +1086,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         chat_type = order.get("chat_type") or "channel"
 
         # ── حالت سوپرگروه: تشخیص دقیق فرد به فرد از طریق on_reaction است ──
-        # اینجا فقط یک بار دیگر وضعیت is_task_done چک می‌شود؛ اگر رویداد
-        # message_reaction هنوز نرسیده باشد، پاداشی داده نمی‌شود (امن).
         if chat_type != "channel":
             await q.answer(
                 "⏳ هنوز لایک واقعی از تلگرام تأیید نشده.\n"
@@ -1106,8 +1121,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 cloud.save(force=True)
                 await q.answer(f"🎉 +{REACTION_REWARD} {COIN} دریافت شد!", show_alert=True)
             else:
-                # اگر به هر دلیلی complete_order_unit شکست خورد (مثلاً race)،
-                # واحد quota را برنمی‌گردانیم چون ایمن‌تر است سمت سیستم محافظه‌کار بماند
                 msg = result if isinstance(result, str) else "❌ خطا در ثبت"
                 await q.answer(msg, show_alert=True)
         else:
@@ -1516,7 +1529,8 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
 
         try:
-            chat    = await ctx.bot.get_chat(channel)
+            # ✅ فیکس باگ دوبار صدا زدن API
+            chat = await ctx.bot.get_chat(channel)
             chat_id = chat.id
         except:
             await update.message.reply_text("❌ خطا در دسترسی به کانال!"); return
@@ -1614,6 +1628,10 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("📦 سفارش‌های من", callback_data="menu:my_orders")
                 ]])
             )
+            
+            # 🔥 شروع پروسه Baseline Probe برای کانال‌ها
+            if temp["type"] == "reaction" and temp.get("chat_type") == "channel":
+                asyncio.create_task(init_reaction_baseline(ctx.bot, order["order_id"], temp["chat_id"], temp["post_id"]))
         else:
             await update.message.reply_text("❌ خطا در ثبت سفارش. موجودی کافی نیست یا خطای سرور.")
         return
@@ -1648,7 +1666,7 @@ async def on_startup(app: Application):
             cloud.save()
 
     asyncio.create_task(_cleanup_loop())
-    log.info("🚀 ExchangeBot v8.0 آماده است ✅")
+    log.info("🚀 ExchangeBot v8.1 آماده است ✅")
 
 async def on_shutdown(app: Application):
     cloud.save(force=True)
@@ -1714,7 +1732,7 @@ def main():
 
         @flask_app.route("/")
         def index():
-            return "🤖 ExchangeBot v8.0 Online!", 200
+            return "🤖 ExchangeBot v8.1 Online!", 200
 
         @flask_app.route("/debug")
         def debug():
@@ -1724,7 +1742,7 @@ def main():
             orders   = [o for o in cloud._data.get("orders", []) if o.get("status") == "active"]
             lines = [
                 "<pre>",
-                f"=== ExchangeBot v8.0 DEBUG ===",
+                f"=== ExchangeBot v8.1 DEBUG ===",
                 f"Users:          {stats['total_users']}",
                 f"Active orders:  {stats['active_orders']}",
                 f"Pending likes:  {stats['pending_count']}",
@@ -1739,7 +1757,7 @@ def main():
                         f"chat_id={o.get('chat_id')} post_id={o.get('post_id')} "
                         f"baseline={o.get('reaction_baseline')} last={o.get('reaction_last_total')} "
                         f"claimed={o.get('quota_claimed')} quota_now={quota} "
-                        f"remaining={o.get('remaining_count')}"
+                        f"remaining={o.get('remaining_count')} probe={o.get('bot_probe_active')}"
                     )
             lines += ["", "--- PENDING LIKES ---"]
             now = time.time()
