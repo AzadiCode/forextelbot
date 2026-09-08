@@ -52,6 +52,8 @@ MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
 PORT = int(os.getenv("PORT", "10000"))
 
+DAILY_REWARD = 10
+
 ADMIN_IDS = {int(x) for x in os.getenv("ADMIN_IDS", "605611554").replace(" ", "").split(",")
              if x.strip().lstrip("-").isdigit()}
 
@@ -64,6 +66,9 @@ REFERRAL_BONUS_REFERRER = 80
 REFERRAL_BONUS_NEWCOMER = 20
 DOWNLINE_BONUS_PER_USER = 3
 DOWNLINE_DAILY_CAP = 15
+MONETIZATION_MIN_USERS = 1000  # حداقل تعداد کاربر برای فعال‌سازی درآمدزایی
+MONETIZATION_REVENUE_SHARE = 70  # درصد سهم کاربر از درآمد تبلیغات
+MIN_WITHDRAWAL = 10000  # حداقل مقدار برداشت
 BROADCAST_DELAY_SEC = 0.045
 ADMIN_PAGE_SIZE = 8
 RESERVED_COMMANDS = {"start", "cancel", "help", "id"}
@@ -219,6 +224,11 @@ class Storage:
         u.setdefault("downline_bonus_date", None)
         u.setdefault("downline_bonus_count", 0)
         u.setdefault("is_banned", False)
+        # ── فیلدهای درآمدزایی ──
+        u.setdefault("monetization_enabled", False)
+        u.setdefault("monetization_activated_at", None)
+        u.setdefault("total_earned_revenue", 0)
+        u.setdefault("withdrawn_revenue", 0)
 
     @staticmethod
     def _bot_defaults(b: dict):
@@ -278,6 +288,11 @@ class Storage:
                     "signup_bonus_claimed": False, "plan": "starter",
                     "referral_count": 0, "referral_earned_coins": 0,
                     "downline_bonus_date": None, "downline_bonus_count": 0, "is_banned": False,
+                    # ── فیلدهای درآمدزایی ──
+                    "monetization_enabled": False,
+                    "monetization_activated_at": None,
+                    "total_earned_revenue": 0,
+                    "withdrawn_revenue": 0,
                 }
                 if referrer_uid is not None:
                     ref = self.data["users"][str(referrer_uid)]
@@ -352,6 +367,32 @@ class Storage:
             self.mark_dirty()
             return u["coin_balance"]
 
+    def can_claim_daily(self, uid: int) -> bool:
+        """آیا کاربر می‌تواند جایزه روزانه بگیرد؟"""
+        u = self.get_user(uid)
+        if not u:
+            return False
+        last_claim = u.get("last_daily_claim")
+        if not last_claim:
+            return True
+        try:
+            last_dt = datetime.fromisoformat(last_claim)
+            return (now_ir() - last_dt).days >= 1
+        except Exception:
+            return True
+
+    def claim_daily(self, uid: int) -> bool:
+        """ثبت جایزه روزانه."""
+        if not self.can_claim_daily(uid):
+            return False
+        u = self.data["users"].get(str(uid))
+        if not u:
+            return False
+        u["last_daily_claim"] = now_ir().isoformat()
+        u["coin_balance"] = u.get("coin_balance", 0) + DAILY_REWARD
+        self.mark_dirty()
+        return True
+
     async def set_banned(self, uid: int, banned: bool) -> bool:
         async with self._lock:
             u = self.data["users"].get(str(uid))
@@ -360,6 +401,54 @@ class Storage:
             u["is_banned"] = banned
             self.mark_dirty()
             return True
+
+    def get_max_bot_users_count(self, uid: int) -> tuple[int, Optional[str]]:
+        """بیشترین تعداد کاربر در بین ربات‌های کاربر را برمی‌گرداند.
+        Returns: (max_count, bot_username_of_max)
+        """
+        bots = self.get_user_bots(uid)
+        if not bots:
+            return 0, None
+        max_count = 0
+        max_username = None
+        for b in bots:
+            count = len(b.get("bot_users", []))
+            if count > max_count:
+                max_count = count
+                max_username = b.get("bot_username") or b.get("bot_id")
+        return max_count, max_username
+
+    def can_enable_monetization(self, uid: int) -> bool:
+        """آیا کاربر شرایط فعال‌سازی درآمدزایی را دارد؟"""
+        u = self.get_user(uid)
+        if not u:
+            return False
+        if u.get("monetization_enabled"):
+            return False  # قبلاً فعال شده
+        max_count, _ = self.get_max_bot_users_count(uid)
+        return max_count >= MONETIZATION_MIN_USERS
+
+    async def enable_monetization(self, uid: int) -> tuple[bool, str]:
+        """فعال‌سازی درآمدزایی برای کاربر."""
+        async with self._lock:
+            u = self.data["users"].get(str(uid))
+            if not u:
+                return False, "❌ کاربر یافت نشد."
+            if u.get("monetization_enabled"):
+                return False, "⚠️ درآمدزایی قبلاً برای شما فعال شده است."
+            max_count, max_username = self.get_max_bot_users_count(uid)
+            if max_count < MONETIZATION_MIN_USERS:
+                remaining = MONETIZATION_MIN_USERS - max_count
+                return False, (
+                    f"⚠️ هنوز به حداقل نرسیده‌ای.\n\n"
+                    f"🏆 بهترین ربات شما: @{max_username or '—'}\n"
+                    f"👥 {max_count} کاربر از {MONETIZATION_MIN_USERS}\n"
+                    f"⏳ {remaining} کاربر دیگر لازم داری."
+                )
+            u["monetization_enabled"] = True
+            u["monetization_activated_at"] = now_ir().isoformat()
+            self.mark_dirty()
+            return True, f"✅ تبریک! درآمدزایی برای شما فعال شد.\n\n🎉 از این پس می‌توانید از ربات‌هایتان درآمد کسب کنید."
 
     def get_referral_leaderboard(self, top: int = 10) -> list[dict]:
         users = sorted(self.data["users"].values(), key=lambda u: u.get("referral_count", 0), reverse=True)
@@ -832,7 +921,7 @@ def main_menu_kb(uid: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🤖 ربات‌های من", callback_data="nav:mybots"),
          InlineKeyboardButton("➕ ساخت ربات", callback_data="nav:create")],
         [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans"),
-         InlineKeyboardButton("👤 حساب من", callback_data="nav:account")],
+         InlineKeyboardButton("👤 پنل کاربری", callback_data="nav:user_panel")],
         [InlineKeyboardButton("🔗 دعوت دوستان", callback_data="nav:referral"),
          InlineKeyboardButton("📖 راهنما", callback_data="nav:help")],
     ]
@@ -895,6 +984,186 @@ def build_dashboard_text(uid: int, user: dict) -> str:
         f"(+{user.get('referral_earned_coins', 0)} {COIN_SYMBOL} تا این لحظه)"
     )
 
+
+def build_user_panel_text(uid: int, user: dict) -> str:
+    """متن پنل کاربری با نمایش وضعیت ربات‌ها و progress به سمت درآمدزایی."""
+    plan = PLANS.get(user.get("plan", "starter"), PLANS["starter"])
+    bots = storage.get_user_bots(uid)
+    ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
+    
+    # مرتب‌سازی ربات‌ها: بیشترین کاربر اول
+    sorted_bots = sorted(bots, key=lambda b: len(b.get("bot_users", [])), reverse=True)
+    
+    lines = [
+        f"👤 <b>پنل کاربری</b>",
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
+        f"🆔 آیدی: <code>{user['uid']}</code>",
+        f"{plan['badge']} پلن فعلی: <b>{plan['label']}</b>",
+        f"💰 موجودی: <b>{user.get('coin_balance', 0):,} {COIN_SYMBOL}</b>",
+        "",
+    ]
+    
+    # ── وضعیت درآمدزایی ──
+    if user.get("monetization_enabled"):
+        lines.extend([
+            "🎉 <b>💰 درآمدزایی فعال است!</b>",
+            f"💵 کل درآمد: <b>{user.get('total_earned_revenue', 0):,} {COIN_SYMBOL}</b>",
+            "",
+        ])
+    else:
+        lines.extend([
+            f"🎯 <b>هدف درآمدزایی:</b> {MONETIZATION_MIN_USERS:,} کاربر در یک ربات",
+            "",
+        ])
+    
+    # ── نمایش ربات‌ها ──
+    if not sorted_bots:
+        lines.append("🤖 هنوز رباتی نساخته‌ای.")
+    else:
+        lines.append("<b>🤖 وضعیت ربات‌های شما:</b>")
+        for i, b in enumerate(sorted_bots[:5]):  # حداکثر 5 ربات
+            username = b.get("bot_username") or b.get("bot_id", "?")
+            user_count = len(b.get("bot_users", []))
+            is_active = "🟢" if b.get("is_active") else "🔴"
+            
+            if user.get("monetization_enabled"):
+                # بعد از فعال‌سازی، فقط تعداد کاربر
+                lines.append(f"{is_active} <b>@{username}</b> — 👥 {user_count:,}")
+            else:
+                # قبل از فعال‌سازی، progress bar به سمت 1000
+                progress = progress_bar(user_count, MONETIZATION_MIN_USERS)
+                pct = min(100, int(user_count * 100 / MONETIZATION_MIN_USERS))
+                remaining = max(0, MONETIZATION_MIN_USERS - user_count)
+                
+                lines.append(f"\n{is_active} <b>@{username}</b>")
+                lines.append(f"  {progress}")
+                
+                if remaining > 0:
+                    # پیام تشویقی بر اساس درصد
+                    if pct >= 80:
+                        lines.append(f"  ⚡ <b>فقط {remaining:,} کاربر تا درآمدزایی!</b>")
+                    elif pct >= 50:
+                        lines.append(f"  🔥 {pct}% مسیر را رفتی، ادامه بده!")
+                    elif pct >= 20:
+                        lines.append(f"  💪 شروع خوبی بود، {pct}% کامل شد")
+                    else:
+                        lines.append(f"  🌱 در ابتدای مسیر، {pct}% کامل شد")
+                else:
+                    lines.append(f"  ✅ <b>آماده فعال‌سازی درآمدزایی!</b>")
+    
+    # ── بهترین ربات (قبل از فعال‌سازی) ──
+    if not user.get("monetization_enabled") and sorted_bots:
+        best = sorted_bots[0]
+        best_username = best.get("bot_username") or best.get("bot_id")
+        best_count = len(best.get("bot_users", []))
+        remaining = max(0, MONETIZATION_MIN_USERS - best_count)
+        lines.append("")
+        if remaining > 0:
+            lines.append(f"🎯 بهترین ربات: <b>@{best_username}</b> — <b>{remaining:,}</b> کاربر تا هدف")
+        else:
+            lines.append(f"🎯 <b>@{best_username}</b> به هدف رسیده!")
+    
+    return "\n".join(lines)
+
+
+def build_user_panel_kb(uid: int, user: dict) -> InlineKeyboardMarkup:
+    """کیبورد پنل کاربری با دکمه درآمدزایی."""
+    rows = []
+    
+    # دکمه درآمدزایی (بسته به وضعیت)
+    if user.get("monetization_enabled"):
+        rows.append([InlineKeyboardButton("💰 وضعیت درآمدزایی", callback_data="user:monetization")])
+    elif storage.can_enable_monetization(uid):
+        rows.append([InlineKeyboardButton("🚀 فعال‌سازی درآمدزایی", callback_data="user:enable_monetization")])
+    else:
+        rows.append([InlineKeyboardButton("💰 فعال‌سازی درآمدزایی", callback_data="user:monetization")])
+    
+    rows.extend([
+        [InlineKeyboardButton("🔗 دعوت دوستان", callback_data="nav:referral"),
+         InlineKeyboardButton("🎁 جایزه روزانه", callback_data="user:daily")],
+        [InlineKeyboardButton("🔙 منوی اصلی", callback_data="nav:home")],
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+def build_monetization_page(uid: int, user: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """صفحه وضعیت/فعال‌سازی درآمدزایی."""
+    if user.get("monetization_enabled"):
+        # ── بعد از فعال‌سازی ──
+        total_earned = user.get("total_earned_revenue", 0)
+        withdrawn = user.get("withdrawn_revenue", 0)
+        available = total_earned - withdrawn
+        activated_at = user.get("monetization_activated_at", "")
+        activated_date = activated_at.split("T")[0] if activated_at else "—"
+        
+        text = (
+            "💰 <b>درآمدزایی فعال است!</b>\n"
+            "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            "🎉 تبریک! درآمدزایی شما فعال شد.\n\n"
+            "<b>📊 آمار درآمدی:</b>\n"
+            f"💵 کل درآمد: <b>{total_earned:,} {COIN_SYMBOL}</b>\n"
+            f"💳 برداشت‌شده: <b>{withdrawn:,} {COIN_SYMBOL}</b>\n"
+            f"✅ قابل برداشت: <b>{available:,} {COIN_SYMBOL}</b>\n"
+            f"📅 تاریخ فعال‌سازی: <code>{activated_date}</code>\n\n"
+            f"<b>🎯 قوانین:</b>\n"
+            f"• {MONETIZATION_REVENUE_SHARE}% درآمد تبلیغات به شما تعلق می‌گیرد\n"
+            f"• حداقل برداشت: {MIN_WITHDRAWAL:,} {COIN_SYMBOL}\n"
+            "• پرداخت هر ۱۵ روز یکبار\n"
+        )
+        rows = [
+            [InlineKeyboardButton("📥 درخواست برداشت", callback_data="user:request_withdraw")],
+            [InlineKeyboardButton("📈 گزارش درآمد", callback_data="user:revenue_report")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:user_panel")],
+        ]
+    else:
+        # ── قبل از فعال‌سازی ──
+        max_count, max_username = storage.get_max_bot_users_count(uid)
+        remaining = max(0, MONETIZATION_MIN_USERS - max_count)
+        pct = min(100, int(max_count * 100 / MONETIZATION_MIN_USERS))
+        progress = progress_bar(max_count, MONETIZATION_MIN_USERS)
+        
+        # پیام وضعیت
+        if storage.can_enable_monetization(uid):
+            status_msg = (
+                "🎉 <b>به هدف رسیدی!</b>\n\n"
+                "ربات شما به حداقل کاربران لازم رسیده. "
+                "روی دکمه زیر بزن تا درآمدزایی فعال شود."
+            )
+        elif max_count >= int(MONETIZATION_MIN_USERS * 0.8):
+            status_msg = f"⚡ <b>خیلی نزدیکی!</b>\nفقط <b>{remaining:,}</b> کاربر دیگر تا فعال‌سازی."
+        elif max_count >= int(MONETIZATION_MIN_USERS * 0.5):
+            status_msg = f"🔥 <b>{pct}% مسیر را طی کردی!</b>\n{remaining:,} کاربر دیگر مانده."
+        elif max_count >= int(MONETIZATION_MIN_USERS * 0.2):
+            status_msg = f"💪 <b>شروع خوبی بود!</b>\n{pct}% کامل شده، {remaining:,} کاربر مانده."
+        else:
+            status_msg = f"🌱 <b>در ابتدای مسیر</b>\n{remaining:,} کاربر دیگر لازم داری."
+        
+        text = (
+            "💰 <b>فعال‌سازی درآمدزایی</b>\n"
+            "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            f"🎯 <b>هدف:</b> {MONETIZATION_MIN_USERS:,} کاربر فعال در یکی از ربات‌هایت\n\n"
+            "<b>📊 وضعیت فعلی:</b>\n"
+            f"🏆 بهترین ربات: <b>@{max_username or '—'}</b>\n"
+            f"👥 {max_count:,} کاربر از {MONETIZATION_MIN_USERS:,}\n"
+            f"{progress}\n\n"
+            f"{status_msg}\n\n"
+            "<b>💡 راهنمای رشد سریع:</b>\n"
+            "• از پیام همگانی استفاده کن 📢\n"
+            "• دکمه‌های جذاب طراحی کن 🔘\n"
+            "• عضویت اجباری تنظیم کن 🚫\n"
+            "• عکس خوش‌آمد اضافه کن 🖼\n\n"
+            f"<b>🎁 مزایای فعال‌سازی:</b>\n"
+            f"• {MONETIZATION_REVENUE_SHARE}% درآمد تبلیغات برای شما\n"
+            "• گزارش‌های دقیق درآمدی\n"
+            "• پشتیبانی اختصاصی"
+        )
+        
+        rows = []
+        if storage.can_enable_monetization(uid):
+            rows.append([InlineKeyboardButton("🚀 فعال‌سازی درآمدزایی", callback_data="user:enable_monetization")])
+        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data="nav:user_panel")])
+    
+    return text, InlineKeyboardMarkup(rows)
 
 def _feature_line(icon: str, label: str, enabled: bool) -> str:
     return f"{icon} {label}: {'✅ فعال' if enabled else '⛔️ قفل'}"
@@ -1959,9 +2228,13 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text, kb = build_mybots_text_kb(uid)
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
-    if data == "nav:account":
-        await q.edit_message_text(build_dashboard_text(uid, storage.get_user(uid)), parse_mode=ParseMode.HTML,
-                                   reply_markup=back_kb("nav:home"))
+    if data in ("nav:account", "nav:user_panel"):
+        user = storage.get_user(uid)
+        await q.edit_message_text(
+            build_user_panel_text(uid, user),
+            parse_mode=ParseMode.HTML,
+            reply_markup=build_user_panel_kb(uid, user)
+        )
         return
     if data == "nav:plans":
         user = storage.get_user(uid)
@@ -2017,6 +2290,76 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "admin:broadcast":
         ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_broadcast"
         await q.edit_message_text("📢 متن پیام همگانی پلتفرم (برای همهٔ کاربران) را بفرست:\n(/cancel برای انصراف)"); return
+
+    # ── درآمدزایی ──
+    if data == "user:monetization":
+        user = storage.get_user(uid)
+        text, kb = build_monetization_page(uid, user)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    if data == "user:enable_monetization":
+        ok, message = await storage.enable_monetization(uid)
+        await q.answer("✅ فعال شد!" if ok else "ℹ️ اطلاعات", show_alert=True)
+        user = storage.get_user(uid)
+        if ok:
+            # بعد از فعال‌سازی، صفحه درآمدزایی فعال را نمایش بده
+            text, kb = build_monetization_page(uid, user)
+            await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        else:
+            # هنوز به هدف نرسیده — صفحه اطلاعات را نمایش بده
+            text, kb = build_monetization_page(uid, user)
+            await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    if data == "user:daily":
+        if storage.can_claim_daily(uid):
+            storage.claim_daily(uid)
+            await storage.save(force=True)
+            user = storage.get_user(uid)
+            await q.answer(f"✅ +{DAILY_REWARD} {COIN_SYMBOL} دریافت شد!", show_alert=True)
+            await q.edit_message_text(
+                f"🎉 <b>جایزه روزانه دریافت شد!</b>\n\n"
+                f"<code>+{DAILY_REWARD} {COIN_SYMBOL}</code>\n"
+                f"💰 موجودی: <code>{user.get('coin_balance', 0):,} {COIN_SYMBOL}</code>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="nav:user_panel")]])
+            )
+        else:
+            await q.answer("⏳ جایزه روزانه را فردا دریافت کنید!", show_alert=True)
+        return
+
+    if data == "user:request_withdraw":
+        user = storage.get_user(uid)
+        available = user.get("total_earned_revenue", 0) - user.get("withdrawn_revenue", 0)
+        if available < MIN_WITHDRAWAL:
+            await q.answer(
+                f"⚠️ حداقل برداشت {MIN_WITHDRAWAL:,} {COIN_SYMBOL} است.\nموجودی شما: {available:,}",
+                show_alert=True
+            )
+            return
+        # در آینده می‌توان این را به یک جریان کامل تبدیل کرد
+        await q.answer(
+            "📩 درخواست شما ثبت شد.\nتیم پشتیبانی طی ۲۴ ساعت بررسی می‌کند.",
+            show_alert=True
+        )
+        return
+
+    if data == "user:revenue_report":
+        user = storage.get_user(uid)
+        text = (
+            "📈 <b>گزارش درآمدی</b>\n"
+            "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            f"💵 کل درآمد: <b>{user.get('total_earned_revenue', 0):,} {COIN_SYMBOL}</b>\n"
+            f"💳 برداشت‌شده: <b>{user.get('withdrawn_revenue', 0):,} {COIN_SYMBOL}</b>\n"
+            f"✅ قابل برداشت: <b>{user.get('total_earned_revenue', 0) - user.get('withdrawn_revenue', 0):,} {COIN_SYMBOL}</b>\n\n"
+            "<i>📊 گزارش تفصیلی به‌زودی اضافه خواهد شد...</i>"
+        )
+        await q.edit_message_text(
+            text, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="user:monetization")]])
+        )
+        return
 
     # ── ساخت ربات ──
     if data == "nav:create":
