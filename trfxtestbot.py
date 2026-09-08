@@ -471,11 +471,25 @@ class Storage:
                 self.data["bots"][bot_id].update(fields)
                 self.mark_dirty()
 
-    async def set_command(self, bot_id: str, name: str, response: str, buttons: Optional[list] = None):
+    async def set_command(self, bot_id: str, name: str, response: str, buttons: Optional[list] = None, photo: Optional[str] = None):
         async with self._lock:
             b = self.data["bots"].get(bot_id)
             if b is not None:
-                b.setdefault("commands", {})[name] = {"response": response, "buttons": buttons}
+                # حفظ photo قبلی اگر پارامتر جدید None بود
+                existing = b.get("commands", {}).get(name, {})
+                final_photo = photo if photo is not None else existing.get("photo")
+                b.setdefault("commands", {})[name] = {
+                    "response": response, 
+                    "buttons": buttons,
+                    "photo": final_photo,
+                }
+                self.mark_dirty()
+
+    async def set_command_photo(self, bot_id: str, name: str, photo: Optional[str]):
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is not None and name in b.get("commands", {}):
+                b["commands"][name]["photo"] = photo
                 self.mark_dirty()
 
     async def delete_command(self, bot_id: str, name: str):
@@ -830,8 +844,9 @@ def _feature_line(icon: str, label: str, enabled: bool) -> str:
 
 
 def build_plan_card_text(plan_key: str, user: dict) -> str:
+    plan_key = safe_plan_key(plan_key)
     d = PLANS[plan_key]
-    cur = user.get("plan", "starter")
+    cur = safe_plan_key(user.get("plan", "starter"))
     dots = "".join("◉" if p == cur else ("●" if p == plan_key else "○") for p in PLAN_ORDER)
     status_line = ("🟢 <b>پلن فعلی شماست</b>" if plan_key == cur else
                    "🔒 پایین‌تر از پلن فعلی شماست" if plan_rank(plan_key) < plan_rank(cur) else "⬆️ قابل ارتقا")
@@ -853,7 +868,8 @@ def build_plan_card_text(plan_key: str, user: dict) -> str:
 
 
 def plan_card_kb(plan_key: str, user: dict) -> InlineKeyboardMarkup:
-    cur = user.get("plan", "starter")
+    plan_key = safe_plan_key(plan_key)
+    cur = safe_plan_key(user.get("plan", "starter"))
     idx = PLAN_ORDER.index(plan_key)
     nav_row = []
     if idx > 0:
@@ -925,33 +941,192 @@ HELP_TEXT = (
 
 
 def build_bot_detail(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """صفحه اصلی مدیریت ربات — همان منوی ۴ بخشی جدید."""
+    return build_bot_main_menu(bot)
+
+# ══════════════════════════════════════════════════════════════════════
+# 🎨 منوهای مدیریت ربات (ساختار درختی ۳ لایه‌ای)
+# ══════════════════════════════════════════════════════════════════════
+
+def build_bot_main_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """صفحه اصلی مدیریت ربات (۴ بخش دسته‌بندی‌شده)."""
     bot_id = bot["bot_id"]
-    owner_plan = storage.get_plan(bot["owner_uid"])
     stats = bot.get("stats", {})
     fj = bot.get("force_join_channel")
     status_badge = "🟢 روشن" if bot.get("is_active") else "🔴 خاموش"
+    
     text = (
-        f"⚙️ <b>مدیریت @{esc(bot.get('bot_username', '—'))}</b>  ·  {status_badge}\n\n"
-        f"🔧 دستورها\n{progress_bar(len(bot.get('commands', {})), owner_plan['max_commands'])}\n"
-        f"⚡ دکمه‌های سراسری\n{progress_bar(len(bot.get('callbacks', {})), owner_plan['max_callbacks'])}\n\n"
-        f"👥 کاربران: <b>{len(bot.get('bot_users', []))}</b>   "
-        f"📩 دریافتی: {stats.get('messages_received', 0)}   "
-        f"📤 ارسالی: {stats.get('messages_sent', 0)}\n"
-        f"🚫 عضویت اجباری اختصاصی: <b>{esc(fj) if fj else 'غیرفعال'}</b>"
+        f"⚙️ <b>مدیریت @{esc(bot.get('bot_username', '—'))}</b>  ·  {status_badge}\n"
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"👥 <b>{stats.get('unique_users', 0)}</b> کاربر یکتا   "
+        f"📩 <b>{stats.get('messages_received', 0)}</b> دریافتی   "
+        f"📤 <b>{stats.get('messages_sent', 0)}</b> ارسالی\n\n"
+        "یک بخش را برای مدیریت انتخاب کن:"
     )
-    toggle_label = "🔴 خاموش کردن" if bot.get("is_active") else "🟢 روشن کردن"
+    
     rows = [
-        [InlineKeyboardButton("📝 پیام شروع (/start)", callback_data=f"bot:start:{bot_id}")],
-        [InlineKeyboardButton("🔧 دستورهای دلخواه", callback_data=f"bot:commands:{bot_id}"),
-         InlineKeyboardButton("⚡ پاسخ دکمه‌ها", callback_data=f"bot:callbacks:{bot_id}")],
-        [InlineKeyboardButton("📢 پیام همگانی", callback_data=f"bot:bc_menu:{bot_id}"),
-         InlineKeyboardButton("📊 آنالیتیکس", callback_data=f"bot:stats:{bot_id}")],
-        [InlineKeyboardButton("🚫 عضویت اجباری اختصاصی", callback_data=f"bot:fj_menu:{bot_id}")],
-        [InlineKeyboardButton("💾 پشتیبان‌گیری (Export)", callback_data=f"bot:export:{bot_id}")],
-        [InlineKeyboardButton(toggle_label, callback_data=f"bot:toggle:{bot_id}")],
-        [InlineKeyboardButton("🗑 حذف ربات", callback_data=f"bot:delete:{bot_id}")],
+        [InlineKeyboardButton("🎯 منوی تعاملی", callback_data=f"bot:menu:interactive:{bot_id}")],
+        [InlineKeyboardButton("📢 پیام‌رسانی", callback_data=f"bot:menu:broadcast:{bot_id}")],
+        [InlineKeyboardButton("📊 آمار و گزارش‌ها", callback_data=f"bot:menu:analytics:{bot_id}")],
+        [InlineKeyboardButton("⚙️ تنظیمات ربات", callback_data=f"bot:menu:settings:{bot_id}")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:mybots")],
     ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_interactive_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """منوی تعاملی: همه دستورها + پاسخ دکمه‌ها."""
+    bot_id = bot["bot_id"]
+    owner_plan = storage.get_plan(bot["owner_uid"])
+    cmds = bot.get("commands", {})
+    cbs = bot.get("callbacks", {})
+    
+    # مرتب‌سازی: /start همیشه اول، بقیه به ترتیب الفبا
+    sorted_cmd_names = sorted(cmds.keys(), key=lambda n: (0 if n == "start" else 1, n))
+    
+    lines = [
+        f"🎯 <b>منوی تعاملی</b> — @{esc(bot.get('bot_username', '—'))}",
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
+        "هر دستور می‌تواند <b>متن، عکس و دکمه</b> داشته باشد.\n",
+        "<b>🔧 دستورها:</b>"
+    ]
+    
+    rows = []
+    for name in sorted_cmd_names:
+        cmd = cmds[name]
+        has_photo = "🖼" if cmd.get("photo") else ""
+        has_buttons = "🔘" if cmd.get("buttons") else ""
+        label = f"⭐ /{name}" if name == "start" else f"/{name}"
+        rows.append([InlineKeyboardButton(
+            f"{label}  {has_photo}{has_buttons}",
+            callback_data=f"bot:cmd:{bot_id}:{name}"
+        )])
+    
+    # نمایش وضعیت سقف
+    progress = progress_bar(len(cmds), owner_plan["max_commands"])
+    lines.append(f"\n{progress}")
+    
+    # تب پاسخ دکمه‌های سراسری
+    lines.append("\n<b>⚡ پاسخ دکمه‌های سراسری:</b>")
+    if cbs:
+        for cid in sorted(cbs.keys()):
+            rows.append([InlineKeyboardButton(
+                f"⚡ {cid}",
+                callback_data=f"bot:cb:{bot_id}:{cid}"
+            )])
+        cb_progress = progress_bar(len(cbs), owner_plan["max_callbacks"])
+        lines.append(f"{cb_progress}")
+    else:
+        lines.append("هنوز پاسخ دکمه‌ای تعریف نشده.")
+    
+    text = "\n".join(lines)
+    
+    # دکمه‌های افزودن
+    action_rows = []
+    if len(cmds) < owner_plan["max_commands"]:
+        action_rows.append([InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")])
+    if len(cbs) < owner_plan["max_callbacks"]:
+        action_rows.append([InlineKeyboardButton("➕ پاسخ دکمه جدید", callback_data=f"bot:cb_add:{bot_id}")])
+    
+    action_rows.append([InlineKeyboardButton("🔙 بازگشت به مدیریت", callback_data=f"bot:manage:{bot_id}")])
+    
+    return text, InlineKeyboardMarkup(rows + action_rows)
+
+
+def build_broadcast_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """منوی پیام‌رسانی."""
+    bot_id = bot["bot_id"]
+    owner_plan = storage.get_plan(bot["owner_uid"])
+    stats = bot.get("stats", {})
+    user_count = len(bot.get("bot_users", []))
+    bc_count = stats.get("broadcasts_sent", 0)
+    
+    text = (
+        f"📢 <b>پیام‌رسانی</b> — @{esc(bot.get('bot_username', '—'))}\n"
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"👥 <b>{user_count}</b> کاربر فعال\n"
+        f"📨 <b>{bc_count}</b> پیام همگانی تاکنون ارسال شده\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کن:"
+    )
+    
+    rows = [
+        [InlineKeyboardButton("🚀 ارسال فوری پیام جدید", callback_data=f"bot:bc_now:{bot_id}")],
+    ]
+    if owner_plan.get("scheduled_broadcast"):
+        rows.append([InlineKeyboardButton("⏰ زمان‌بندی ارسال", callback_data=f"bot:bc_sched:{bot_id}")])
+    else:
+        rows.append([InlineKeyboardButton("⏰ زمان‌بندی (🚀 حرفه‌ای به بالا)", callback_data="noop")])
+    
+    rows.append([InlineKeyboardButton("🔙 بازگشت به مدیریت", callback_data=f"bot:manage:{bot_id}")])
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_analytics_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """منوی آمار و گزارش‌ها."""
+    bot_id = bot["bot_id"]
+    owner_plan = storage.get_plan(bot["owner_uid"])
+    stats = bot.get("stats", {})
+    daily = bot.get("daily_stats", {})
+    
+    lines = [
+        f"📊 <b>آمار و گزارش‌ها</b> — @{esc(bot.get('bot_username', '—'))}",
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
+        f"📩 کل پیام دریافتی: <b>{stats.get('messages_received', 0)}</b>",
+        f"📤 کل پیام ارسالی: <b>{stats.get('messages_sent', 0)}</b>",
+        f"👥 کل کاربران یکتا: <b>{stats.get('unique_users', 0)}</b>",
+        f"📢 پیام‌های همگانی: <b>{stats.get('broadcasts_sent', 0)}</b>",
+    ]
+    
+    # بخش روند ۷ روزه
+    if owner_plan.get("analytics") in ("پیشرفته", "حرفه‌ای + پشتیبانی اختصاصی"):
+        lines.append("\n<b>📈 روند ۷ روز اخیر:</b>")
+        if daily:
+            for day in sorted(daily.keys())[-7:]:
+                d = daily[day]
+                lines.append(f"  <code>{day}</code> → دریافتی: {d.get('received', 0)} | کاربر جدید: {d.get('new_users', 0)}")
+        else:
+            lines.append("  هنوز داده‌ای ثبت نشده.")
+    else:
+        lines.append("\n🔒 <i>نمودار ۷ روزه مخصوص پلن حرفه‌ای به بالاست.</i>")
+    
+    text = "\n".join(lines)
+    
+    rows = [
+        [InlineKeyboardButton("💾 دانلود پشتیبان (JSON)", callback_data=f"bot:export:{bot_id}")],
+        [InlineKeyboardButton("🔙 بازگشت به مدیریت", callback_data=f"bot:manage:{bot_id}")],
+    ]
+    return text, InlineKeyboardMarkup(rows)
+
+
+def build_settings_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """منوی تنظیمات ربات."""
+    bot_id = bot["bot_id"]
+    owner_plan = storage.get_plan(bot["owner_uid"])
+    fj = bot.get("force_join_channel")
+    is_active = bot.get("is_active", True)
+    
+    fj_display = esc(fj) if fj else "غیرفعال"
+    status_display = "🟢 روشن" if is_active else "🔴 خاموش"
+    toggle_label = "🔴 خاموش کردن ربات" if is_active else "🟢 روشن کردن ربات"
+    
+    text = (
+        f"⚙️ <b>تنظیمات</b> — @{esc(bot.get('bot_username', '—'))}\n"
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        f"وضعیت ربات: <b>{status_display}</b>\n"
+        f"عضویت اجباری اختصاصی: <code>{fj_display}</code>\n\n"
+        "یکی از گزینه‌های زیر را انتخاب کن:"
+    )
+    
+    rows = []
+    if owner_plan.get("custom_force_join"):
+        rows.append([InlineKeyboardButton("🚫 تغییر عضویت اجباری", callback_data=f"bot:fj_menu:{bot_id}")])
+    else:
+        rows.append([InlineKeyboardButton("🚫 عضویت اجباری (🚀 حرفه‌ای به بالا)", callback_data="noop")])
+    
+    rows.append([InlineKeyboardButton(toggle_label, callback_data=f"bot:toggle:{bot_id}")])
+    rows.append([InlineKeyboardButton("🗑 حذف کامل ربات", callback_data=f"bot:delete:{bot_id}")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت به مدیریت", callback_data=f"bot:manage:{bot_id}")])
+    
     return text, InlineKeyboardMarkup(rows)
 
 
@@ -1428,18 +1603,52 @@ async def show_bot_commands_section(msg, bot_id: str):
     await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
-async def show_cmd_detail(msg, bot_id: str, name: str):
-    cmd = storage.get_commands(bot_id).get(name)
-    if not cmd:
-        await show_bot_commands_section(msg, bot_id)
+async def show_cmd_detail(msg, bot_id: str, name: str, is_callback_msg: bool = False):
+    """نمایش جزئیات یک دستور با دکمه back به منوی تعاملی."""
+    b = storage.get_bot(bot_id)
+    if not b:
         return
-    text = f"🔧 دستور: /{name}\n\n💬 پاسخ:\n{cmd.get('response', '')}\n\n🔘 دکمه‌ها: {preview_buttons(cmd.get('buttons'))}"
-    await msg.reply_text(text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}"),
-         InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
-        [InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:commands:{bot_id}")],
-    ]))
+    cmd = b.get("commands", {}).get(name)
+    if not cmd:
+        # دستور حذف شده — برگرد به منوی تعاملی
+        text, kb = build_interactive_menu(b)
+        if is_callback_msg:
+            try:
+                await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception:
+                pass
+        else:
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    
+    has_photo = "دارد 🖼" if cmd.get("photo") else "ندارد"
+    buttons_preview = preview_buttons(cmd.get("buttons"))
+    label = "⭐ دستور خوش‌آمد" if name == "start" else f"دستور /{name}"
+    
+    text = (
+        f"⚙️ <b>{label}</b>\n"
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+        f"💬 <b>متن پاسخ:</b>\n{cmd.get('response', '<i>خالی</i>')}\n\n"
+        f"🔘 <b>دکمه‌ها:</b> {buttons_preview}\n"
+        f"🖼 <b>عکس:</b> {has_photo}"
+    )
+    
+    rows = [
+        [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}")],
+        [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
+        [InlineKeyboardButton("🖼 ویرایش عکس", callback_data=f"bot:cmd_edit_photo:{bot_id}:{name}")],
+    ]
+    if name != "start":  # /start قابل حذف نیست
+        rows.append([InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت به منوی تعاملی", callback_data=f"bot:menu:interactive:{bot_id}")])
+    
+    if is_callback_msg:
+        try:
+            await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        except Exception:
+            pass
+    else:
+        await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
 
 
 async def show_bot_callbacks_section(msg, bot_id: str):
@@ -1458,16 +1667,42 @@ async def show_bot_callbacks_section(msg, bot_id: str):
     await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
-async def show_cb_detail(msg, bot_id: str, cb_id: str):
-    resp = storage.get_callbacks(bot_id).get(cb_id)
-    if resp is None:
-        await show_bot_callbacks_section(msg, bot_id)
+async def show_cb_detail(msg, bot_id: str, cb_id: str, is_callback_msg: bool = False):
+    """نمایش جزئیات یک پاسخ دکمه با دکمه back به منوی تعاملی."""
+    b = storage.get_bot(bot_id)
+    if not b:
         return
-    await msg.reply_text(f"⚡ دکمه: {cb_id}\n\nپاسخ:\n{resp}", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ ویرایش", callback_data=f"bot:cb_edit:{bot_id}:{cb_id}")],
+    resp = b.get("callbacks", {}).get(cb_id)
+    if resp is None:
+        text, kb = build_interactive_menu(b)
+        if is_callback_msg:
+            try:
+                await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception:
+                pass
+        else:
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+    
+    text = (
+        f"⚡ <b>پاسخ دکمه</b>: <code>{cb_id}</code>\n"
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+        f"💬 <b>پاسخ:</b>\n{resp}"
+    )
+    
+    rows = [
+        [InlineKeyboardButton("✏️ ویرایش پاسخ", callback_data=f"bot:cb_edit:{bot_id}:{cb_id}")],
         [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cb_delete:{bot_id}:{cb_id}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:callbacks:{bot_id}")],
-    ]))
+        [InlineKeyboardButton("🔙 بازگشت به منوی تعاملی", callback_data=f"bot:menu:interactive:{bot_id}")],
+    ]
+    
+    if is_callback_msg:
+        try:
+            await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        except Exception:
+            pass
+    else:
+        await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1574,9 +1809,9 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if data == "nav:plans":
         user = storage.get_user(uid)
-        plan_key = user.get("plan", "starter")
+        plan_key = safe_plan_key(user.get("plan", ""))
         await q.edit_message_text(build_plan_card_text(plan_key, user), parse_mode=ParseMode.HTML,
-                                   reply_markup=plan_card_kb(plan_key, user))
+                                reply_markup=plan_card_kb(plan_key, user))
         return
     if data.startswith("plan:view:"):
         plan_key = data.split(":")[2]
@@ -1597,7 +1832,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         target = data.split(":")[2]
         ok, message = await storage.upgrade_plan(uid, target)
         user = storage.get_user(uid)
-        shown_plan = target if ok else user.get("plan", "starter")
+        shown_plan = target if ok else safe_plan_key(user.get("plan", ""))
         head = f"✅ <b>{esc(message)}</b>\n\n" if ok else f"⚠️ {esc(message)}\n\n"
         await q.edit_message_text(head + build_plan_card_text(shown_plan, user), parse_mode=ParseMode.HTML,
                                    reply_markup=plan_card_kb(shown_plan, user))
@@ -1653,6 +1888,70 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
+    # ── منوهای دسته‌بندی‌شده ──
+    if data.startswith("bot:menu:interactive:"):
+        bot_id = data.split(":")[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:mybots")); return
+        text, kb = build_interactive_menu(b)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    if data.startswith("bot:menu:broadcast:"):
+        bot_id = data.split(":")[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:mybots")); return
+        owner_plan = storage.get_plan(uid)
+        if not owner_plan.get("broadcast"):
+            await q.edit_message_text("🔒 پیام‌رسانی مخصوص پلن حرفه‌ای به بالاست.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
+            return
+        text, kb = build_broadcast_menu(b)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    if data.startswith("bot:menu:analytics:"):
+        bot_id = data.split(":")[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:mybots")); return
+        text, kb = build_analytics_menu(b)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    if data.startswith("bot:menu:settings:"):
+        bot_id = data.split(":")[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            await q.edit_message_text("❌ دسترسی نداری.", reply_markup=back_kb("nav:mybots")); return
+        text, kb = build_settings_menu(b)
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── جزئیات یک دستور ──
+    if data.startswith("bot:cmd:"):
+        parts = data.split(":")
+        bot_id, name = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
+        return
+
+    # ── جزئیات یک callback ──
+    if data.startswith("bot:cb:"):
+        parts = data.split(":")
+        bot_id, cb_id = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        await show_cb_detail(q, bot_id, cb_id, is_callback_msg=True)
+        return
+
     if data.startswith("bot:toggle:"):
         bot_id = data.split(":")[2]
         b = storage.get_bot(bot_id)
@@ -1705,60 +2004,13 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data.clear(); ctx.user_data.update(awaiting="start_photo", bot_id=bot_id)
         await q.edit_message_text("🖼 یک عکس برای پیام خوش‌آمد بفرست، یا /skip برای حذف عکس فعلی:\n(/cancel برای انصراف)")
         return
-    if data.startswith("bot:start:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        owner_plan = storage.get_plan(uid)
-        text = (f"📝 پیام شروع (/start):\n{b.get('start_msg', '')}\n\n"
-                f"🔘 دکمه‌ها: {preview_buttons(b.get('start_buttons'))}\n"
-                f"🖼 عکس خوش‌آمد: {'دارد' if b.get('start_photo') else 'ندارد'}")
-        rows = [
-            [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:start_edit_text:{bot_id}")],
-            [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:start_edit_buttons:{bot_id}")],
-        ]
-        if owner_plan["media_welcome"]:
-            rows.append([InlineKeyboardButton("🖼 ویرایش عکس خوش‌آمد", callback_data=f"bot:start_edit_photo:{bot_id}")])
-        else:
-            rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن برنزی+)", callback_data="noop")])
-        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
-        return
 
-    # ── دستورهای دلخواه ──
-    if data.startswith("bot:commands:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        owner_plan = storage.get_plan(uid)
-        cmds = storage.get_commands(bot_id)
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"🔧 /{n}", callback_data=f"bot:cmd_detail:{bot_id}:{n}")] for n in cmds
-        ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
-             if len(cmds) < owner_plan["max_commands"] else [])
-          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-        text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
-            ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
+
     if data.startswith("bot:cmd_add:"):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_add", bot_id=bot_id, step="name")
         await q.edit_message_text("➕ نام دستور جدید را بدون / بفرست (مثلاً info):\n(/cancel برای انصراف)"); return
-    if data.startswith("bot:cmd_detail:"):
-        _, _, bot_id, name = data.split(":", 3)
-        cmd = storage.get_commands(bot_id).get(name)
-        if not cmd:
-            return
-        text = f"🔧 دستور: /{name}\n\n💬 پاسخ:\n{cmd.get('response', '')}\n\n🔘 دکمه‌ها: {preview_buttons(cmd.get('buttons'))}"
-        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}"),
-             InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
-            [InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:commands:{bot_id}")]]))
-        return
+
     if data.startswith("bot:cmd_edit_text:"):
         _, _, bot_id, name = data.split(":", 3)
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_text", bot_id=bot_id, name=name)
@@ -1776,51 +2028,19 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("bot:cmd_delete_confirm:"):
         _, _, bot_id, name = data.split(":", 3)
         await storage.delete_command(bot_id, name)
-        owner_plan = storage.get_plan(uid)
-        cmds = storage.get_commands(bot_id)
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"🔧 /{n}", callback_data=f"bot:cmd_detail:{bot_id}:{n}")] for n in cmds
-        ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
-             if len(cmds) < owner_plan["max_commands"] else [])
-          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-        text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
-            ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        b = storage.get_bot(bot_id)
+        text, kb = build_interactive_menu(b)
+        await q.edit_message_text("✅ دستور حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    # ── پاسخ دکمه‌های سراسری ──
-    if data.startswith("bot:callbacks:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        owner_plan = storage.get_plan(uid)
-        cbs = storage.get_callbacks(bot_id)
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"⚡ {c}", callback_data=f"bot:cb_detail:{bot_id}:{c}")] for c in cbs
-        ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
-             if len(cbs) < owner_plan["max_callbacks"] else [])
-          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-        text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
-            ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
+
     if data.startswith("bot:cb_add:"):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_add", bot_id=bot_id, step="id")
         await q.edit_message_text(
             "➕ آیدی دکمه را بفرست (همون callback_data که در دکمه‌های /start یا دستورها استفاده کردی):\n(/cancel برای انصراف)")
         return
-    if data.startswith("bot:cb_detail:"):
-        _, _, bot_id, cid = data.split(":", 3)
-        resp = storage.get_callbacks(bot_id).get(cid)
-        if resp is None:
-            return
-        await q.edit_message_text(f"⚡ دکمه: {cid}\n\nپاسخ:\n{resp}", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✏️ ویرایش", callback_data=f"bot:cb_edit:{bot_id}:{cid}")],
-            [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cb_delete:{bot_id}:{cid}")],
-            [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:callbacks:{bot_id}")]]))
-        return
+
     if data.startswith("bot:cb_edit:"):
         _, _, bot_id, cid = data.split(":", 3)
         ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_edit_text", bot_id=bot_id, cb_id=cid)
@@ -1833,50 +2053,12 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data.startswith("bot:cb_delete_confirm:"):
         _, _, bot_id, cid = data.split(":", 3)
         await storage.delete_callback(bot_id, cid)
-        owner_plan = storage.get_plan(uid)
-        cbs = storage.get_callbacks(bot_id)
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"⚡ {c}", callback_data=f"bot:cb_detail:{bot_id}:{c}")] for c in cbs
-        ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
-             if len(cbs) < owner_plan["max_callbacks"] else [])
-          + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-        text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
-            ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        b = storage.get_bot(bot_id)
+        text, kb = build_interactive_menu(b)
+        await q.edit_message_text("✅ پاسخ دکمه حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    # ── آنالیتیکس ──
-    if data.startswith("bot:stats:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        await q.edit_message_text(build_stats_text(b, storage.get_plan(uid)), parse_mode=ParseMode.HTML,
-                                   reply_markup=back_kb(f"bot:manage:{bot_id}"))
-        return
 
-    # ── پیام همگانی ──
-    if data.startswith("bot:bc_menu:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        owner_plan = storage.get_plan(uid)
-        if not owner_plan["broadcast"]:
-            await q.edit_message_text("🔒 پیام همگانی مخصوص پلن حرفه‌ای به بالاست.",
-                                       reply_markup=InlineKeyboardMarkup([
-                                           [InlineKeyboardButton("💎 پلن‌ها و ارتقا", callback_data="nav:plans")],
-                                           [InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]]))
-            return
-        rows = [[InlineKeyboardButton("🚀 ارسال فوری", callback_data=f"bot:bc_now:{bot_id}")]]
-        if owner_plan["scheduled_broadcast"]:
-            rows.append([InlineKeyboardButton("⏰ زمان‌بندی ارسال", callback_data=f"bot:bc_sched:{bot_id}")])
-        else:
-            rows.append([InlineKeyboardButton("🔒 زمان‌بندی (نیاز به پلن حرفه‌ای)", callback_data="noop")])
-        rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
-        await q.edit_message_text(f"📢 پیام همگانی\n\n👥 تعداد کاربران ربات: {len(b.get('bot_users', []))}",
-                                   reply_markup=InlineKeyboardMarkup(rows))
-        return
     if data.startswith("bot:bc_now:"):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="broadcast_now", bot_id=bot_id)
@@ -1967,7 +2149,16 @@ async def handle_subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, 
     cmd_name = text.lstrip("/").split()[0].lower() if text.startswith("/") else ""
     cmd = b.get("commands", {}).get(cmd_name)
     if cmd:
-        await update.effective_message.reply_text(cmd.get("response", ""), reply_markup=build_inline_from_rows(cmd.get("buttons")))
+        kb = build_inline_from_rows(cmd.get("buttons"))
+        photo = cmd.get("photo")
+        if photo:
+            await update.effective_message.reply_photo(
+                photo, caption=cmd.get("response", ""), reply_markup=kb
+            )
+        else:
+            await update.effective_message.reply_text(
+                cmd.get("response", ""), reply_markup=kb
+            )
         await storage.update_bot_stats(bot_id, sent=1)
 
 
