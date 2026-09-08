@@ -470,15 +470,6 @@ class Storage:
                 self.mark_dirty()
         return is_new
 
-    # ---- محتوای ربات: پیام شروع / دستورها / کال‌بک‌ها ----
-    async def set_start_msg(self, bot_id: str, text: str):
-        await self._patch_bot(bot_id, start_msg=text)
-
-    async def set_start_buttons(self, bot_id: str, rows: Optional[list]):
-        await self._patch_bot(bot_id, start_buttons=rows)
-
-    async def set_start_photo(self, bot_id: str, file_id: Optional[str]):
-        await self._patch_bot(bot_id, start_photo=file_id)
 
     async def _patch_bot(self, bot_id: str, **fields):
         async with self._lock:
@@ -1360,48 +1351,6 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🤖 ربات‌های من", callback_data="nav:mybots")]]))
         return
 
-    # ── پیام شروع (متن/دکمه/عکس) ──
-    if awaiting == "start_text":
-        await storage.set_start_msg(d["bot_id"], text)
-        bot_id = d["bot_id"]; ctx.user_data.clear()
-        await msg.reply_text("✅ پیام شروع ذخیره شد.")
-        await show_bot_start_section(msg, bot_id)
-        return
-
-    if awaiting == "start_buttons":
-        bot_id = d["bot_id"]
-        if stripped.lower() == "/skip":
-            await storage.set_start_buttons(bot_id, None)
-            await msg.reply_text("✅ دکمه‌ها حذف شدند.")
-        else:
-            try:
-                rows = parse_button_rows(text)
-            except ValueError as e:
-                await msg.reply_text(f"❌ {e}\nدوباره بفرست یا /cancel:")
-                return
-            await storage.set_start_buttons(bot_id, rows)
-            await msg.reply_text("✅ دکمه‌ها ذخیره شدند.")
-        ctx.user_data.clear()
-        await show_bot_start_section(msg, bot_id)
-        return
-
-    if awaiting == "start_photo":
-        bot_id = d["bot_id"]
-        if stripped.lower() == "/skip":
-            await storage.set_start_photo(bot_id, None)
-            ctx.user_data.clear()
-            await msg.reply_text("✅ عکس خوش‌آمد حذف شد.")
-            await show_bot_start_section(msg, bot_id)
-            return
-        if not msg.photo:
-            await msg.reply_text("❌ یک عکس بفرست، یا /skip برای حذف عکس فعلی:")
-            return
-        await storage.set_start_photo(bot_id, msg.photo[-1].file_id)
-        ctx.user_data.clear()
-        await msg.reply_text("✅ عکس خوش‌آمد ذخیره شد.")
-        await show_bot_start_section(msg, bot_id)
-        return
-
     # ── افزودن دستور جدید (سه‌مرحله‌ای: نام → متن → دکمه) ──
     if awaiting == "cmd_add":
         step, bot_id = d["step"], d["bot_id"]
@@ -1465,6 +1414,25 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
         await show_cmd_detail(msg, bot_id, name)
         return
 
+    # ── ویرایش عکس یک دستور ──
+    if awaiting == "cmd_edit_photo":
+        bot_id, name = d["bot_id"], d["name"]
+        if stripped.lower() == "/skip":
+            await storage.set_command_photo(bot_id, name, None)
+            ctx.user_data.clear()
+            await msg.reply_text(f"✅ عکس دستور /{name} حذف شد.")
+            await show_cmd_detail(msg, bot_id, name)
+            return
+        if not msg.photo:
+            await msg.reply_text("❌ لطفاً یک عکس از گالری بفرست، یا /skip برای حذف عکس فعلی:")
+            return
+        # ✅ استفاده از بزرگترین سایز عکس
+        file_id = msg.photo[-1].file_id
+        await storage.set_command_photo(bot_id, name, file_id)
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ عکس دستور /{name} ذخیره شد.")
+        await show_cmd_detail(msg, bot_id, name)
+        return
 
     # ── عضویت اجباری اختصاصی ربات ──
     if awaiting == "subbot_forcejoin":
@@ -1707,22 +1675,6 @@ async def show_cmd_detail(msg, bot_id: str, name: str, is_callback_msg: bool = F
             pass
     else:
         await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(all_rows))
-
-
-async def show_bot_callbacks_section(msg, bot_id: str):
-    b = storage.get_bot(bot_id)
-    if not b:
-        return
-    owner_plan = storage.get_plan(b["owner_uid"])
-    cbs = storage.get_callbacks(bot_id)
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"⚡ {cid}", callback_data=f"bot:cb_detail:{bot_id}:{cid}")] for cid in cbs
-    ] + ([[InlineKeyboardButton("➕ پاسخ جدید", callback_data=f"bot:cb_add:{bot_id}")]]
-         if len(cbs) < owner_plan["max_callbacks"] else [])
-      + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-    text = f"⚡ <b>پاسخ دکمه‌های سراسری</b> ({progress_bar(len(cbs), owner_plan['max_callbacks'])}):\n" + \
-        ("روی هر آیتم بزن:" if cbs else "هنوز آیتمی نساختی.")
-    await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
 async def show_cmd_cb_detail(msg, bot_id: str, cmd_name: str, cb_id: str, is_callback_msg: bool = False):
@@ -1986,38 +1938,54 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    # ── جزئیات یک دستور ──
-    if data.startswith("bot:cmd:"):
+    # ── حذف پاسخ یک دکمه (تأیید) ──
+    if data.startswith("bot:cmd_cb_delete_confirm:"):
         parts = data.split(":")
-        bot_id, name = parts[2], parts[3]
+        if len(parts) < 5: return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
+        await storage.delete_command_callback(bot_id, cmd_name, cb_id)
         b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
+        await show_cmd_detail(q, bot_id, cmd_name, is_callback_msg=True)
         return
 
-
-    # ── جزئیات یک پاسخ دکمه داخل یک دستور ──
-    if data.startswith("bot:cmd_cb:"):
+    # ── حذف پاسخ یک دکمه ──
+    if data.startswith("bot:cmd_cb_delete:"):
         parts = data.split(":")
-        if len(parts) < 4:
-            return
+        if len(parts) < 5: return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
+        await q.edit_message_text(
+            f"🗑 حذف پاسخ دکمه «{cb_id}» از دستور /{cmd_name}؟",
+            reply_markup=confirm_kb(
+                f"bot:cmd_cb_delete_confirm:{bot_id}:{cmd_name}:{cb_id}",
+                f"bot:cmd_cb:{bot_id}:{cmd_name}:{cb_id}"
+            )
+        )
+        return
+
+    # ── ویرایش پاسخ یک دکمه ──
+    if data.startswith("bot:cmd_cb_edit:"):
+        parts = data.split(":")
+        if len(parts) < 5: return
         bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
         b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        await show_cmd_cb_detail(q, bot_id, cmd_name, cb_id, is_callback_msg=True)
+        if not b or b["owner_uid"] != uid: return
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_cb_edit_text", bot_id=bot_id, cmd_name=cmd_name, cb_id=cb_id)
+        await q.edit_message_text(
+            f"✏️ <b>ویرایش پاسخ دکمه «{cb_id}»</b> در دستور /{cmd_name}\n\n"
+            "متن جدید را بفرست:\n"
+            "/cancel برای انصراف",
+            parse_mode=ParseMode.HTML
+        )
         return
 
-    # ── افزودن پاسخ دکمه جدید داخل یک دستور ──
+    # ── افزودن پاسخ دکمه جدید ──
     if data.startswith("bot:cmd_cb_add:"):
         parts = data.split(":")
-        if len(parts) < 3:
-            return
+        if len(parts) < 4: return
         bot_id, cmd_name = parts[2], parts[3]
         b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
+        if not b or b["owner_uid"] != uid: return
         owner_plan = storage.get_plan(uid)
         cmd = b.get("commands", {}).get(cmd_name, {})
         if len(cmd.get("callbacks", {})) >= owner_plan["max_callbacks"]:
@@ -2034,50 +2002,24 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── ویرایش پاسخ یک دکمه ──
-    if data.startswith("bot:cmd_cb_edit:"):
+    # ── جزئیات یک پاسخ دکمه داخلی ──
+    if data.startswith("bot:cmd_cb:"):
         parts = data.split(":")
-        if len(parts) < 4:
-            return
+        if len(parts) < 5: return
         bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
         b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        ctx.user_data.clear()
-        ctx.user_data.update(awaiting="cmd_cb_edit_text", bot_id=bot_id, cmd_name=cmd_name, cb_id=cb_id)
-        await q.edit_message_text(
-            f"✏️ <b>ویرایش پاسخ دکمه «{cb_id}»</b> در دستور /{cmd_name}\n\n"
-            "متن جدید را بفرست:\n"
-            "/cancel برای انصراف",
-            parse_mode=ParseMode.HTML
-        )
+        if not b or b["owner_uid"] != uid: return
+        await show_cmd_cb_detail(q, bot_id, cmd_name, cb_id, is_callback_msg=True)
         return
 
-    # ── حذف پاسخ یک دکمه ──
-    if data.startswith("bot:cmd_cb_delete:") and "confirm" not in data:
-        parts = data.split(":")
-        if len(parts) < 4:
-            return
-        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
-        await q.edit_message_text(
-            f"🗑 حذف پاسخ دکمه «{cb_id}» از دستور /{cmd_name}؟",
-            reply_markup=confirm_kb(
-                f"bot:cmd_cb_delete_confirm:{bot_id}:{cmd_name}:{cb_id}",
-                f"bot:cmd_cb:{bot_id}:{cmd_name}:{cb_id}"
-            )
-        )
-        return
-
+    # ── ویرایش عکس یک دستور (خاص — باید قبل از bot:cmd: عمومی بیاید) ──
     if data.startswith("bot:cmd_edit_photo:"):
         parts = data.split(":")
-        if len(parts) < 3:
-            return
+        if len(parts) < 4: return
         bot_id, name = parts[2], parts[3]
         b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
+        if not b or b["owner_uid"] != uid: return
         owner_plan = storage.get_plan(uid)
-        # فقط پلن حرفه‌ای به بالا اجازه عکس دارند
         if not owner_plan.get("media_welcome"):
             await q.answer("🔒 عکس مخصوص پلن حرفه‌ای به بالاست.", show_alert=True)
             return
@@ -2091,14 +2033,56 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("bot:cmd_cb_delete_confirm:"):
-        parts = data.split(":")
-        if len(parts) < 4:
-            return
-        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
-        await storage.delete_command_callback(bot_id, cmd_name, cb_id)
+    # ── ویرایش دکمه‌های یک دستور ──
+    if data.startswith("bot:cmd_edit_buttons:"):
+        _, _, bot_id, name = data.split(":", 3)
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_edit_buttons", bot_id=bot_id, name=name)
+        await q.edit_message_text(f"🔘 دکمه‌های جدید برای /{name}:\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
+        return
+
+    # ── ویرایش متن یک دستور ──
+    if data.startswith("bot:cmd_edit_text:"):
+        _, _, bot_id, name = data.split(":", 3)
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_edit_text", bot_id=bot_id, name=name)
+        await q.edit_message_text(f"✏️ متن جدید برای /{name}:\n(/cancel برای انصراف)")
+        return
+
+    # ── حذف دستور (تأیید) ──
+    if data.startswith("bot:cmd_delete_confirm:"):
+        _, _, bot_id, name = data.split(":", 3)
+        await storage.delete_command(bot_id, name)
         b = storage.get_bot(bot_id)
-        await show_cmd_detail(q, bot_id, cmd_name, is_callback_msg=True)
+        text, kb = build_interactive_menu(b)
+        await q.edit_message_text("✅ دستور حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── حذف دستور (سوال) ──
+    if data.startswith("bot:cmd_delete:"):
+        _, _, bot_id, name = data.split(":", 3)
+        await q.edit_message_text(
+            f"🗑 حذف دستور /{name}؟",
+            reply_markup=confirm_kb(f"bot:cmd_delete_confirm:{bot_id}:{name}", f"bot:cmd:{bot_id}:{name}")
+        )
+        return
+
+    # ── افزودن دستور جدید ──
+    if data.startswith("bot:cmd_add:"):
+        bot_id = data.split(":")[2]
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_add", bot_id=bot_id, step="name")
+        await q.edit_message_text("➕ نام دستور جدید را بدون / بفرست (مثلاً info):\n(/cancel برای انصراف)")
+        return
+
+    # ── جزئیات یک دستور (آخرین شرط — عمومی‌ترین) ──
+    if data.startswith("bot:cmd:"):
+        parts = data.split(":")
+        if len(parts) < 4: return
+        bot_id, name = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid: return
+        await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
         return
 
     if data.startswith("bot:toggle:"):
@@ -2133,34 +2117,11 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("🗑 ربات حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-
-    if data.startswith("bot:cmd_add:"):
-        bot_id = data.split(":")[2]
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_add", bot_id=bot_id, step="name")
-        await q.edit_message_text("➕ نام دستور جدید را بدون / بفرست (مثلاً info):\n(/cancel برای انصراف)"); return
-
-    if data.startswith("bot:cmd_edit_text:"):
-        _, _, bot_id, name = data.split(":", 3)
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_text", bot_id=bot_id, name=name)
-        await q.edit_message_text(f"✏️ متن جدید برای /{name}:\n(/cancel برای انصراف)"); return
-    if data.startswith("bot:cmd_edit_buttons:"):
-        _, _, bot_id, name = data.split(":", 3)
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="cmd_edit_buttons", bot_id=bot_id, name=name)
-        await q.edit_message_text(f"🔘 دکمه‌های جدید برای /{name}:\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
-        return
     if data.startswith("bot:cmd_delete:") and "confirm" not in data:
         _, _, bot_id, name = data.split(":", 3)
         await q.edit_message_text(f"🗑 حذف دستور /{name}؟",
                                    reply_markup=confirm_kb(f"bot:cmd_delete_confirm:{bot_id}:{name}", f"bot:cmd_detail:{bot_id}:{name}"))
         return
-    if data.startswith("bot:cmd_delete_confirm:"):
-        _, _, bot_id, name = data.split(":", 3)
-        await storage.delete_command(bot_id, name)
-        b = storage.get_bot(bot_id)
-        text, kb = build_interactive_menu(b)
-        await q.edit_message_text("✅ دستور حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
-
 
     if data.startswith("bot:bc_now:"):
         bot_id = data.split(":")[2]
@@ -2170,6 +2131,7 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="broadcast_sched_minutes", bot_id=bot_id)
         await q.edit_message_text("⏰ بعد از چند دقیقه ارسال شود؟ (فقط عدد):\n(/cancel برای انصراف)"); return
+
 
     # ── عضویت اجباری اختصاصی ربات ──
     if data.startswith("bot:fj_menu:"):
