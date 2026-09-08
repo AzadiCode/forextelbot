@@ -226,11 +226,19 @@ class Storage:
         b.setdefault("start_buttons", None)
         b.setdefault("start_photo", None)
         b.setdefault("commands", {})
-        b.setdefault("callbacks", {})
+        b.setdefault("callbacks", {})  # فقط برای backward compat / مهاجرت
         b.setdefault("force_join_channel", None)
         b.setdefault("bot_users", [])
         b.setdefault("stats", {"messages_received": 0, "messages_sent": 0, "unique_users": 0, "broadcasts_sent": 0})
         b.setdefault("daily_stats", {})
+
+    @staticmethod
+    def _command_defaults(cmd: dict):
+        """فیلدهای پیش‌فرض هر دستور (شامل callbacks داخلی)."""
+        cmd.setdefault("response", "")
+        cmd.setdefault("buttons", None)
+        cmd.setdefault("photo", None)
+        cmd.setdefault("callbacks", {})
 
     async def save(self, force: bool = False):
         if self._col is None or (not force and not self._dirty):
@@ -370,6 +378,13 @@ class Storage:
                 "last_activity": None,
             }
             self._bot_defaults(bot_rec)
+            # ✅ ساخت /start پیش‌فرض در لحظه ساخت ربات
+            bot_rec["commands"]["start"] = {
+                "response": "👋 سلام! به ربات ما خوش آمدید.",
+                "buttons": None,
+                "photo": None,
+                "callbacks": {},
+            }
             self.data["bots"][bot_id] = bot_rec
             key = str(owner_uid)
             if key in self.data["users"]:
@@ -475,14 +490,17 @@ class Storage:
         async with self._lock:
             b = self.data["bots"].get(bot_id)
             if b is not None:
-                # حفظ photo قبلی اگر پارامتر جدید None بود
                 existing = b.get("commands", {}).get(name, {})
                 final_photo = photo if photo is not None else existing.get("photo")
-                b.setdefault("commands", {})[name] = {
+                final_callbacks = existing.get("callbacks", {})  # ✅ حفظ پاسخ‌ها
+                new_cmd = {
                     "response": response, 
                     "buttons": buttons,
                     "photo": final_photo,
+                    "callbacks": final_callbacks,
                 }
+                self._command_defaults(new_cmd)
+                b.setdefault("commands", {})[name] = new_cmd
                 self.mark_dirty()
 
     async def set_command_photo(self, bot_id: str, name: str, photo: Optional[str]):
@@ -498,6 +516,42 @@ class Storage:
             if b is not None:
                 b.get("commands", {}).pop(name, None)
                 self.mark_dirty()
+
+    async def set_command_callback(self, bot_id: str, cmd_name: str, cb_id: str, response: str):
+        """ثبت پاسخ یک دکمه داخل یک دستور خاص."""
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is None:
+                return False
+            cmd = b.get("commands", {}).get(cmd_name)
+            if cmd is None:
+                return False
+            self._command_defaults(cmd)
+            cmd["callbacks"][cb_id] = response
+            self.mark_dirty()
+            return True
+
+    async def delete_command_callback(self, bot_id: str, cmd_name: str, cb_id: str):
+        """حذف پاسخ یک دکمه از داخل یک دستور."""
+        async with self._lock:
+            b = self.data["bots"].get(bot_id)
+            if b is None:
+                return False
+            cmd = b.get("commands", {}).get(cmd_name)
+            if cmd is None:
+                return False
+            cmd.get("callbacks", {}).pop(cb_id, None)
+            self.mark_dirty()
+            return True
+
+    def get_command_callbacks(self, bot_id: str, cmd_name: str) -> dict:
+        b = self.data["bots"].get(bot_id)
+        if not b:
+            return {}
+        cmd = b.get("commands", {}).get(cmd_name)
+        if not cmd:
+            return {}
+        return dict(cmd.get("callbacks", {}))
 
     def get_commands(self, bot_id: str) -> dict:
         b = self.data["bots"].get(bot_id)
@@ -975,11 +1029,10 @@ def build_bot_main_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
 
 
 def build_interactive_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
-    """منوی تعاملی: همه دستورها + پاسخ دکمه‌ها."""
+    """منوی تعاملی: لیست همه دستورها (هر دستور شامل callbacks خودش است)."""
     bot_id = bot["bot_id"]
     owner_plan = storage.get_plan(bot["owner_uid"])
     cmds = bot.get("commands", {})
-    cbs = bot.get("callbacks", {})
     
     # مرتب‌سازی: /start همیشه اول، بقیه به ترتیب الفبا
     sorted_cmd_names = sorted(cmds.keys(), key=lambda n: (0 if n == "start" else 1, n))
@@ -987,18 +1040,20 @@ def build_interactive_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
     lines = [
         f"🎯 <b>منوی تعاملی</b> — @{esc(bot.get('bot_username', '—'))}",
         "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
-        "هر دستور می‌تواند <b>متن، عکس و دکمه</b> داشته باشد.\n",
-        "<b>🔧 دستورها:</b>"
+        "هر دستور شامل <b>متن، عکس، دکمه و پاسخ دکمه‌ها</b> است.\n",
+        "روی هر دستور بزن تا مدیریتش کنی:"
     ]
     
     rows = []
     for name in sorted_cmd_names:
-        cmd = cmds[name]
+        cmd = cmds.get(name, {})
         has_photo = "🖼" if cmd.get("photo") else ""
         has_buttons = "🔘" if cmd.get("buttons") else ""
+        cb_count = len(cmd.get("callbacks", {}))
+        has_cb = f"⚡{cb_count}" if cb_count else ""
         label = f"⭐ /{name}" if name == "start" else f"/{name}"
         rows.append([InlineKeyboardButton(
-            f"{label}  {has_photo}{has_buttons}",
+            f"{label}  {has_photo}{has_buttons}{has_cb}",
             callback_data=f"bot:cmd:{bot_id}:{name}"
         )])
     
@@ -1006,28 +1061,11 @@ def build_interactive_menu(bot: dict) -> tuple[str, InlineKeyboardMarkup]:
     progress = progress_bar(len(cmds), owner_plan["max_commands"])
     lines.append(f"\n{progress}")
     
-    # تب پاسخ دکمه‌های سراسری
-    lines.append("\n<b>⚡ پاسخ دکمه‌های سراسری:</b>")
-    if cbs:
-        for cid in sorted(cbs.keys()):
-            rows.append([InlineKeyboardButton(
-                f"⚡ {cid}",
-                callback_data=f"bot:cb:{bot_id}:{cid}"
-            )])
-        cb_progress = progress_bar(len(cbs), owner_plan["max_callbacks"])
-        lines.append(f"{cb_progress}")
-    else:
-        lines.append("هنوز پاسخ دکمه‌ای تعریف نشده.")
-    
     text = "\n".join(lines)
     
-    # دکمه‌های افزودن
     action_rows = []
     if len(cmds) < owner_plan["max_commands"]:
-        action_rows.append([InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")])
-    if len(cbs) < owner_plan["max_callbacks"]:
-        action_rows.append([InlineKeyboardButton("➕ پاسخ دکمه جدید", callback_data=f"bot:cb_add:{bot_id}")])
-    
+        action_rows.append([InlineKeyboardButton("➕ افزودن دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")])
     action_rows.append([InlineKeyboardButton("🔙 بازگشت به مدیریت", callback_data=f"bot:manage:{bot_id}")])
     
     return text, InlineKeyboardMarkup(rows + action_rows)
@@ -1415,37 +1453,6 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
         await show_cmd_detail(msg, bot_id, name)
         return
 
-    # ── افزودن پاسخ دکمه سراسری (دو‌مرحله‌ای: آیدی → متن) ──
-    if awaiting == "cb_add":
-        step, bot_id = d["step"], d["bot_id"]
-        owner_plan = storage.get_plan(uid)
-        if step == "id":
-            cb_id = stripped
-            if not cb_id or " " in cb_id or cb_id in storage.get_callbacks(bot_id):
-                await msg.reply_text("❌ آیدی نامعتبر یا تکراری است. آیدی دیگری بفرست یا /cancel:")
-                return
-            if len(storage.get_callbacks(bot_id)) >= owner_plan["max_callbacks"]:
-                ctx.user_data.clear()
-                await msg.reply_text(f"❌ حداکثر {fmt_limit(owner_plan['max_callbacks'])} برای پلن {owner_plan['label']} مجاز است.")
-                await show_bot_callbacks_section(msg, bot_id)
-                return
-            d["cb_id"] = cb_id; d["step"] = "text"
-            await msg.reply_text("✅ متن پاسخ این دکمه را بفرست:")
-            return
-        if step == "text":
-            await storage.set_callback(bot_id, d["cb_id"], text)
-            cb_id = d["cb_id"]; ctx.user_data.clear()
-            await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» ذخیره شد.")
-            await show_bot_callbacks_section(msg, bot_id)
-            return
-
-    if awaiting == "cb_edit_text":
-        bot_id, cb_id = d["bot_id"], d["cb_id"]
-        await storage.set_callback(bot_id, cb_id, text)
-        ctx.user_data.clear()
-        await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» به‌روز شد.")
-        await show_cb_detail(msg, bot_id, cb_id)
-        return
 
     # ── عضویت اجباری اختصاصی ربات ──
     if awaiting == "subbot_forcejoin":
@@ -1465,6 +1472,41 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
         if b:
             t, kb = build_bot_detail(b)
             await msg.reply_text(t, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # ── افزودن پاسخ دکمه به یک دستور (دو مرحله: id → text) ──
+    if awaiting == "cmd_cb_add_id":
+        bot_id, cmd_name = d["bot_id"], d["cmd_name"]
+        cb_id = stripped
+        if not cb_id or " " in cb_id:
+            await msg.reply_text("❌ شناسه نامعتبر. دوباره بفرست یا /cancel:")
+            return
+        existing_cbs = storage.get_command_callbacks(bot_id, cmd_name)
+        if cb_id in existing_cbs:
+            await msg.reply_text(f"❌ این شناسه قبلاً تعریف شده. شناسه دیگری بفرست:")
+            return
+        d["cb_id"] = cb_id
+        ctx.user_data["awaiting"] = "cmd_cb_add_text"
+        await msg.reply_text(
+            f"✅ شناسه «{cb_id}» ثبت شد.\n\nمتن پاسخ این دکمه را بفرست:"
+        )
+        return
+
+    if awaiting == "cmd_cb_add_text":
+        bot_id, cmd_name, cb_id = d["bot_id"], d["cmd_name"], d["cb_id"]
+        await storage.set_command_callback(bot_id, cmd_name, cb_id, text)
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» برای دستور /{cmd_name} ذخیره شد.")
+        await show_cmd_detail(msg, bot_id, cmd_name)
+        return
+
+    # ── ویرایش پاسخ یک دکمه ──
+    if awaiting == "cmd_cb_edit_text":
+        bot_id, cmd_name, cb_id = d["bot_id"], d["cmd_name"], d["cb_id"]
+        await storage.set_command_callback(bot_id, cmd_name, cb_id, text)
+        ctx.user_data.clear()
+        await msg.reply_text(f"✅ پاسخ دکمه «{cb_id}» به‌روز شد.")
+        await show_cmd_detail(msg, bot_id, cmd_name)
         return
 
     # ── پیام همگانی فوری/زمان‌بندی‌شده ──
@@ -1604,13 +1646,13 @@ async def show_bot_commands_section(msg, bot_id: str):
 
 
 async def show_cmd_detail(msg, bot_id: str, name: str, is_callback_msg: bool = False):
-    """نمایش جزئیات یک دستور با دکمه back به منوی تعاملی."""
+    """نمایش جزئیات یک دستور شامل callbacks داخلی آن."""
     b = storage.get_bot(bot_id)
     if not b:
         return
+    owner_plan = storage.get_plan(b["owner_uid"])
     cmd = b.get("commands", {}).get(name)
     if not cmd:
-        # دستور حذف شده — برگرد به منوی تعاملی
         text, kb = build_interactive_menu(b)
         if is_callback_msg:
             try:
@@ -1624,31 +1666,56 @@ async def show_cmd_detail(msg, bot_id: str, name: str, is_callback_msg: bool = F
     has_photo = "دارد 🖼" if cmd.get("photo") else "ندارد"
     buttons_preview = preview_buttons(cmd.get("buttons"))
     label = "⭐ دستور خوش‌آمد" if name == "start" else f"دستور /{name}"
+    callbacks = cmd.get("callbacks", {})
     
-    text = (
-        f"⚙️ <b>{label}</b>\n"
-        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-        f"💬 <b>متن پاسخ:</b>\n{cmd.get('response', '<i>خالی</i>')}\n\n"
-        f"🔘 <b>دکمه‌ها:</b> {buttons_preview}\n"
-        f"🖼 <b>عکس:</b> {has_photo}"
-    )
+    lines = [
+        f"⚙️ <b>{label}</b>",
+        "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
+        "",
+        f"💬 <b>متن پاسخ:</b>\n{cmd.get('response', '<i>خالی</i>')}",
+        "",
+        f"🔘 <b>دکمه‌ها:</b> {buttons_preview}",
+        f"🖼 <b>عکس:</b> {has_photo}",
+    ]
     
     rows = [
         [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:cmd_edit_text:{bot_id}:{name}")],
         [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:cmd_edit_buttons:{bot_id}:{name}")],
         [InlineKeyboardButton("🖼 ویرایش عکس", callback_data=f"bot:cmd_edit_photo:{bot_id}:{name}")],
     ]
-    if name != "start":  # /start قابل حذف نیست
+    
+    # ── بخش پاسخ دکمه‌های این دستور ──
+    lines.append("")
+    lines.append(f"<b>⚡ پاسخ‌های دکمه‌های این دستور:</b> ({len(callbacks)})")
+    cb_rows = []
+    for cb_id in sorted(callbacks.keys()):
+        cb_rows.append([InlineKeyboardButton(
+            f"⚡ {cb_id}",
+            callback_data=f"bot:cmd_cb:{bot_id}:{name}:{cb_id}"
+        )])
+    
+    if len(callbacks) < owner_plan["max_callbacks"]:
+        cb_rows.append([InlineKeyboardButton(
+            "➕ افزودن پاسخ دکمه",
+            callback_data=f"bot:cmd_cb_add:{bot_id}:{name}"
+        )])
+    elif not callbacks:
+        lines.append("  هنوز پاسخی تعریف نشده.")
+    
+    if name != "start":
         rows.append([InlineKeyboardButton("🗑 حذف دستور", callback_data=f"bot:cmd_delete:{bot_id}:{name}")])
     rows.append([InlineKeyboardButton("🔙 بازگشت به منوی تعاملی", callback_data=f"bot:menu:interactive:{bot_id}")])
     
+    text = "\n".join(lines)
+    all_rows = rows + cb_rows
+    
     if is_callback_msg:
         try:
-            await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+            await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(all_rows))
         except Exception:
             pass
     else:
-        await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(all_rows))
 
 
 async def show_bot_callbacks_section(msg, bot_id: str):
@@ -1667,33 +1734,30 @@ async def show_bot_callbacks_section(msg, bot_id: str):
     await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
-async def show_cb_detail(msg, bot_id: str, cb_id: str, is_callback_msg: bool = False):
-    """نمایش جزئیات یک پاسخ دکمه با دکمه back به منوی تعاملی."""
+async def show_cmd_cb_detail(msg, bot_id: str, cmd_name: str, cb_id: str, is_callback_msg: bool = False):
+    """نمایش جزئیات یک پاسخ دکمه داخل یک دستور خاص."""
     b = storage.get_bot(bot_id)
     if not b:
         return
-    resp = b.get("callbacks", {}).get(cb_id)
-    if resp is None:
-        text, kb = build_interactive_menu(b)
-        if is_callback_msg:
-            try:
-                await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-            except Exception:
-                pass
-        else:
-            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+    cmd = b.get("commands", {}).get(cmd_name)
+    if not cmd or cb_id not in cmd.get("callbacks", {}):
+        # پاسخ حذف شده — برگرد به جزئیات دستور
+        await show_cmd_detail(msg, bot_id, cmd_name, is_callback_msg=is_callback_msg)
         return
+    
+    resp = cmd["callbacks"][cb_id]
     
     text = (
         f"⚡ <b>پاسخ دکمه</b>: <code>{cb_id}</code>\n"
+        f"📍 مربوط به دستور: <b>/{cmd_name}</b>\n"
         "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
         f"💬 <b>پاسخ:</b>\n{resp}"
     )
     
     rows = [
-        [InlineKeyboardButton("✏️ ویرایش پاسخ", callback_data=f"bot:cb_edit:{bot_id}:{cb_id}")],
-        [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cb_delete:{bot_id}:{cb_id}")],
-        [InlineKeyboardButton("🔙 بازگشت به منوی تعاملی", callback_data=f"bot:menu:interactive:{bot_id}")],
+        [InlineKeyboardButton("✏️ ویرایش پاسخ", callback_data=f"bot:cmd_cb_edit:{bot_id}:{cmd_name}:{cb_id}")],
+        [InlineKeyboardButton("🗑 حذف", callback_data=f"bot:cmd_cb_delete:{bot_id}:{cmd_name}:{cb_id}")],
+        [InlineKeyboardButton("🔙 بازگشت به دستور", callback_data=f"bot:cmd:{bot_id}:{cmd_name}")],
     ]
     
     if is_callback_msg:
@@ -1703,7 +1767,6 @@ async def show_cb_detail(msg, bot_id: str, cb_id: str, is_callback_msg: bool = F
             pass
     else:
         await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
-
 
 # ══════════════════════════════════════════════════════════════════════
 # 📢 پیام همگانی
@@ -1942,14 +2005,86 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
         return
 
-    # ── جزئیات یک callback ──
-    if data.startswith("bot:cb:"):
+
+    # ── جزئیات یک پاسخ دکمه داخل یک دستور ──
+    if data.startswith("bot:cmd_cb:"):
         parts = data.split(":")
-        bot_id, cb_id = parts[2], parts[3]
+        if len(parts) < 4:
+            return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
         b = storage.get_bot(bot_id)
         if not b or b["owner_uid"] != uid:
             return
-        await show_cb_detail(q, bot_id, cb_id, is_callback_msg=True)
+        await show_cmd_cb_detail(q, bot_id, cmd_name, cb_id, is_callback_msg=True)
+        return
+
+    # ── افزودن پاسخ دکمه جدید داخل یک دستور ──
+    if data.startswith("bot:cmd_cb_add:"):
+        parts = data.split(":")
+        if len(parts) < 3:
+            return
+        bot_id, cmd_name = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        cmd = b.get("commands", {}).get(cmd_name, {})
+        if len(cmd.get("callbacks", {})) >= owner_plan["max_callbacks"]:
+            await q.answer(f"❌ سقف {owner_plan['max_callbacks']} پاسخ برای پلن شما پر شده.", show_alert=True)
+            return
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_cb_add_id", bot_id=bot_id, cmd_name=cmd_name)
+        await q.edit_message_text(
+            f"➕ <b>افزودن پاسخ دکمه به /{cmd_name}</b>\n\n"
+            "شناسه دکمه (callback_data) را بفرست.\n"
+            "(همان متنی که در تنظیم دکمه‌های این دستور وارد کردی)\n\n"
+            "/cancel برای انصراف",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── ویرایش پاسخ یک دکمه ──
+    if data.startswith("bot:cmd_cb_edit:"):
+        parts = data.split(":")
+        if len(parts) < 4:
+            return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_cb_edit_text", bot_id=bot_id, cmd_name=cmd_name, cb_id=cb_id)
+        await q.edit_message_text(
+            f"✏️ <b>ویرایش پاسخ دکمه «{cb_id}»</b> در دستور /{cmd_name}\n\n"
+            "متن جدید را بفرست:\n"
+            "/cancel برای انصراف",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── حذف پاسخ یک دکمه ──
+    if data.startswith("bot:cmd_cb_delete:") and "confirm" not in data:
+        parts = data.split(":")
+        if len(parts) < 4:
+            return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
+        await q.edit_message_text(
+            f"🗑 حذف پاسخ دکمه «{cb_id}» از دستور /{cmd_name}؟",
+            reply_markup=confirm_kb(
+                f"bot:cmd_cb_delete_confirm:{bot_id}:{cmd_name}:{cb_id}",
+                f"bot:cmd_cb:{bot_id}:{cmd_name}:{cb_id}"
+            )
+        )
+        return
+
+    if data.startswith("bot:cmd_cb_delete_confirm:"):
+        parts = data.split(":")
+        if len(parts) < 4:
+            return
+        bot_id, cmd_name, cb_id = parts[2], parts[3], parts[4]
+        await storage.delete_command_callback(bot_id, cmd_name, cb_id)
+        b = storage.get_bot(bot_id)
+        await show_cmd_detail(q, bot_id, cmd_name, is_callback_msg=True)
         return
 
     if data.startswith("bot:toggle:"):
@@ -2031,31 +2166,6 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         b = storage.get_bot(bot_id)
         text, kb = build_interactive_menu(b)
         await q.edit_message_text("✅ دستور حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
-
-
-    if data.startswith("bot:cb_add:"):
-        bot_id = data.split(":")[2]
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_add", bot_id=bot_id, step="id")
-        await q.edit_message_text(
-            "➕ آیدی دکمه را بفرست (همون callback_data که در دکمه‌های /start یا دستورها استفاده کردی):\n(/cancel برای انصراف)")
-        return
-
-    if data.startswith("bot:cb_edit:"):
-        _, _, bot_id, cid = data.split(":", 3)
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="cb_edit_text", bot_id=bot_id, cb_id=cid)
-        await q.edit_message_text(f"✏️ پاسخ جدید برای «{cid}»:\n(/cancel برای انصراف)"); return
-    if data.startswith("bot:cb_delete:") and "confirm" not in data:
-        _, _, bot_id, cid = data.split(":", 3)
-        await q.edit_message_text(f"🗑 حذف پاسخ دکمه «{cid}»؟",
-                                   reply_markup=confirm_kb(f"bot:cb_delete_confirm:{bot_id}:{cid}", f"bot:cb_detail:{bot_id}:{cid}"))
-        return
-    if data.startswith("bot:cb_delete_confirm:"):
-        _, _, bot_id, cid = data.split(":", 3)
-        await storage.delete_callback(bot_id, cid)
-        b = storage.get_bot(bot_id)
-        text, kb = build_interactive_menu(b)
-        await q.edit_message_text("✅ پاسخ دکمه حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
 
@@ -2184,12 +2294,28 @@ async def handle_subbot_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE,
     fj = b.get("force_join_channel")
     if fj and not await enforce_subbot_force_join(ctx.bot, uid, fj):
         try:
-            await q.message.reply_text("🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
-                                        reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj))
+            await q.message.reply_text(
+                "🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
+                reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj)
+            )
         except Exception:
             pass
         return
-    resp = storage.get_callbacks(bot_id).get(data)
+    
+    # 🔍 جستجوی callback در callbacks داخلی همه دستورها
+    resp = None
+    source_cmd = None
+    for cmd_name, cmd in b.get("commands", {}).items():
+        cbs = cmd.get("callbacks", {})
+        if data in cbs:
+            resp = cbs[data]
+            source_cmd = cmd_name
+            break
+    
+    # fallback: اگر در callbacks داخلی پیدا نشد، در callbacks سراسری قدیمی جستجو کن
+    if resp is None:
+        resp = b.get("callbacks", {}).get(data)
+    
     if resp is not None:
         await q.message.reply_text(resp)
         await storage.update_bot_stats(bot_id, sent=1)
