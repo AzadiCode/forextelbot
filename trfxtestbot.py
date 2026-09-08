@@ -492,7 +492,7 @@ class Storage:
             if b is not None:
                 existing = b.get("commands", {}).get(name, {})
                 final_photo = photo if photo is not None else existing.get("photo")
-                final_callbacks = existing.get("callbacks", {})  # ✅ حفظ پاسخ‌ها
+                final_callbacks = existing.get("callbacks", {})
                 new_cmd = {
                     "response": response, 
                     "buttons": buttons,
@@ -501,6 +501,13 @@ class Storage:
                 }
                 self._command_defaults(new_cmd)
                 b.setdefault("commands", {})[name] = new_cmd
+                
+                # 🔧 همگام‌سازی فیلدهای قدیمی برای /start (backward compat)
+                if name == "start":
+                    b["start_msg"] = response
+                    b["start_buttons"] = buttons
+                    b["start_photo"] = final_photo
+                
                 self.mark_dirty()
 
     async def set_command_photo(self, bot_id: str, name: str, photo: Optional[str]):
@@ -508,6 +515,11 @@ class Storage:
             b = self.data["bots"].get(bot_id)
             if b is not None and name in b.get("commands", {}):
                 b["commands"][name]["photo"] = photo
+                
+                # 🔧 همگام‌سازی فیلدهای قدیمی برای /start
+                if name == "start":
+                    b["start_photo"] = photo
+                
                 self.mark_dirty()
 
     async def delete_command(self, bot_id: str, name: str):
@@ -1608,27 +1620,6 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
         return
 
 
-# ── نمایش زیربخش‌های مدیریت یک ربات (استفاده مشترک از پیام و کال‌بک) ──
-async def show_bot_start_section(msg, bot_id: str):
-    b = storage.get_bot(bot_id)
-    if not b:
-        return
-    owner_plan = storage.get_plan(b["owner_uid"])
-    text = (f"📝 پیام شروع (/start):\n{b.get('start_msg', '')}\n\n"
-            f"🔘 دکمه‌ها: {preview_buttons(b.get('start_buttons'))}\n"
-            f"🖼 عکس خوش‌آمد: {'دارد' if b.get('start_photo') else 'ندارد'}")
-    rows = [
-        [InlineKeyboardButton("✏️ ویرایش متن", callback_data=f"bot:start_edit_text:{bot_id}")],
-        [InlineKeyboardButton("🔘 ویرایش دکمه‌ها", callback_data=f"bot:start_edit_buttons:{bot_id}")],
-    ]
-    if owner_plan["media_welcome"]:
-        rows.append([InlineKeyboardButton("🖼 ویرایش عکس خوش‌آمد", callback_data=f"bot:start_edit_photo:{bot_id}")])
-    else:
-        rows.append([InlineKeyboardButton("🔒 عکس خوش‌آمد (نیاز به پلن حرفه‌ای)", callback_data="noop")])
-    rows.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")])
-    await msg.reply_text(text, reply_markup=InlineKeyboardMarkup(rows))
-
-
 async def show_bot_commands_section(msg, bot_id: str):
     b = storage.get_bot(bot_id)
     if not b:
@@ -2077,6 +2068,29 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data.startswith("bot:cmd_edit_photo:"):
+        parts = data.split(":")
+        if len(parts) < 3:
+            return
+        bot_id, name = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid:
+            return
+        owner_plan = storage.get_plan(uid)
+        # فقط پلن حرفه‌ای به بالا اجازه عکس دارند
+        if not owner_plan.get("media_welcome"):
+            await q.answer("🔒 عکس مخصوص پلن حرفه‌ای به بالاست.", show_alert=True)
+            return
+        ctx.user_data.clear()
+        ctx.user_data.update(awaiting="cmd_edit_photo", bot_id=bot_id, name=name)
+        await q.edit_message_text(
+            f"🖼 <b>ویرایش عکس دستور /{name}</b>\n\n"
+            "یک عکس از گالری یا فایل بفرست، یا /skip برای حذف عکس فعلی:\n"
+            "/cancel برای انصراف",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     if data.startswith("bot:cmd_cb_delete_confirm:"):
         parts = data.split(":")
         if len(parts) < 4:
@@ -2117,27 +2131,6 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await storage.delete_bot(bot_id, uid)
         text, kb = build_mybots_text_kb(uid)
         await q.edit_message_text("🗑 ربات حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
-
-    # ── پیام شروع ──
-    if data.startswith("bot:start_edit_text:"):
-        bot_id = data.split(":")[2]
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_text", bot_id=bot_id)
-        await q.edit_message_text("✏️ متن جدید پیام شروع را بفرست:\n(/cancel برای انصراف)"); return
-    if data.startswith("bot:start_edit_buttons:"):
-        bot_id = data.split(":")[2]
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_buttons", bot_id=bot_id)
-        await q.edit_message_text("🔘 دکمه‌ها را بفرست (هر خط = یک ردیف):\nمتن۱|id1, متن۲|id2\nیا /skip\n(/cancel برای انصراف)")
-        return
-    if data.startswith("bot:start_edit_photo:"):
-        bot_id = data.split(":")[2]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid:
-            return
-        if not storage.get_plan(uid)["media_welcome"]:
-            await q.answer("🔒 این قابلیت مخصوص پلن حرفه‌ای به بالاست.", show_alert=True); return
-        ctx.user_data.clear(); ctx.user_data.update(awaiting="start_photo", bot_id=bot_id)
-        await q.edit_message_text("🖼 یک عکس برای پیام خوش‌آمد بفرست، یا /skip برای حذف عکس فعلی:\n(/cancel برای انصراف)")
         return
 
 
@@ -2233,13 +2226,44 @@ async def handle_subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bo
             "🚫 برای استفاده از این ربات ابتدا باید در کانال زیر عضو شوی.",
             reply_markup=await subbot_force_join_kb(ctx.bot, bot_id, fj))
         return
-    kb = build_inline_from_rows(b.get("start_buttons"))
-    photo = b.get("start_photo")
-    if photo:
-        await update.effective_message.reply_photo(photo, caption=b.get("start_msg", "سلام 👋"), reply_markup=kb)
-    else:
-        await update.effective_message.reply_text(b.get("start_msg", "سلام 👋"), reply_markup=kb)
-    await storage.update_bot_stats(bot_id, sent=1)
+    
+    # 🔄 اولویت با ساختار جدید (commands.start) + fallback به فیلدهای قدیمی
+    start_cmd = b.get("commands", {}).get("start", {})
+    response = (start_cmd.get("response") or 
+                b.get("start_msg") or 
+                "سلام 👋")
+    buttons = start_cmd.get("buttons") or b.get("start_buttons")
+    photo = start_cmd.get("photo") or b.get("start_photo")
+    
+    kb = build_inline_from_rows(buttons)
+    
+    try:
+        if photo:
+            # ✅ رعایت محدودیت ۱۰۲۴ کاراکتری caption تلگرام
+            if len(response) <= 1024:
+                await update.effective_message.reply_photo(
+                    photo, caption=response, reply_markup=kb,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                # اگر متن طولانی است: اول عکس، بعد متن جدا
+                await update.effective_message.reply_photo(photo, reply_markup=kb)
+                await update.effective_message.reply_text(
+                    response, parse_mode=ParseMode.HTML
+                )
+        else:
+            await update.effective_message.reply_text(
+                response, parse_mode=ParseMode.HTML, reply_markup=kb
+            )
+        await storage.update_bot_stats(bot_id, sent=1)
+    except Exception as e:
+        log.error(f"خطا در ارسال /start ربات {bot_id}: {e}")
+        # fallback: بدون parse_mode و بدون عکس
+        try:
+            await update.effective_message.reply_text(response, reply_markup=kb)
+            await storage.update_bot_stats(bot_id, sent=1)
+        except Exception as e2:
+            log.error(f"خطای بحرانی در ارسال /start: {e2}")
 
 
 async def handle_subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
@@ -2261,15 +2285,39 @@ async def handle_subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, 
     if cmd:
         kb = build_inline_from_rows(cmd.get("buttons"))
         photo = cmd.get("photo")
-        if photo:
-            await update.effective_message.reply_photo(
-                photo, caption=cmd.get("response", ""), reply_markup=kb
-            )
-        else:
-            await update.effective_message.reply_text(
-                cmd.get("response", ""), reply_markup=kb
-            )
-        await storage.update_bot_stats(bot_id, sent=1)
+        response = cmd.get("response", "")
+        
+        try:
+            if photo:
+                # ✅ رعایت محدودیت ۱۰۲۴ کاراکتری caption
+                if len(response) <= 1024:
+                    await update.effective_message.reply_photo(
+                        photo, caption=response, reply_markup=kb,
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    # عکس بدون caption + متن به صورت پیام جداگانه
+                    await update.effective_message.reply_photo(photo, reply_markup=kb)
+                    await update.effective_message.reply_text(
+                        response, parse_mode=ParseMode.HTML
+                    )
+            else:
+                await update.effective_message.reply_text(
+                    response, parse_mode=ParseMode.HTML, reply_markup=kb
+                )
+            await storage.update_bot_stats(bot_id, sent=1)
+        except Exception as e:
+            log.error(f"خطا در اجرای دستور /{cmd_name} ربات {bot_id}: {e}")
+            # ✅ fallback: بدون parse_mode (برای HTML نامعتبر) یا بدون عکس
+            try:
+                if photo:
+                    await update.effective_message.reply_photo(photo, reply_markup=kb)
+                    await update.effective_message.reply_text(response, reply_markup=kb)
+                else:
+                    await update.effective_message.reply_text(response, reply_markup=kb)
+                await storage.update_bot_stats(bot_id, sent=1)
+            except Exception as e2:
+                log.error(f"خطای بحرانی در اجرای /{cmd_name}: {e2}")
 
 
 async def handle_subbot_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
