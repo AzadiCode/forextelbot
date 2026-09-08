@@ -1290,9 +1290,100 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    ctx.user_data.clear()
-    await update.effective_message.reply_text("❌ لغو شد.")
-    await show_main_menu(update.effective_message, update.effective_user.id)
+    """لغو عملیات فعلی و بازگشت هوشمند به منوی قبلی."""
+    uid = update.effective_user.id
+    msg = update.effective_message
+    d = ctx.user_data
+    awaiting = d.get("awaiting")
+    
+    # 🎯 تعیین مقصد بازگشت بر اساس مرحله‌ی فعلی
+    dest_text = "❌ لغو شد."
+    dest_target = "main"  # پیش‌فرض: منوی اصلی
+    
+    if awaiting:
+        bot_id = d.get("bot_id")
+        cmd_name = d.get("name") or d.get("cmd_name")
+        
+        # ── مراحل ویرایش یک دستور ──
+        if awaiting in ("cmd_edit_text", "cmd_edit_buttons", "cmd_edit_photo",
+                        "cmd_cb_add_id", "cmd_cb_add_text", "cmd_cb_edit_text"):
+            if bot_id and cmd_name:
+                dest_target = "cmd_detail"
+                dest_text = f"❌ ویرایش /{cmd_name} لغو شد."
+            elif bot_id:
+                dest_target = "interactive"
+                dest_text = "❌ عملیات لغو شد."
+        
+        # ── افزودن دستور جدید ──
+        elif awaiting == "cmd_add":
+            if bot_id:
+                dest_target = "interactive"
+                dest_text = "❌ ساخت دستور جدید لغو شد."
+        
+        # ── ساخت ربات ──
+        elif awaiting == "token":
+            dest_target = "mybots"
+            dest_text = "❌ ساخت ربات لغو شد."
+        
+        # ── عضویت اجباری ربات ──
+        elif awaiting == "subbot_forcejoin":
+            if bot_id:
+                dest_target = "settings"
+                dest_text = "❌ تنظیم عضویت اجباری لغو شد."
+        
+        # ── پیام همگانی ──
+        elif awaiting in ("broadcast_now", "broadcast_sched_minutes", "broadcast_sched_text"):
+            if bot_id:
+                dest_target = "broadcast"
+                dest_text = "❌ پیام همگانی لغو شد."
+        
+        # ── پنل ادمین ──
+        elif awaiting.startswith("admin_"):
+            dest_target = "admin"
+            dest_text = "❌ عملیات ادمین لغو شد."
+        
+        # ── پاک کردن user_data ──
+        d.clear()
+    
+    await msg.reply_text(dest_text)
+    
+    # 🎯 بازگشت هوشمند به مقصد مناسب
+    try:
+        if dest_target == "cmd_detail" and bot_id and cmd_name:
+            b = storage.get_bot(bot_id)
+            if b:
+                await show_cmd_detail(msg, bot_id, cmd_name, is_callback_msg=False)
+                return
+        elif dest_target == "interactive" and bot_id:
+            b = storage.get_bot(bot_id)
+            if b:
+                text, kb = build_interactive_menu(b)
+                await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+                return
+        elif dest_target == "settings" and bot_id:
+            b = storage.get_bot(bot_id)
+            if b:
+                text, kb = build_settings_menu(b)
+                await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+                return
+        elif dest_target == "broadcast" and bot_id:
+            b = storage.get_bot(bot_id)
+            if b:
+                text, kb = build_broadcast_menu(b)
+                await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+                return
+        elif dest_target == "mybots":
+            text, kb = build_mybots_text_kb(uid)
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        elif dest_target == "admin" and is_admin(uid):
+            await msg.reply_text(build_admin_panel_text(), parse_mode=ParseMode.HTML, reply_markup=admin_panel_kb())
+            return
+    except Exception as e:
+        log.error(f"خطا در بازگشت هوشمند: {e}")
+    
+    # fallback: منوی اصلی
+    await show_main_menu(msg, uid)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1314,6 +1405,19 @@ async def main_message_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     awaiting = ctx.user_data.get("awaiting")
+    
+    # ✅ مدیریت command‌ها در حالت awaiting یا غیر awaiting
+    if text.startswith("/"):
+        if text == "/cancel":
+            await cmd_cancel(update, ctx)
+            return
+        # اگر awaiting نیست، command ناشناخته را نادیده بگیر
+        if not awaiting:
+            await show_main_menu(msg, uid)
+            return
+        # اگر awaiting هست و command ناشناخته است، آن را به‌عنوان متن عادی پردازش کن
+        # (مثلاً اگر کاربر "/skip" را در حالتی که منتظر متن است بفرستد، به‌عنوان متن ذخیره شود)
+    
     if not awaiting:
         await show_main_menu(msg, uid)
         return
@@ -2021,15 +2125,12 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         bot_id, name = parts[2], parts[3]
         b = storage.get_bot(bot_id)
         if not b or b["owner_uid"] != uid: return
-        owner_plan = storage.get_plan(uid)
-        if not owner_plan.get("media_welcome"):
-            await q.answer("🔒 عکس مخصوص پلن حرفه‌ای به بالاست.", show_alert=True)
-            return
+        # ✅ محدودیت پلن حذف شد — همه می‌توانند عکس تنظیم کنند
         ctx.user_data.clear()
         ctx.user_data.update(awaiting="cmd_edit_photo", bot_id=bot_id, name=name)
         await q.edit_message_text(
             f"🖼 <b>ویرایش عکس دستور /{name}</b>\n\n"
-            "یک عکس از گالری یا فایل بفرست، یا /skip برای حذف عکس فعلی:\n"
+            "یک عکس از گالری بفرست، یا <code>/skip</code> برای حذف عکس فعلی:\n"
             "/cancel برای انصراف",
             parse_mode=ParseMode.HTML
         )
@@ -2354,7 +2455,8 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CallbackQueryHandler(main_callback_handler))
-    app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, main_message_handler))
+    # ✅ بدون ~filters.COMMAND — خودمان در handler مدیریت می‌کنیم
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, main_message_handler))
 
     if WEBHOOK_URL:
         log.info(f"🌐 اجرا با وب‌هوک: {WEBHOOK_URL}/{PLATFORM_BOT_TOKEN}")
