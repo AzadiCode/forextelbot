@@ -1533,12 +1533,56 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
         if not msg.photo:
             await msg.reply_text("❌ لطفاً یک عکس از گالری بفرست، یا /skip برای حذف عکس فعلی:")
             return
-        # ✅ استفاده از بزرگترین سایز عکس
-        file_id = msg.photo[-1].file_id
-        await storage.set_command_photo(bot_id, name, file_id)
-        ctx.user_data.clear()
-        await msg.reply_text(f"✅ عکس دستور /{name} ذخیره شد.")
-        await show_cmd_detail(msg, bot_id, name)
+        
+        # 🔄 دریافت file_id از مادر-بات
+        mother_file_id = msg.photo[-1].file_id
+        processing_msg = await msg.reply_text("⏳ در حال پردازش عکس و انتقال به ربات شما...")
+        
+        try:
+            # ۱. دانلود فایل توسط مادر-بات (به صورت bytes)
+            file = await ctx.bot.get_file(mother_file_id)
+            file_bytes = bytes(await file.download_as_bytearray())
+            
+            # ۲. گرفتن instance ساب-بات
+            sub_bot = factory.get_bot_instance(bot_id)
+            if not sub_bot:
+                await processing_msg.edit_text("❌ ساب-بات در حال اجرا نیست. ابتدا آن را از بخش تنظیمات روشن کنید.")
+                return
+            
+            # ۳. ارسال با ساب-بات به خود کاربر (برای گرفتن file_id مخصوص ساب-بات)
+            # نکته: chat_id باید int باشد
+            temp_msg = await sub_bot.send_photo(
+                chat_id=uid,
+                photo=file_bytes,
+                caption="🔄 در حال ثبت عکس..."
+            )
+            sub_file_id = temp_msg.photo[-1].file_id
+            
+            # ۴. حذف پیام موقت (تا کاربر پیام اضافی نبیند)
+            try:
+                await sub_bot.delete_message(chat_id=uid, message_id=temp_msg.message_id)
+            except Exception:
+                pass  # اگر حذف نشد مهم نیست
+            
+            # ۵. ذخیره file_id مخصوص ساب-بات در دیتابیس
+            await storage.set_command_photo(bot_id, name, sub_file_id)
+            ctx.user_data.clear()
+            
+            await processing_msg.edit_text(f"✅ عکس دستور /{name} با موفقیت ذخیره شد!")
+            await show_cmd_detail(msg, bot_id, name)
+            
+        except Exception as e:
+            log.error(f"خطا در پردازش عکس برای ربات {bot_id}: {e}")
+            ctx.user_data.clear()
+            try:
+                await processing_msg.edit_text(
+                    f"❌ خطا در پردازش عکس:\n<code>{esc(str(e)[:200])}</code>\n\n"
+                    "لطفاً دوباره امتحان کنید.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
+            await show_cmd_detail(msg, bot_id, name)
         return
 
     # ── عضویت اجباری اختصاصی ربات ──
@@ -2366,15 +2410,28 @@ async def handle_subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, 
                     response, parse_mode=ParseMode.HTML, reply_markup=kb
                 )
             await storage.update_bot_stats(bot_id, sent=1)
+        except BadRequest as e:
+            # معمولاً به دلیل file_id نامعتبر یا HTML نامعتبر
+            log.warning(f"BadRequest در اجرای /{cmd_name} ربات {bot_id}: {e}")
+            try:
+                # تلاش بدون photo
+                await update.effective_message.reply_text(
+                    response, reply_markup=kb, parse_mode=ParseMode.HTML
+                )
+                await update.effective_message.reply_text(
+                    "⚠️ <b>هشدار:</b> عکس این دستور قابل نمایش نیست (احتمالاً فایل منقضی شده). "
+                    "لطفاً در پنل مدیریت، عکس را مجدداً آپلود کنید.",
+                    parse_mode=ParseMode.HTML
+                )
+                await storage.update_bot_stats(bot_id, sent=1)
+            except Exception as e2:
+                # fallback نهایی
+                await update.effective_message.reply_text(response, reply_markup=kb)
+                await storage.update_bot_stats(bot_id, sent=1)
         except Exception as e:
             log.error(f"خطا در اجرای دستور /{cmd_name} ربات {bot_id}: {e}")
-            # ✅ fallback: بدون parse_mode (برای HTML نامعتبر) یا بدون عکس
             try:
-                if photo:
-                    await update.effective_message.reply_photo(photo, reply_markup=kb)
-                    await update.effective_message.reply_text(response, reply_markup=kb)
-                else:
-                    await update.effective_message.reply_text(response, reply_markup=kb)
+                await update.effective_message.reply_text(response, reply_markup=kb)
                 await storage.update_bot_stats(bot_id, sent=1)
             except Exception as e2:
                 log.error(f"خطای بحرانی در اجرای /{cmd_name}: {e2}")
