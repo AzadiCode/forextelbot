@@ -1386,7 +1386,10 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
             await storage.set_command(bot_id, d["name"], d["response"], rows)
             name = d["name"]; ctx.user_data.clear()
             await msg.reply_text(f"✅ دستور /{name} ذخیره شد.")
-            await show_bot_commands_section(msg, bot_id)
+            # بازگشت مستقیم به منوی تعاملی به‌جای صفحه قدیمی دستورها
+            b = storage.get_bot(bot_id)
+            text, kb = build_interactive_menu(b)
+            await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
             return
 
     if awaiting == "cmd_edit_text":
@@ -1589,18 +1592,17 @@ async def handle_awaited_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE, u
 
 
 async def show_bot_commands_section(msg, bot_id: str):
+    """این تابع دیگر استفاده نمی‌شود — به‌جایش مستقیم به منوی تعاملی برو."""
     b = storage.get_bot(bot_id)
     if not b:
         return
-    owner_plan = storage.get_plan(b["owner_uid"])
-    cmds = storage.get_commands(bot_id)
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🔧 /{name}", callback_data=f"bot:cmd_detail:{bot_id}:{name}")] for name in cmds
-    ] + ([[InlineKeyboardButton("➕ دستور جدید", callback_data=f"bot:cmd_add:{bot_id}")]]
-         if len(cmds) < owner_plan["max_commands"] else [])
-      + [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"bot:manage:{bot_id}")]])
-    text = f"🔧 <b>دستورهای دلخواه</b> ({progress_bar(len(cmds), owner_plan['max_commands'])}):\n" + \
-        ("روی هر دستور بزن:" if cmds else "هنوز دستوری نساختی.")
+    text, kb = build_interactive_menu(b)
+    if hasattr(msg, 'edit_message_text'):
+        try:
+            await msg.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            return
+        except Exception:
+            pass
     await msg.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
@@ -2075,15 +2077,6 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("➕ نام دستور جدید را بدون / بفرست (مثلاً info):\n(/cancel برای انصراف)")
         return
 
-    # ── جزئیات یک دستور (آخرین شرط — عمومی‌ترین) ──
-    if data.startswith("bot:cmd:"):
-        parts = data.split(":")
-        if len(parts) < 4: return
-        bot_id, name = parts[2], parts[3]
-        b = storage.get_bot(bot_id)
-        if not b or b["owner_uid"] != uid: return
-        await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
-        return
 
     if data.startswith("bot:toggle:"):
         bot_id = data.split(":")[2]
@@ -2117,12 +2110,6 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("🗑 ربات حذف شد.\n\n" + text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
-    if data.startswith("bot:cmd_delete:") and "confirm" not in data:
-        _, _, bot_id, name = data.split(":", 3)
-        await q.edit_message_text(f"🗑 حذف دستور /{name}؟",
-                                   reply_markup=confirm_kb(f"bot:cmd_delete_confirm:{bot_id}:{name}", f"bot:cmd_detail:{bot_id}:{name}"))
-        return
-
     if data.startswith("bot:bc_now:"):
         bot_id = data.split(":")[2]
         ctx.user_data.clear(); ctx.user_data.update(awaiting="broadcast_now", bot_id=bot_id)
@@ -2151,6 +2138,16 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(
             f"🚫 عضویت اجباری فعلی این ربات: {cur}\n\n"
             "یوزرنیم کانال (@channel) یا آیدی عددی (-100...) را بفرست، یا /skip برای غیرفعال‌کردن:\n(/cancel برای انصراف)")
+        return
+
+    # ── جزئیات یک دستور (آخرین شرط — عمومی‌ترین) ──
+    if data.startswith("bot:cmd:"):
+        parts = data.split(":")
+        if len(parts) < 4: return
+        bot_id, name = parts[2], parts[3]
+        b = storage.get_bot(bot_id)
+        if not b or b["owner_uid"] != uid: return
+        await show_cmd_detail(q, bot_id, name, is_callback_msg=True)
         return
 
     # ── پشتیبان‌گیری (Export) ──
