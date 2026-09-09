@@ -64,7 +64,7 @@ REFERRAL_BONUS_REFERRER = 80
 REFERRAL_BONUS_NEWCOMER = 20
 DOWNLINE_BONUS_PER_USER = 3
 DOWNLINE_DAILY_CAP = 15
-MONETIZATION_MIN_USERS = 1000  # حداقل کاربر برای درآمدزایی
+MONETIZATION_MIN_USERS = 1000
 BROADCAST_DELAY_SEC = 0.045
 ADMIN_PAGE_SIZE = 8
 RESERVED_COMMANDS = {"start", "cancel", "help", "id"}
@@ -363,9 +363,7 @@ class Storage:
             return True
 
     def get_max_bot_users_count(self, uid: int) -> tuple[int, Optional[str]]:
-        """بیشترین تعداد کاربر در بین ربات‌های کاربر.
-        Returns: (max_count, bot_username)
-        """
+        """بیشترین تعداد کاربر در بین ربات‌های کاربر."""
         bots = self.get_user_bots(uid)
         if not bots:
             return 0, None
@@ -898,26 +896,17 @@ def build_dashboard_text(uid: int, user: dict) -> str:
     plan = PLANS.get(user.get("plan", "starter"), PLANS["starter"])
     bots = storage.get_user_bots(uid)
     ref_link = f"https://t.me/{PLATFORM_USERNAME}?start={user.get('referral_code', '')}" if PLATFORM_USERNAME else "—"
-    # ── محاسبه progress درآمدزایی ──
-    max_count, max_username = storage.get_max_bot_users_count(uid)
-    remaining = max(0, MONETIZATION_MIN_USERS - max_count)
-    if remaining > 0:
-        mon_line = f"\n\n🎯 <b>درآمدزایی:</b> <code>{max_count:,}/{MONETIZATION_MIN_USERS:,}</code> کاربر  (<b>{remaining:,}</b> مانده)"
-    else:
-        mon_line = f"\n\n🎉 <b>درآمدزایی:</b> آماده فعال‌سازی!  (<code>{max_count:,}/{MONETIZATION_MIN_USERS:,}</code>)"
-    
     return (
-        "👤 <b>پنل کاربری</b>\n\n"
+        "👤 <b>پنل حساب من</b>\n\n"
         f"🆔 آیدی: <code>{user['uid']}</code>\n"
         f"{plan['badge']} پلن فعلی: <b>{plan['label']}</b>\n"
-        f"💰 موجودی: <b>{user.get('coin_balance', 0):,} {COIN_SYMBOL}</b>\n\n"
+        f"💰 موجودی: <b>{user.get('coin_balance', 0)} {COIN_SYMBOL}</b>\n\n"
         f"🤖 <b>مصرف ربات‌ها</b>\n{progress_bar(len(bots), plan['max_bots'])}\n\n"
         "🔗 <b>دعوت و درآمد</b>\n"
         f"کد دعوت: <code>{user.get('referral_code', '—')}</code>\n"
         f"لینک اختصاصی: {ref_link}\n"
         f"👥 {user.get('referral_count', 0)} نفر دعوت‌شده "
-        f"(+{user.get('referral_earned_coins', 0):,} {COIN_SYMBOL} تا این لحظه)"
-        f"{mon_line}"
+        f"(+{user.get('referral_earned_coins', 0)} {COIN_SYMBOL} تا این لحظه)"
     )
 
 
@@ -1965,6 +1954,31 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ هنوز عضو نشدی!", show_alert=True)
         return
 
+    # ── فعال‌سازی درآمدزایی (alert ساده) ──
+    if data == "user:monetization_info":
+        max_count, max_username = storage.get_max_bot_users_count(uid)
+        remaining = max(0, MONETIZATION_MIN_USERS - max_count)
+        
+        if remaining <= 0:
+            await q.answer(
+                f"🎉 آماده فعال‌سازی!\n\n"
+                f"🏆 ربات: @{max_username or '—'}\n"
+                f"👥 {max_count:,} / {MONETIZATION_MIN_USERS:,} کاربر\n\n"
+                f"✅ به‌زودی این بخش فعال می‌شود.",
+                show_alert=True
+            )
+        else:
+            await q.answer(
+                f"🔒 این بخش محدود است\n\n"
+                f"برای فعال‌سازی نیاز به {MONETIZATION_MIN_USERS:,} کاربر "
+                f"فعال در یکی از ربات‌هایت داری.\n\n"
+                f"🏆 بهترین ربات: @{max_username or '—'}\n"
+                f"👥 {max_count:,} / {MONETIZATION_MIN_USERS:,}\n"
+                f"⏳ {remaining:,} کاربر مانده",
+                show_alert=True
+            )
+        return
+
     if not await enforce_force_join(ctx.bot, uid):
         await q.answer()
         try:
@@ -1986,12 +2000,22 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     if data in ("nav:account", "nav:user_panel"):
         user = storage.get_user(uid)
+        max_count, _ = storage.get_max_bot_users_count(uid)
+        remaining = max(0, MONETIZATION_MIN_USERS - max_count)
+        
+        # ساخت متن با progress درآمدزایی
+        base_text = build_dashboard_text(uid, user)
+        if remaining > 0:
+            mon_line = f"\n\n🎯 <b>درآمدزایی:</b> <code>{max_count:,}/{MONETIZATION_MIN_USERS:,}</code> کاربر  (<b>{remaining:,}</b> مانده)"
+        else:
+            mon_line = f"\n\n🎉 <b>درآمدزایی:</b> آماده فعال‌سازی!  (<code>{max_count:,}/{MONETIZATION_MIN_USERS:,}</code>)"
+        
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("💰 فعال‌سازی درآمدزایی", callback_data="user:monetization_info")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="nav:home")],
         ])
         await q.edit_message_text(
-            build_dashboard_text(uid, user),
+            base_text + mon_line,
             parse_mode=ParseMode.HTML,
             reply_markup=kb
         )
@@ -2050,32 +2074,6 @@ async def main_callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "admin:broadcast":
         ctx.user_data.clear(); ctx.user_data["awaiting"] = "admin_broadcast"
         await q.edit_message_text("📢 متن پیام همگانی پلتفرم (برای همهٔ کاربران) را بفرست:\n(/cancel برای انصراف)"); return
-
-    # ── اطلاعات درآمدزایی (فقط alert) ──
-    if data == "user:monetization_info":
-        user = storage.get_user(uid)
-        max_count, max_username = storage.get_max_bot_users_count(uid)
-        remaining = max(0, MONETIZATION_MIN_USERS - max_count)
-        
-        if remaining <= 0:
-            alert_text = (
-                f"🎉 آماده فعال‌سازی!\n\n"
-                f"🏆 ربات: @{max_username or '—'}\n"
-                f"👥 {max_count:,} / {MONETIZATION_MIN_USERS:,} کاربر\n\n"
-                f"✅ به‌زودی این بخش فعال می‌شود."
-            )
-        else:
-            alert_text = (
-                f"🔒 این بخش محدود است\n\n"
-                f"برای فعال‌سازی نیاز به {MONETIZATION_MIN_USERS:,} کاربر "
-                f"فعال در یکی از ربات‌هایت داری.\n\n"
-                f"🏆 بهترین ربات: @{max_username or '—'}\n"
-                f"👥 {max_count:,} / {MONETIZATION_MIN_USERS:,}\n"
-                f"⏳ {remaining:,} کاربر مانده"
-            )
-        
-        await q.answer(alert_text, show_alert=True)
-        return
 
     # ── ساخت ربات ──
     if data == "nav:create":
