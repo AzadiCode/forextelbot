@@ -47,12 +47,12 @@ PORT        = int(os.environ.get("PORT", 5000))
 JSONBIN_KEY = os.environ.get("JSONBIN_API_KEY", "")
 JSONBIN_BIN = os.environ.get("JSONBIN_BIN_ID", "")
 
-_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", ""))
+_admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip()}
 
-CHANNEL_ID        = os.environ.get("CHANNEL_ID", "")
+CHANNEL_ID        = os.environ.get("CHANNEL_ID", "@GoldLiveHunters")
 # کانالی که کاربر باید عضو آن باشد؛ اگر خالی باشد چک عضویت انجام نمی‌شود
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@GoldLiveHunters")
 
 POINTS_PER_CORRECT   = int(os.environ.get("POINTS_PER_CORRECT", 200))
 REF_POINTS_REFERRER  = int(os.environ.get("REF_POINTS_REFERRER", 90))
