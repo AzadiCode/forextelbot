@@ -989,7 +989,9 @@ def build_round_text(rnd: dict, phase: str,
             f"{header}"
             f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n\n"
             f"⛔️ زمان ثبت نظر به پایان رسید.\n"
-            f"🏁 تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
+            f"<blockquote>"
+            f"🏁 تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n"
+            f"</blockquote>"
             f"نتیجه نهایی به‌زودی اعلام خواهد شد.\n"
             f"برای مشاهده جزئیات و امتیاز خود، از دکمه زیر استفاده کنید 👇"
         )
@@ -1007,8 +1009,10 @@ def build_round_text(rnd: dict, phase: str,
 
     return (
         f"{header}"
+        f"<blockquote>"
         f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n"
         f"💲 قیمت در زمان پایان: <code>{end_p}</code>\n"
+        f"</blockquote>"
         f"{result_text}\n\n"
         f"برای بررسی وضعیت پیش‌بینی، امتیاز کسب‌شده و رتبه فعلی خود، دکمه زیر را بزنید 👇"
     )
