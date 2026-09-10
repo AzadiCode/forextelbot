@@ -953,55 +953,68 @@ def build_welcome_text() -> str:
 
 
 def build_round_text(rnd: dict, phase: str,
-                      end_price: Optional[float] = None, direction: Optional[str] = None) -> str:
+                     end_price: Optional[float] = None, 
+                     direction: Optional[str] = None) -> str:
+    
     start_p = _fmt_price(rnd["start_price"])
+    header = f"<b>دور #{rnd['id']} | تورنومنت پیش‌بینی طلا🏆</b>\n"
 
     if phase == "voting":
         vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
         remaining = (vote_deadline_dt - now_ir()).total_seconds()
         countdown = _fmt_mmss(remaining)
         
-        # محاسبه زمان باقی‌مانده تا پایان کل دور و مشخص شدن نتیجه
         lock_dt = datetime.fromisoformat(rnd["lock_time"])
         total_remaining = (lock_dt - now_ir()).total_seconds()
         total_countdown = _fmt_mmss(total_remaining)
         
         return (
-            f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
-            f"💰 قیمت در این لحضه شروع : <code>{start_p}</code>\n"
-            f"⏳ زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code> ⏳\n"
-            f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
-            "طلا تا پایان این دور، نسبت به قیمت شروع صعودی میشه یا نزولی؟ "
-            "⚠️ <i>هر کاربر فقط یک‌بار می‌تونه رأی بده و بعدش امکان تغییرش نیست.</i>\n"
-            f"✅ پیش‌بینی درست = <b>{POINTS_PER_CORRECT} امتیاز</b>\n"
-            "نظرت رو با یکی از دکمه‌های زیر ثبت کن 👇"
+            f"{header}"
+            f"<blockquote>"
+            f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n"
+            f"🕒 زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code>\n"
+            f"🏁 زمان باقی‌مانده تا پایان دور: <code>{total_countdown}</code>\n"
+            f"</blockquote>"
+            f"<b>پیش‌بینی شما تا پایان این دور چیست؟</b>\n"
+            f" پاداش پیش‌بینی درست: <b>{POINTS_PER_CORRECT} امتیاز🎁</b>\n\n"
+            f"گزینه مورد نظر خود را انتخاب کنید 👇"
         )
 
     if phase == "voting_closed":
         lock_dt = datetime.fromisoformat(rnd["lock_time"])
         total_remaining = (lock_dt - now_ir()).total_seconds()
         total_countdown = _fmt_mmss(total_remaining)
+        
         return (
-            f"🥇 <b>دور #{rnd['id']} تورنومنت هفتگی پیشبینی طلا </b>\n"
-            f"💰 قیمت شروع: <code>{start_p}</code>\n"
-            "⛔️ <b>زمان ثبت رأی به پایان رسیده — امکان رأی دادن نیست.</b>\n"
-            f"⏱ زمان باقی‌مانده تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n\n"
-            "نتیجه‌ی نهایی به‌محض بسته‌شدن دور اعلام می‌شه... ⏱\n"
-            "📍 برای دیدن جزئیات و امتیازت، روی دکمه‌ی زیر بزن."
+            f"{header}"
+            f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n\n"
+            f"⛔️ زمان ثبت نظر به پایان رسید.\n"
+            f"<blockquote>"
+            f"🏁 تا پایان دور و مشخص شدن نتیجه: <code>{total_countdown}</code>\n"
+            f"</blockquote>"
+            f"نتیجه نهایی به‌زودی اعلام خواهد شد.\n"
+            f"برای مشاهده جزئیات و امتیاز خود، از دکمه زیر استفاده کنید 👇"
         )
 
-    arrow = {"up": "🟢 صعودی", "down": "🔴 نزولی", "flat": "➖ بدون تغییر"}[direction]
+    arrow = {"up": "🟢 صعودی", "down": "🔴 نزولی", "flat": "⚪️ بدون تغییر"}.get(direction, "نامشخص")
     end_p = _fmt_price(end_price)
+    
     if direction == "flat":
-        result_line = f"نتیجه: <b>{arrow}</b> — این دور به‌دلیل عدم تغییر قیمت باطل شد و امتیازی اعطا نشد."
+        result_text = (
+            f"<b>نتیجه:</b> بدون تغییر\n"
+            f"<i>به دلیل ثابت ماندن قیمت، این دور باطل شده و امتیازی تعلق نمی‌گیرد.</i>"
+        )
     else:
-        result_line = f"نتیجه‌ی این دور: <b>{arrow}</b>"
+        result_text = f"<b>نتیجه:</b> {arrow}"
+
     return (
-        f"🥇 <b>دور #{rnd['id']} پیش‌بینی طلا  — پایان یافت ✅</b>\n\n"
-        f"💰 قیمت در شروع دور: <code>{start_p}</code>   →   در پایان: <code>{end_p}</code>\n"
-        f"{result_line}\n\n"
-        "📍 برای دیدن اینکه پیش‌بینی تو درست بوده یا نه، امتیاز کسب‌شده و رتبه‌ی "
-        "فعلیت، روی دکمه‌ی زیر بزن 👇"
+        f"{header}"
+        f"<blockquote>"
+        f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n"
+        f"💲 قیمت در زمان پایان: <code>{end_p}</code>\n"
+        f"</blockquote>"
+        f"{result_text}\n\n"
+        f"برای بررسی وضعیت پیش‌بینی، امتیاز کسب‌شده و رتبه فعلی خود، دکمه زیر را بزنید 👇"
     )
 
 
