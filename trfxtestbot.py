@@ -957,7 +957,7 @@ def build_round_text(rnd: dict, phase: str,
                      direction: Optional[str] = None) -> str:
     
     start_p = _fmt_price(rnd["start_price"])
-    header = f"<b>دور #{rnd['id']} | تورنومنت پیش‌بینی طلا</b>\n"
+    header = f"<b>دور #{rnd['id']} | تورنومنت پیش‌بینی طلا🏆</b>\n"
 
     if phase == "voting":
         vote_deadline_dt = datetime.fromisoformat(rnd["vote_deadline"])
@@ -970,14 +970,13 @@ def build_round_text(rnd: dict, phase: str,
         
         return (
             f"{header}"
-            f"<pre>"
+            f"<blockquote>"
             f"💲 قیمت در زمان شروع: <code>{start_p}</code>\n"
             f"🕒 زمان باقی‌مانده برای ثبت رأی: <code>{countdown}</code>\n"
-            f"🏁 زمان باقی‌مانده تا پایان دور: <code>{total_countdown}</code>\n\n"
-            f"</pre>"
+            f"🏁 زمان باقی‌مانده تا پایان دور: <code>{total_countdown}</code>\n"
+            f"</blockquote>"
             f"<b>پیش‌بینی شما از روند طلا تا پایان این دور چیست؟</b>\n"
-            f" پاداش پیش‌بینی درست: <b>{POINTS_PER_CORRECT} امتیاز🎁</b>\n"
-            f"<i>توجه: هر کاربر تنها یک‌بار امکان ثبت نظر دارد.</i>\n\n"
+            f" پاداش پیش‌بینی درست: <b>{POINTS_PER_CORRECT} امتیاز🎁</b>\n\n"
             f"گزینه مورد نظر خود را انتخاب کنید 👇"
         )
 
