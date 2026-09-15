@@ -637,9 +637,10 @@ class CloudStorage:
         """دریافت تنظیمات سیستم امتیاز خودکار"""
         with self._lock:
             return self._data.get("auto_score_settings", {
-                "min_percentage": 30,  # حداقل درصد فیک‌ها
-                "max_percentage": 70,  # حداکثر درصد فیک‌ها
-                "base_points": 200,     # امتیاز پایه (پیش‌بینی درست)
+                "min_percentage": 30,
+                "max_percentage": 70,
+                "base_points": 200,
+                "bonus_values": [20, 30, 40],  # ✅ جدید: امتیازهای رفرال قابل تنظیم
             })
     
     def update_auto_score_settings(self, settings: dict) -> bool:
@@ -649,50 +650,74 @@ class CloudStorage:
             self._dirty = True
             return True
     
+    # ---------- auto scheduler settings ----------
+    def get_scheduler_settings(self) -> dict:
+        """دریافت تنظیمات زمان‌بندی خودکار دورها"""
+        with self._lock:
+            return self._data.get("scheduler_settings", {
+                "hours": ["12:00", "18:00"],
+                "duration_min": 60,
+                "vote_minutes": 10,
+            })
+
+        def update_scheduler_settings(self, settings: dict) -> bool:
+            """به‌روزرسانی تنظیمات زمان‌بندی خودکار دورها"""
+            with self._lock:
+                self._data["scheduler_settings"] = settings
+                self._dirty = True
+                return True
+
+        def get_last_auto_round_date(self) -> Optional[str]:
+            """دریافت آخرین تاریخ+ساعت اجرای خودکار"""
+            with self._lock:
+                return self._data.get("last_auto_round")
+
+        def set_last_auto_round_date(self, date_hour_key: str):
+            """ثبت آخرین اجرای خودکار"""
+            with self._lock:
+                self._data["last_auto_round"] = date_hour_key
+                self._dirty = True
+
     def award_auto_score_to_fakes(self, base_points: int = 200) -> list:
         """
         اعطای امتیاز خودکار به فیک‌های انتخاب‌شده بعد از پایان دور
-        امتیاز = base_points (200) + ترکیبی رندوم از مراحل رفرال (20, 30, 40)
+        امتیاز = base_points + ترکیبی رندوم از مقادیر bonus قابل تنظیم
         """
         auto_ids = self.get_auto_fake_ids()
         if not auto_ids:
             return []
         
-        # دریافت تنظیمات
         settings = self.get_auto_score_settings()
         min_pct = settings.get("min_percentage", 30)
         max_pct = settings.get("max_percentage", 70)
+        bonus_values = settings.get("bonus_values", [20, 30, 40])  # ✅ استفاده از تنظیمات
         
-        # انتخاب درصد رندوم بین min و max
         percentage = random.uniform(min_pct, max_pct) / 100
         count_to_award = max(1, int(len(auto_ids) * percentage))
         selected_fakes = random.sample(auto_ids, min(count_to_award, len(auto_ids)))
-        
-        # لیست امتیازهای رفرال که ممکن است اضافه شوند
-        referral_bonuses = [0, 40, 0, 40, 80]  # هیچکدام، مرحله 1، مرحله 2، مرحله 3
         
         awarded = []
         with self._lock:
             for fid in selected_fakes:
                 fu = self._data.get("fake_users", {}).get(fid)
                 if fu:
-                    # انتخاب رندوم از امتیازهای رفرال (می‌تواند 0، 1، 2 یا 3 تا باشد)
+                    # انتخاب رندوم تعداد bonus
                     num_bonuses = random.choices([0, 1, 2, 3], weights=[40, 30, 20, 10])[0]
-                    selected_bonuses = random.sample(referral_bonuses[1:], num_bonuses) if num_bonuses > 0 else []
+                    num_bonuses = min(num_bonuses, len(bonus_values))  # ✅ محدود به تعداد bonus های موجود
+                    selected_bonuses = random.sample(bonus_values, num_bonuses) if num_bonuses > 0 else []
                     
-                    # محاسبه امتیاز کل
                     bonus_total = sum(selected_bonuses)
                     total_points = base_points + bonus_total
                     
-                    # اضافه کردن امتیاز
                     fu["points"] = fu.get("points", 0) + total_points
                     fu["total_points"] = fu.get("total_points", 0) + total_points
-                    fu["correct"] = fu.get("correct", 0) + 1  # افزایش تعداد پیش‌بینی‌های درست
+                    fu["correct"] = fu.get("correct", 0) + 1
                     
+                    bonus_str = "+".join([str(b) for b in selected_bonuses]) if selected_bonuses else "0"
                     awarded.append({
                         "name": fu.get("full_name", fid),
                         "points": total_points,
-                        "breakdown": f"{base_points}+{bonus_total}",
+                        "breakdown": f"{base_points}+{bonus_str}",
                     })
             
             self._dirty = True
@@ -703,7 +728,7 @@ class CloudStorage:
 cloud = CloudStorage()
 fake_referral_enabled = False  # وضعیت سیستم رشد خودکار فیک‌ها
 auto_score_enabled = False     # وضعیت سیستم امتیازدهی خودکار بعد از هر دور
-
+auto_scheduler_enabled = False  # وضعیت سیستم زمان‌بندی خودکار دورها
 # ══════════════════════════════════════════════════════════════════════
 # MEMBERSHIP CHECK  (عضویت اجباری)
 # ══════════════════════════════════════════════════════════════════════
@@ -800,6 +825,7 @@ def kb_back() -> InlineKeyboardMarkup:
 def kb_admin_main() -> InlineKeyboardMarkup:
     status_fake = "🟢 فعال" if fake_referral_enabled else "🔴 غیرفعال"
     status_score = "🟢 فعال" if auto_score_enabled else "🔴 غیرفعال"
+    status_scheduler = "🟢 فعال" if auto_scheduler_enabled else "🔴 غیرفعال"  # ✅ جدید
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="admin:users:0")],
         [InlineKeyboardButton("🤖 کاربران فیک", callback_data="admin:fakes:list")],
@@ -811,6 +837,9 @@ def kb_admin_main() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🎯 افزایش دستی امتیاز فیک‌ها", callback_data="admin:fake_auto:boost_prompt")],
         [InlineKeyboardButton(f"🏆 امتیاز خودکار بعد دور: {status_score}", callback_data="admin:auto_score:toggle")],
         [InlineKeyboardButton("⚙️ تنظیمات امتیاز خودکار", callback_data="admin:auto_score:settings")],
+        # ✅ دو دکمه جدید برای زمان‌بندی خودکار
+        [InlineKeyboardButton(f"⏰ زمان‌بندی خودکار دورها: {status_scheduler}", callback_data="admin:scheduler:toggle")],
+        [InlineKeyboardButton("🕐 تنظیم ساعات اجرای خودکار", callback_data="admin:scheduler:settings")],
         [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="menu:home")],
     ])
 
@@ -1944,28 +1973,65 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     if data == "admin:auto_score:settings":
         settings = cloud.get_auto_score_settings()
+        bonus_values = settings.get("bonus_values", [20, 30, 40])
+        bonus_str = ", ".join([str(b) for b in bonus_values])
         await q.answer()
         await q.edit_message_text(
             f"⚙️ <b>تنظیمات سیستم امتیاز خودکار</b>\n\n"
             f"📊 <b>تنظیمات فعلی:</b>\n"
             f"• حداقل درصد فیک‌ها: <b>{settings.get('min_percentage', 30)}%</b>\n"
             f"• حداکثر درصد فیک‌ها: <b>{settings.get('max_percentage', 70)}%</b>\n"
-            f"• امتیاز پایه (پیش‌بینی درست): <b>{settings.get('base_points', 200)}</b>\n\n"
+            f"• امتیاز پایه (پیش‌بینی درست): <b>{settings.get('base_points', 200)}</b>\n"
+            f"• مقادیر Bonus: <b>[{bonus_str}]</b>\n\n"
             f"💡 <b>نحوه کار:</b>\n"
-            f"بعد از پایان هر دور، سیستم به صورت رندوم بین <b>{settings.get('min_percentage', 30)}%</b> "
-            f"تا <b>{settings.get('max_percentage', 70)}%</b> از فیک‌های انتخاب‌شده را انتخاب می‌کند "
-            f"و به هر کدام امتیاز پایه (<b>{settings.get('base_points', 200)}</b>) + ترکیبی رندوم از "
-            f"امتیازهای رفرال (۲۰، ۳۰، ۴۰) اضافه می‌کند.\n\n"
-            f"📝 <b>برای تغییر تنظیمات:</b>\n"
-            f"به این شکل وارد کنید: <code>min max base</code>\n"
-            f"مثال: <code>40 80 200</code>\n"
-            f"(حداقل ۴۰٪، حداکثر ۸۰٪، امتیاز پایه ۲۰۰)\n\n"
+            f"بعد از هر دور، به فیک‌های انتخاب‌شده امتیاز پایه + "
+            f"ترکیبی رندوم از مقادیر Bonus اضافه می‌شود.\n\n"
+            f"📝 <b>فرمت ورودی جدید:</b>\n"
+            f"<code>min max base b1 b2 b3 ...</code>\n\n"
+            f"🔹 <b>مثال:</b> <code>40 80 200 20 30 40</code>\n"
+            f"   (حداقل ۴۰٪، حداکثر ۸۰٪، پایه ۲۰۰، بونوس‌های ۲۰/۳۰/۴۰)\n\n"
+            f"🔹 <b>مثال با ۴ بونوس:</b> <code>40 80 200 10 20 30 50</code>\n\n"
             f"❌ برای لغو <code>/cancel</code> بزنید.",
             parse_mode=ParseMode.HTML,
         )
         ctx.user_data["awaiting"] = "auto_score_settings"
         return
 
+    # ── سیستم زمان‌بندی خودکار دورها ─────────────────────────────
+    if data == "admin:scheduler:toggle":
+        global auto_scheduler_enabled
+        auto_scheduler_enabled = not auto_scheduler_enabled
+        status = "🟢 فعال شد" if auto_scheduler_enabled else "🔴 غیرفعال شد"
+        await q.answer(f"زمان‌بندی خودکار دورها {status}", show_alert=True)
+        await q.edit_message_text(
+            build_admin_panel_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        return
+
+    if data == "admin:scheduler:settings":
+        settings = cloud.get_scheduler_settings()
+        hours_str = ", ".join(settings.get("hours", ["12:00", "18:00"]))
+        await q.answer()
+        await q.edit_message_text(
+            f"🕐 <b>تنظیمات زمان‌بندی خودکار دورها</b>\n\n"
+            f"📅 <b>تنظیمات فعلی:</b>\n"
+            f"• ساعات اجرا: <b>{hours_str}</b>\n"
+            f"• مدت هر دور: <b>{settings.get('duration_min', 60)} دقیقه</b>\n"
+            f"• مدت رأی‌گیری: <b>{settings.get('vote_minutes', 10)} دقیقه</b>\n\n"
+            f"💡 <b>نکته:</b> ساعات به وقت ایران (۳:۳۰+) محاسبه می‌شوند.\n\n"
+            f"📝 <b>برای تغییر تنظیمات، به این فرمت وارد کنید:</b>\n"
+            f"<code>ساعت1,ساعت2,... مدت_دور مدت_رأی</code>\n\n"
+            f"🔹 <b>مثال ۱:</b> <code>12:00,18:00 60 10</code>\n"
+            f"   (دورهای ۱۲ ظهر و ۱۸ عصر)\n\n"
+            f"🔹 <b>مثال ۲:</b> <code>10:00,14:00,20:00 60 10</code>\n"
+            f"   (سه دور: ۱۰ صبح، ۲ ظهر، ۸ شب)\n\n"
+            f"❌ برای لغو <code>/cancel</code> بزنید.",
+            parse_mode=ParseMode.HTML,
+        )
+        ctx.user_data["awaiting"] = "scheduler_settings"
+        return
 
     # ── تنظیم امتیاز کاربر واقعی ─────────────────────────────────────
     if data.startswith("admin:setpts:"):
@@ -2218,12 +2284,12 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # تنظیمات سیستم امتیاز خودکار
     if awaiting == "auto_score_settings":
         parts = text_in.strip().split()
-        if len(parts) != 3:
+        if len(parts) < 3:
             await update.message.reply_text(
                 "⚠️ <b>فرمت نادرست!</b>\n\n"
-                "لطفاً به این شکل وارد کنید:\n"
-                "<code>min max base</code>\n\n"
-                "مثال: <code>40 80 200</code>",
+                "لطفاً حداقل به این شکل وارد کنید:\n"
+                "<code>min max base [b1 b2 b3 ...]</code>\n\n"
+                "مثال: <code>40 80 200 20 30 40</code>",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -2233,9 +2299,15 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             max_pct = int(parts[1])
             base_points = int(parts[2])
             
+            # مقادیر bonus (اختیاری)
+            if len(parts) > 3:
+                bonus_values = [int(p) for p in parts[3:]]
+            else:
+                bonus_values = [20, 30, 40]
+            
             if not (0 < min_pct <= max_pct <= 100):
                 await update.message.reply_text(
-                    "⚠️ مقادیر درصد باید بین ۰ تا ۱۰۰ باشند و min ≤ max باشد.",
+                    "⚠️ مقادیر درصد باید بین ۰ تا ۱۰۰ و min ≤ max باشد.",
                     parse_mode=ParseMode.HTML,
                 )
                 return
@@ -2243,40 +2315,119 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if base_points <= 0:
                 await update.message.reply_text("⚠️ امتیاز پایه باید بزرگتر از صفر باشد.")
                 return
+            
+            for b in bonus_values:
+                if b < 0:
+                    await update.message.reply_text("⚠️ مقادیر Bonus نباید منفی باشند.")
+                    return
         except ValueError:
             await update.message.reply_text(
                 "⚠️ لطفاً فقط اعداد صحیح وارد کنید.\n"
-                "مثال: <code>40 80 200</code>",
+                "مثال: <code>40 80 200 20 30 40</code>",
                 parse_mode=ParseMode.HTML,
             )
             return
         
         ctx.user_data.pop("awaiting", None)
         
-        # به‌روزرسانی تنظیمات
         settings = {
             "min_percentage": min_pct,
             "max_percentage": max_pct,
             "base_points": base_points,
+            "bonus_values": bonus_values,
         }
         cloud.update_auto_score_settings(settings)
         cloud.save(force=True)
         
+        bonus_str = ", ".join([str(b) for b in bonus_values])
         await update.message.reply_text(
             f"✅ <b>تنظیمات با موفقیت به‌روز شد!</b>\n\n"
             f"📊 <b>تنظیمات جدید:</b>\n"
             f"• حداقل درصد فیک‌ها: <b>{min_pct}%</b>\n"
             f"• حداکثر درصد فیک‌ها: <b>{max_pct}%</b>\n"
-            f"• امتیاز پایه: <b>{base_points}</b>\n\n"
-            f"💡 حالا بعد از هر دور، سیستم به صورت خودکار به فیک‌ها امتیاز می‌دهد.",
+            f"• امتیاز پایه: <b>{base_points}</b>\n"
+            f"• مقادیر Bonus: <b>[{bonus_str}]</b>\n\n"
+            f"💡 حالا بعد از هر دور، سیستم خودکار به فیک‌ها امتیاز می‌دهد.",
             parse_mode=ParseMode.HTML,
             reply_markup=kb_admin_main(),
         )
         
-        log.info(f"⚙️ تنظیمات امتیاز خودکار به‌روز شد: min={min_pct}%, max={max_pct}%, base={base_points}")
+        log.info(f"⚙️ Auto Score: min={min_pct}%, max={max_pct}%, base={base_points}, bonuses={bonus_values}")
         return
 
 
+    # تنظیمات زمان‌بندی خودکار دورها
+    if awaiting == "scheduler_settings":
+        # فرمت: "12:00,18:00 60 10"
+        parts = text_in.strip().split()
+        if len(parts) != 3:
+            await update.message.reply_text(
+                "⚠️ <b>فرمت نادرست!</b>\n\n"
+                "لطفاً به این شکل وارد کنید:\n"
+                "<code>ساعت1,ساعت2 مدت_دور مدت_رأی</code>\n\n"
+                "مثال: <code>12:00,18:00 60 10</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        
+        hours_str = parts[0]
+        hours = [h.strip() for h in hours_str.split(",") if h.strip()]
+        
+        valid_hours = []
+        for h in hours:
+            try:
+                hour, minute = h.split(":")
+                hour_i = int(hour)
+                minute_i = int(minute)
+                if 0 <= hour_i < 24 and 0 <= minute_i < 60:
+                    valid_hours.append(f"{hour_i:02d}:{minute_i:02d}")
+            except ValueError:
+                await update.message.reply_text(
+                    f"⚠️ فرمت ساعت نامعتبر: <code>{h}</code>\n"
+                    f"مثال صحیح: <code>12:00</code> یا <code>8:30</code>",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+        
+        if not valid_hours:
+            await update.message.reply_text("⚠️ حداقل یک ساعت معتبر وارد کنید.")
+            return
+        
+        try:
+            duration_min = int(parts[1])
+            vote_minutes = int(parts[2])
+            if duration_min < 1 or vote_minutes < 1 or vote_minutes > duration_min:
+                await update.message.reply_text(
+                    "⚠️ مقادیر باید مثبت باشند و مدت رأی‌گیری بیشتر از مدت دور نباشد.",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+        except ValueError:
+            await update.message.reply_text("⚠️ مقادیر مدت باید عدد صحیح باشند.")
+            return
+        
+        ctx.user_data.pop("awaiting", None)
+        
+        settings = {
+            "hours": sorted(list(set(valid_hours))),
+            "duration_min": duration_min,
+            "vote_minutes": vote_minutes,
+        }
+        cloud.update_scheduler_settings(settings)
+        cloud.save(force=True)
+        
+        hours_display = ", ".join(settings["hours"])
+        await update.message.reply_text(
+            f"✅ <b>تنظیمات زمان‌بندی با موفقیت به‌روز شد!</b>\n\n"
+            f"🕐 <b>ساعات اجرا:</b> {hours_display}\n"
+            f"⏱ <b>مدت هر دور:</b> {settings['duration_min']} دقیقه\n"
+            f"🗳 <b>مدت رأی‌گیری:</b> {settings['vote_minutes']} دقیقه\n\n"
+            f"💡 اگر زمان‌بندی فعال باشد، دورها خودکار شروع می‌شوند.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_admin_main(),
+        )
+        log.info(f"🕐 Scheduler: hours={settings['hours']}, dur={duration_min}min")
+        return
 
 
     # مرحله‌ی ۱ افزودن فیک — نام
@@ -2551,6 +2702,87 @@ async def autosave_loop(app: Application):
         except Exception as e:
             log.error(f"autosave_loop error: {e}")
 
+async def auto_scheduler_watcher(app: Application):
+    """اجرای خودکار دورها در ساعات تنظیم‌شده به وقت ایران"""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            
+            if not auto_scheduler_enabled:
+                continue
+            
+            # اگر دور فعالی وجود دارد، چیزی اجرا نکن
+            if cloud.get_active_round():
+                continue
+            
+            now = now_ir()
+            current_hour = f"{now.hour:02d}:{now.minute:02d}"
+            current_date_hour = f"{now.date().isoformat()}_{current_hour}"
+            
+            # اگر همین ساعت قبلاً اجرا شده، رد شو (جلوگیری از تکرار)
+            last_auto = cloud.get_last_auto_round_date()
+            if last_auto == current_date_hour:
+                continue
+            
+            settings = cloud.get_scheduler_settings()
+            scheduled_hours = settings.get("hours", [])
+            duration_min = settings.get("duration_min", 60)
+            vote_minutes = settings.get("vote_minutes", 10)
+            
+            if current_hour not in scheduled_hours:
+                continue
+            
+            # قیمت طلا را بگیر
+            price = get_gold_price(force=True)
+            if price is None:
+                log.warning(f"⚠️ Scheduler: قیمت طلا در دسترس نیست")
+                cloud.set_last_auto_round_date(current_date_hour)
+                cloud.save(force=True)
+                continue
+            
+            if not CHANNEL_ID:
+                log.warning("⚠️ Scheduler: CHANNEL_ID تنظیم نشده")
+                continue
+            
+            # ایجاد دور جدید
+            rnd = cloud.create_round(price, duration_min, CHANNEL_ID, 0, vote_minutes)
+            text = build_round_text(rnd, "voting")
+            markup = kb_round_voting(rnd["id"])
+            
+            try:
+                msg = await app.bot.send_message(
+                    chat_id=CHANNEL_ID,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=markup,
+                )
+                
+                with cloud._lock:
+                    cloud._data["active_round"]["message_id"] = msg.message_id
+                    cloud._data["active_round"]["_last_edit_text"] = text
+                    cloud._dirty = True
+                
+                cloud.set_last_auto_round_date(current_date_hour)
+                cloud.save(force=True)
+                
+                await _send_to_admins(app, (
+                    f"⏰ <b>دور خودکار #{rnd['id']} شروع شد</b>\n\n"
+                    f"🕐 زمان: {current_hour} به وقت ایران\n"
+                    f"💰 قیمت شروع: <code>{_fmt_price(price)}</code>\n"
+                    f"⏱ مدت: {duration_min} دقیقه | رأی‌گیری: {vote_minutes} دقیقه"
+                ))
+                log.info(f"⏰ Scheduler: دور #{rnd['id']} در {current_hour} شروع شد")
+                
+            except Exception as e:
+                cloud.cancel_active_round()
+                log.error(f"❌ Scheduler: خطا در ارسال: {e}")
+                cloud.set_last_auto_round_date(current_date_hour)
+                cloud.save(force=True)
+        
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.error(f"auto_scheduler_watcher error: {e}")
 
 async def on_startup(app: Application):
     global BOT_USERNAME
@@ -2563,6 +2795,7 @@ async def on_startup(app: Application):
     asyncio.create_task(weekly_reset_watcher(app))
     asyncio.create_task(fake_referral_watcher(app))
     asyncio.create_task(autosave_loop(app))
+    asyncio.create_task(auto_scheduler_watcher(app))
     log.info("Gold Prediction Bot v2 ready ✅")
 
 
