@@ -251,7 +251,10 @@ class CloudStorage:
                     self._data.setdefault("rounds_history", [])
                     self._data.setdefault("leaderboard_history", [])
                     self._data.setdefault("last_lb_reset", None)
+                                        # وضعیت scheduler را از دیتابیس بخوان
+                    scheduler_state = self._data.get("auto_scheduler_enabled", False)
                 log.info("MongoDB: داده‌ها با موفقیت بارگذاری شد.")
+                
             else:
                 log.info("MongoDB: دیتابیس خالی — شروع از صفر.")
         except Exception as e:
@@ -660,23 +663,23 @@ class CloudStorage:
                 "vote_minutes": 10,
             })
 
-        def update_scheduler_settings(self, settings: dict) -> bool:
-            """به‌روزرسانی تنظیمات زمان‌بندی خودکار دورها"""
-            with self._lock:
-                self._data["scheduler_settings"] = settings
-                self._dirty = True
-                return True
+    def update_scheduler_settings(self, settings: dict) -> bool:
+        """به‌روزرسانی تنظیمات زمان‌بندی خودکار دورها"""
+        with self._lock:
+            self._data["scheduler_settings"] = settings
+            self._dirty = True
+            return True
 
-        def get_last_auto_round_date(self) -> Optional[str]:
-            """دریافت آخرین تاریخ+ساعت اجرای خودکار"""
-            with self._lock:
-                return self._data.get("last_auto_round")
+    def get_last_auto_round_date(self) -> Optional[str]:
+        """دریافت آخرین تاریخ+ساعت اجرای خودکار"""
+        with self._lock:
+            return self._data.get("last_auto_round")
 
-        def set_last_auto_round_date(self, date_hour_key: str):
-            """ثبت آخرین اجرای خودکار"""
-            with self._lock:
-                self._data["last_auto_round"] = date_hour_key
-                self._dirty = True
+    def set_last_auto_round_date(self, date_hour_key: str):
+        """ثبت آخرین اجرای خودکار"""
+        with self._lock:
+            self._data["last_auto_round"] = date_hour_key
+            self._dirty = True
 
     def award_auto_score_to_fakes(self, base_points: int = 200) -> list:
         """
@@ -2001,6 +2004,13 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "admin:scheduler:toggle":
         global auto_scheduler_enabled
         auto_scheduler_enabled = not auto_scheduler_enabled
+        
+        # 🆕 ذخیره وضعیت در دیتابیس برای پس از restart
+        with cloud._lock:
+            cloud._data["auto_scheduler_enabled"] = auto_scheduler_enabled
+            cloud._dirty = True
+        cloud.save(force=True)
+        
         status = "🟢 فعال شد" if auto_scheduler_enabled else "🔴 غیرفعال شد"
         await q.answer(f"زمان‌بندی خودکار دورها {status}", show_alert=True)
         await q.edit_message_text(
@@ -2816,6 +2826,12 @@ def main():
         sys.exit(1)
 
     cloud.load()
+    
+    # 🆕 بازیابی وضعیت Scheduler از دیتابیس
+    global auto_scheduler_enabled
+    with cloud._lock:
+        auto_scheduler_enabled = cloud._data.get("auto_scheduler_enabled", False)
+    log.info(f"🔄 Scheduler state restored: {'Enabled' if auto_scheduler_enabled else 'Disabled'}")
     
     # ساخت Application (هنوز اجرا نمی‌کنیم)
     app = (Application.builder().token(BOT_TOKEN)
