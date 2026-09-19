@@ -861,7 +861,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "<b>Azadi VIP Trading Terminal</b>\n"
         "Server infrastructure, live signal engine and your private dashboard are fully operational.\n\n"
 
-        "داشبورد اختصاصی Azadi VIP👇🏻"
+        "داشبورد اختصاصی  (vpn برای بار اول حتما روشن)👇🏻"
     )
 
     await update.effective_message.reply_text(
