@@ -854,16 +854,14 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML, reply_markup=kb)
         return
     
-    rows = [[InlineKeyboardButton("💎 Enter VIP Dashboard 🕴️", web_app=WebAppInfo(url=WEBAPP_URL))]]
+    rows = [[InlineKeyboardButton(" VIP داشبورد 🕴️", web_app=WebAppInfo(url=WEBAPP_URL))]]
 
     text = (
         "🟢 <b>SYSTEM ONLINE</b>\n\n"
         "<b>Azadi VIP Trading Terminal</b>\n"
         "Server infrastructure, live signal engine and your private dashboard are fully operational.\n\n"
-        "⚡️ Real-time signal delivery\n"
-        "🔐 Encrypted, invite-only VIP channel\n"
-        "📊 Transparent, verified performance\n\n"
-        "Your dashboard is ready — tap below to enter."
+
+        "داشبورد اختصاصی Azadi VIP👇🏻"
     )
 
     await update.effective_message.reply_text(
