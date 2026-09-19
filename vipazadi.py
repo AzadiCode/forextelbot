@@ -36,7 +36,7 @@ log = logging.getLogger("AzadiVIP")
 # ══════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8710240249:AAH3e0apc50IvtkfH1F98D6DWahu-TRUWFw").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 MONGODB_URI = os.environ.get("MONGODB_URI", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://vebapp.onrender.com").strip().rstrip("/")
 API_HOST = os.environ.get("API_HOST", "0.0.0.0")
@@ -45,8 +45,8 @@ API_PORT = int(os.environ.get("PORT", os.environ.get("API_PORT", "8000")))
 _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554"))
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip().isdigit()}
 
-FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@testerrrrrfg")
-VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004450309103")
+FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@GoldLiveHunters")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1003988077931")
 
 def get_vip_channel_id_full() -> Optional[int]:
     """آیدی عددی کامل کانال VIP (با پیشوند -100) را برمی‌گرداند، یا None اگر نامعتبر باشد."""
