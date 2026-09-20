@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from functools import wraps
 import urllib.parse
+import re
 
 from flask import Flask, request, jsonify, g
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo
@@ -2158,6 +2159,13 @@ def _run_web_push(job: dict, subs: list, payload: dict):
         log.info(f"📱 Web push done: {job['web']['sent']} sent / {job['web']['failed']} failed")
 
 
+def _strip_html_tags(text: str) -> str:
+    """حذف تگ‌های HTML از متن، برای نمایش تمیز در نوتیف مرورگر (که HTML را رندر نمی‌کند)."""
+    if not text:
+        return ""
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
 async def _run_telegram_push(job: dict, bot, users: list, text: str, kb, media: Optional[dict] = None):
     """ارسال پیام تلگرام به لیست کاربران. اگر media داده شود (dict با type/bytes/filename)
     به‌جای متن ساده، عکس/ویدیو/فایل همراه با کپشن ارسال می‌شود. برای سرعت و پایداری،
@@ -2284,8 +2292,8 @@ def api_admin_send_push():
             return jsonify({"error": "فایل رسانه خالی است"}), 400
         media = {"type": media_type, "bytes": file_bytes, "filename": up_file.filename}
 
-    if not title or not body:
-        return jsonify({"error": "عنوان و متن لازم است"}), 400
+    if not body:
+        return jsonify({"error": "متن اعلان لازم است"}), 400
     if not (channels["web"] or channels["telegram"] or also_channel):
         return jsonify({"error": "حداقل یک روش ارسال را انتخاب کنید"}), 400
     if target not in ("all", "vip", "specific"):
@@ -2298,7 +2306,12 @@ def api_admin_send_push():
         return jsonify({"error": "کاربری برای دریافت اعلان یافت نشد"}), 404
     uid_set = {int(u["uid"]) for u in targets}
 
-    text = f"🔔 <b>{_html.escape(title)}</b>\n\n{_html.escape(body)}"
+    # متن تلگرام: قالب‌بندی HTML تلگرام (مثل <b>، <i>، <u>، <a>، <code>) همون‌طور که تایپ شده حفظ می‌شود.
+    # اگه عنوان خالی باشه، فقط خودِ متن اعلان (کامل) ارسال می‌شود؛ در غیر این صورت عنوان به‌صورت بولد بالای متن اضافه می‌شود.
+    text = f"🔔 <b>{title}</b>\n\n{body}" if title else body
+    # برای نوتیف مرورگر که HTML را رندر نمی‌کند، تگ‌ها حذف می‌شوند تا متن خام و تمیز نمایش داده شود.
+    web_title = _strip_html_tags(title) or "AZADI VIP"
+    web_body = _strip_html_tags(body)
     kb = None
     if with_link and WEBAPP_URL:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, web_app=WebAppInfo(url=WEBAPP_URL))]])
@@ -2319,7 +2332,7 @@ def api_admin_send_push():
                 job["web"]["note"] = "هیچ‌کدام از این کاربران نوتیف مرورگر را فعال نکرده‌اند"
                 _push_job_finish(job, "web")
             else:
-                payload = {"title": title, "body": body, "icon": icon, "url": WEBAPP_URL,
+                payload = {"title": web_title, "body": web_body, "icon": icon, "url": WEBAPP_URL,
                            "timestamp": int(time.time() * 1000)}
                 threading.Thread(target=_run_web_push, args=(job, subs, payload), daemon=True).start()
 
