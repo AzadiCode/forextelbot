@@ -2239,22 +2239,29 @@ async def _send_to_vip_channel(bot, text: str, kb, media: Optional[dict] = None)
     vip_id_full = get_vip_channel_id_full()
     if not vip_id_full:
         return {"sent": False, "error": "VIP_CHANNEL_ID تنظیم نشده"}
-    try:
-        if media:
-            field_name = media["type"]
-            send_fn = getattr(bot, {"photo": "send_photo", "video": "send_video", "document": "send_document"}[field_name])
-            kwargs = {field_name: BytesIO(media["bytes"]), "caption": text[:1024] if text else None,
-                      "parse_mode": ParseMode.HTML, "reply_markup": kb}
-            if field_name == "document":
-                kwargs["filename"] = media.get("filename") or "file"
-            await send_fn(chat_id=vip_id_full, **kwargs)
-        else:
-            await bot.send_message(chat_id=vip_id_full, text=text, parse_mode=ParseMode.HTML,
-                                    reply_markup=kb, disable_web_page_preview=True)
-        return {"sent": True, "error": None}
-    except Exception as e:
-        log.error(f"Send to VIP channel failed: {e}")
-        return {"sent": False, "error": str(e)[:120]}
+    last_err = ""
+    for markup in ((kb, None) if kb else (None,)):
+        try:
+            if media:
+                field_name = media["type"]
+                send_fn = getattr(bot, {"photo": "send_photo", "video": "send_video", "document": "send_document"}[field_name])
+                kwargs = {field_name: BytesIO(media["bytes"]), "caption": text[:1024] if text else None,
+                          "parse_mode": ParseMode.HTML, "reply_markup": markup}
+                if field_name == "document":
+                    kwargs["filename"] = media.get("filename") or "file"
+                await send_fn(chat_id=vip_id_full, **kwargs)
+            else:
+                await bot.send_message(chat_id=vip_id_full, text=text, parse_mode=ParseMode.HTML,
+                                        reply_markup=markup, disable_web_page_preview=True)
+            if markup is None and kb:
+                return {"sent": True, "error": "پست شد ولی بدون دکمه (دکمه توسط تلگرام رد شد: " + last_err[:80] + ")"}
+            return {"sent": True, "error": None}
+        except Exception as e:
+            last_err = str(e)
+            log.error(f"Send to VIP channel failed (button={'yes' if markup else 'no'}): {e}")
+            if not (markup is not None and "button" in last_err.lower()):
+                break                                  # خطای غیرمرتبط با دکمه → تلاش دوباره فایده ندارد
+    return {"sent": False, "error": last_err[:200]}
 
 
 @flask_app.post("/api/admin/push/send")
@@ -2315,6 +2322,12 @@ def api_admin_send_push():
     kb = None
     if with_link and WEBAPP_URL:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, web_app=WebAppInfo(url=WEBAPP_URL))]])
+    # دکمه‌ی web_app (مینی‌اپ) در کانال‌ها مجاز نیست و تلگرام BUTTON_TYPE_INVALID برمی‌گرداند؛
+    # برای پست کانال از دکمه‌ی لینک عادی استفاده می‌شود. (اختیاری: لینک t.me مینی‌اپ را در CHANNEL_BUTTON_URL بگذارید)
+    kb_channel = None
+    _ch_url = os.environ.get("CHANNEL_BUTTON_URL", "").strip() or WEBAPP_URL
+    if with_link and _ch_url:
+        kb_channel = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=_ch_url)]])
 
     bot, loop = get_bot(timeout=5) if (channels["telegram"] or also_channel) else (None, None)
 
@@ -2351,7 +2364,7 @@ def api_admin_send_push():
         if not bot or not loop:
             channel_result = {"sent": False, "error": "ربات هنوز آماده نیست"}
         else:
-            fut = asyncio.run_coroutine_threadsafe(_send_to_vip_channel(bot, text, kb, media), loop)
+            fut = asyncio.run_coroutine_threadsafe(_send_to_vip_channel(bot, text, kb_channel, media), loop)
             try:
                 channel_result = fut.result(timeout=30)
             except Exception as e:
