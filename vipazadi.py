@@ -18,7 +18,8 @@ import urllib.parse
 from flask import Flask, request, jsonify, g
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo
 from telegram.constants import ParseMode
-from telegram.error import BadRequest, Forbidden
+from telegram.error import BadRequest, Forbidden, RetryAfter
+import html as _html
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, MessageHandler, filters,
@@ -2073,61 +2074,296 @@ def _send_push_to_subscription(sub, payload):
         return False, str(e)
 
 
+# ══════════════════════════════════════════════════════════════════════
+# ارسال اعلان یکپارچه ادمین: نوتیف مرورگر (Web Push) + پیام در ربات تلگرام
+# ══════════════════════════════════════════════════════════════════════
+# ارسال در پس‌زمینه انجام می‌شود (درخواست HTTP معطل نمی‌ماند) و پنل ادمین پیشرفت را زنده می‌بیند.
+_push_jobs = {}
+_push_jobs_lock = threading.Lock()
+
+
+def _resolve_push_targets(target: str, user_ids) -> list:
+    """کاربران هدف بر اساس گزینه انتخابی. کاربران بلاک‌شده در حالت all/vip حذف می‌شوند."""
+    now = now_ir()
+    ids = set()
+    for x in (user_ids or []):
+        try: ids.add(int(x))
+        except Exception: pass
+    out = []
+    for u in storage.get_all_users():
+        uid = u.get("uid")
+        if uid is None:
+            continue
+        if target == "specific":
+            if int(uid) in ids:
+                out.append(u)
+            continue
+        if u.get("is_blocked"):
+            continue
+        if target == "vip":
+            try:
+                if u.get("vip_expiry") and datetime.fromisoformat(u["vip_expiry"]) > now:
+                    out.append(u)
+            except Exception:
+                pass
+        else:
+            out.append(u)
+    return out
+
+
+def _push_job_new(target: str, channels: dict) -> dict:
+    job_id = hashlib.md5(f"{time.time()}{target}".encode()).hexdigest()[:10]
+    job = {
+        "id": job_id, "created_at": now_ir().isoformat(), "target": target, "done": False,
+        "web": {"enabled": channels["web"], "total": 0, "sent": 0, "failed": 0, "done": not channels["web"], "note": ""},
+        "telegram": {"enabled": channels["telegram"], "total": 0, "sent": 0, "failed": 0, "blocked": 0,
+                     "done": not channels["telegram"], "note": ""},
+    }
+    with _push_jobs_lock:
+        _push_jobs[job_id] = job
+        while len(_push_jobs) > 20:
+            _push_jobs.pop(next(iter(_push_jobs)))
+    return job
+
+
+def _push_job_bump(job: dict, ch: str, key: str, n: int = 1):
+    with _push_jobs_lock:
+        job[ch][key] = job[ch].get(key, 0) + n
+
+
+def _push_job_finish(job: dict, ch: str):
+    with _push_jobs_lock:
+        job[ch]["done"] = True
+        job["done"] = job["web"]["done"] and job["telegram"]["done"]
+
+
+def _push_job_snapshot(job: dict) -> dict:
+    with _push_jobs_lock:
+        return json.loads(json.dumps(job))
+
+
+def _run_web_push(job: dict, subs: list, payload: dict):
+    try:
+        for sub in subs:
+            ok, _ = _send_push_to_subscription(
+                {"endpoint": sub.get("endpoint"), "keys": sub.get("keys", {})}, payload)
+            _push_job_bump(job, "web", "sent" if ok else "failed")
+            time.sleep(0.02)
+    except Exception as e:
+        log.error(f"Web push job error: {e}")
+        with _push_jobs_lock:
+            job["web"]["note"] = str(e)[:80]
+    finally:
+        _push_job_finish(job, "web")
+        log.info(f"📱 Web push done: {job['web']['sent']} sent / {job['web']['failed']} failed")
+
+
+async def _run_telegram_push(job: dict, bot, users: list, text: str, kb):
+    try:
+        for u in users:
+            try:
+                chat_id = int(u.get("uid"))
+            except Exception:
+                _push_job_bump(job, "telegram", "failed")
+                continue
+            attempts = 0
+            while True:
+                try:
+                    await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML,
+                                           reply_markup=kb, disable_web_page_preview=True)
+                    _push_job_bump(job, "telegram", "sent")
+                    break
+                except RetryAfter as e:          # محدودیت نرخ تلگرام: صبر و تلاش مجدد
+                    attempts += 1
+                    if attempts > 2:
+                        _push_job_bump(job, "telegram", "failed")
+                        break
+                    ra = getattr(e, "retry_after", 1)
+                    ra = ra.total_seconds() if hasattr(ra, "total_seconds") else float(ra)
+                    await asyncio.sleep(ra + 1)
+                except Forbidden:                 # کاربر ربات را بلاک کرده
+                    _push_job_bump(job, "telegram", "failed")
+                    _push_job_bump(job, "telegram", "blocked")
+                    break
+                except Exception as e:
+                    log.warning(f"Telegram push failed for {chat_id}: {str(e)[:80]}")
+                    _push_job_bump(job, "telegram", "failed")
+                    break
+            await asyncio.sleep(0.05)             # ~۲۰ پیام در ثانیه، زیر سقف تلگرام
+    except Exception as e:
+        log.error(f"Telegram push job error: {e}")
+        with _push_jobs_lock:
+            job["telegram"]["note"] = str(e)[:80]
+    finally:
+        _push_job_finish(job, "telegram")
+        log.info(f"✈️ Telegram push done: {job['telegram']['sent']} sent / {job['telegram']['failed']} failed")
+
+
 @flask_app.post("/api/admin/push/send")
 @admin_required
 def api_admin_send_push():
-    """ارسال Push Notification واقعی"""
-    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
-        return jsonify({"error": "VAPID keys تنظیم نشده‌اند"}), 500
-    
+    """ارسال اعلان به کاربران از هر دو مسیر (نوتیف مرورگر + ربات تلگرام) بر اساس گزینه انتخابی"""
     data = request.get_json(force=True) or {}
-    title = (data.get("title") or "").strip()
-    body = (data.get("body") or "").strip()
+    title = (data.get("title") or "").strip()[:100]
+    body = (data.get("body") or "").strip()[:1000]
     icon = data.get("icon", "chart")
     target = data.get("target", "all")
     user_ids = data.get("user_ids", [])
-    
+    with_link = bool(data.get("with_link", True))
+    ch_in = data.get("channels") or {}
+    channels = {"web": bool(ch_in.get("web", True)), "telegram": bool(ch_in.get("telegram", True))}
+
     if not title or not body:
         return jsonify({"error": "عنوان و متن لازم است"}), 400
-    
-    # گرفتن اشتراک‌ها
-    subscriptions = storage.get_all_push_subscriptions(target, user_ids)
-    
-    if not subscriptions:
-        return jsonify({"error": "هیچ کاربری اشتراک push فعال ندارد. کاربران باید WebApp را باز کرده و اجازه اعلان بدهند."}), 404
-    
-    payload = {
-        "title": title,
-        "body": body,
-        "icon": icon,
-        "url": WEBAPP_URL,
-        "timestamp": int(time.time() * 1000),
-    }
-    
-    # ارسال به همه
-    sent = 0
-    failed = 0
-    
-    for sub in subscriptions:
-        sub_info = {
-            "endpoint": sub.get("endpoint"),
-            "keys": sub.get("keys", {}),
-        }
-        success, _ = _send_push_to_subscription(sub_info, payload)
-        if success:
-            sent += 1
+    if not (channels["web"] or channels["telegram"]):
+        return jsonify({"error": "حداقل یک روش ارسال را انتخاب کنید"}), 400
+    if target not in ("all", "vip", "specific"):
+        return jsonify({"error": "target نامعتبر"}), 400
+    if target == "specific" and not user_ids:
+        return jsonify({"error": "حداقل یک کاربر انتخاب کنید"}), 400
+
+    targets = _resolve_push_targets(target, user_ids)
+    if not targets:
+        return jsonify({"error": "کاربری برای دریافت اعلان یافت نشد"}), 404
+    uid_set = {int(u["uid"]) for u in targets}
+
+    job = _push_job_new(target, channels)
+
+    # ── مسیر ۱: نوتیف مرورگر ──
+    if channels["web"]:
+        if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
+            job["web"]["note"] = "کلیدهای VAPID تنظیم نشده‌اند"
+            _push_job_finish(job, "web")
         else:
-            failed += 1
-        time.sleep(0.02)  # Rate limiting
-    
-    log.info(f"📱 Push sent: {sent} success, {failed} failed")
-    
-    return jsonify({
-        "message": f"📱 {sent} اعلان ارسال شد",
-        "sent": sent,
-        "failed": failed,
-        "total": len(subscriptions),
-    })
+            subs = [s for s in storage.get_all_push_subscriptions("all") if s.get("uid") in uid_set]
+            job["web"]["total"] = len(subs)
+            if not subs:
+                job["web"]["note"] = "هیچ‌کدام از این کاربران نوتیف مرورگر را فعال نکرده‌اند"
+                _push_job_finish(job, "web")
+            else:
+                payload = {"title": title, "body": body, "icon": icon, "url": WEBAPP_URL,
+                           "timestamp": int(time.time() * 1000)}
+                threading.Thread(target=_run_web_push, args=(job, subs, payload), daemon=True).start()
+
+    # ── مسیر ۲: پیام در ربات تلگرام ──
+    if channels["telegram"]:
+        bot, loop = get_bot(timeout=5)
+        if not bot or not loop:
+            job["telegram"]["note"] = "ربات هنوز آماده نیست"
+            _push_job_finish(job, "telegram")
+        else:
+            job["telegram"]["total"] = len(targets)
+            text = f"🔔 <b>{_html.escape(title)}</b>\n\n{_html.escape(body)}"
+            kb = None
+            if with_link and WEBAPP_URL:
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🌐 باز کردن پنل", web_app=WebAppInfo(url=WEBAPP_URL))]])
+            asyncio.run_coroutine_threadsafe(_run_telegram_push(job, bot, targets, text, kb), loop)
+
+    snap = _push_job_snapshot(job)
+    if snap["web"]["total"] == 0 and snap["telegram"]["total"] == 0:
+        notes = " | ".join(n for n in (snap["web"]["note"], snap["telegram"]["note"]) if n) or "ارسالی انجام نشد"
+        return jsonify({"error": notes}), 404
+
+    log.info(f"🔔 Admin push started: job={job['id']} target={target} web={snap['web']['total']} tg={snap['telegram']['total']}")
+    return jsonify({"job_id": job["id"], "job": snap, "recipients": len(targets)})
+
+
+@flask_app.get("/api/admin/push/job/<job_id>")
+@admin_required
+def api_admin_push_job(job_id):
+    with _push_jobs_lock:
+        job = _push_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "کار ارسال یافت نشد"}), 404
+    return jsonify(_push_job_snapshot(job))
+
+
+@flask_app.get("/api/admin/users/list")
+@admin_required
+def api_admin_users_list():
+    """لیست سبک کاربران برای انتخاب گیرنده‌ها (بدون فیلدهای حساس مثل توکن‌ها)"""
+    now = now_ir()
+    rows = []
+    for u in storage.get_all_users():
+        uid = u.get("uid")
+        if uid is None:
+            continue
+        is_vip = False
+        if u.get("vip_expiry"):
+            try: is_vip = datetime.fromisoformat(u["vip_expiry"]) > now
+            except Exception: pass
+        rows.append({"uid": uid, "full_name": u.get("full_name") or "",
+                     "username": u.get("username") or "", "is_vip": is_vip})
+    rows.sort(key=lambda r: (not r["is_vip"], (r["full_name"] or r["username"] or "").lower()))
+    return jsonify({"users": rows})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# PRESENCE — کاربران آنلاین (مینی‌اپ + مرورگر)
+# ══════════════════════════════════════════════════════════════════════
+# کلاینت هر ~۱۵ ثانیه (فقط وقتی صفحه دیده می‌شود) ping می‌زند؛ سرور هر کسی را که در ۳۵ ثانیه‌ی اخیر
+# ping داشته «آنلاین» می‌داند. با بستن/مخفی‌شدن صفحه، کلاینت بلافاصله offline می‌فرستد.
+# (برنامه تک‌پروسه است، پس نگهداری در حافظه کافی و بدون بار روی دیتابیس است.)
+PRESENCE_TTL = 35
+_presence = {}
+_presence_lock = threading.Lock()
+
+
+def _presence_platform() -> str:
+    if request.headers.get("X-Browser-Token") or request.headers.get("Authorization", "").startswith("Bearer "):
+        return "web"
+    return "tg"
+
+
+@flask_app.post("/api/presence/ping")
+@auth_required
+def api_presence_ping():
+    u = g.current_user
+    try:
+        uid = int(u["uid"])
+    except Exception:
+        return jsonify({"ok": False}), 400
+    data = request.get_json(silent=True) or {}
+    plat = _presence_platform()
+    now = time.time()
+    with _presence_lock:
+        ent = _presence.get(uid)
+        if data.get("offline"):
+            if ent:
+                ent[plat] = 0
+                if not (ent.get("tg") or ent.get("web")):
+                    _presence.pop(uid, None)
+        else:
+            if not ent:
+                ent = _presence[uid] = {"tg": 0, "web": 0}
+            ent[plat] = now
+            ent["name"] = (u.get("full_name") or "").strip()
+            ent["username"] = u.get("username") or ""
+            try:
+                ent["is_vip"] = bool(u.get("vip_expiry") and datetime.fromisoformat(u["vip_expiry"]) > now_ir())
+            except Exception:
+                ent["is_vip"] = False
+    return jsonify({"ok": True})
+
+
+@flask_app.get("/api/admin/online")
+@admin_required
+def api_admin_online():
+    now = time.time()
+    rows = []
+    n_tg = n_web = 0
+    with _presence_lock:
+        for uid, ent in list(_presence.items()):
+            plats = [p for p in ("tg", "web") if ent.get(p) and now - ent[p] <= PRESENCE_TTL]
+            if not plats:
+                _presence.pop(uid, None)
+                continue
+            n_tg += 1 if "tg" in plats else 0
+            n_web += 1 if "web" in plats else 0
+            rows.append({"uid": uid, "name": ent.get("name") or "", "username": ent.get("username") or "",
+                         "is_vip": bool(ent.get("is_vip")), "platforms": plats})
+    rows.sort(key=lambda r: (not r["is_vip"], (r["name"] or r["username"] or "").lower(), r["uid"]))
+    return jsonify({"count": len(rows), "telegram": n_tg, "web": n_web, "users": rows[:200]})
 
 
 @flask_app.get("/api/admin/push/stats")
