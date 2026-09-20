@@ -9,6 +9,7 @@ Azadi VIP Trading Bot — WebApp Edition
 from __future__ import annotations
 import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, signal, atexit
 import json
+from io import BytesIO
 from pywebpush import webpush, WebPushException
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -1952,6 +1953,147 @@ def api_admin_broadcast():
         "sent": sent,
         "failed": failed,
         "total": len(target_users),
+    })
+
+
+@flask_app.post("/api/admin/broadcast-media")
+@admin_required
+def api_admin_broadcast_media():
+    """ارسال همگانی همراه با فایل/عکس/ویدیو (multipart/form-data)
+    فیلدها: media (فایل), media_type ('photo'|'video'|'document'),
+    caption (متن), target ('all'|'vip'|'specific'|'channel'),
+    user_ids (JSON list, برای target=specific), also_channel ('1'/'0')
+    """
+    media_type = (request.form.get("media_type") or "photo").strip().lower()
+    caption = (request.form.get("caption") or "").strip()
+    target = (request.form.get("target") or "all").strip()
+    also_channel = (request.form.get("also_channel") or "0").strip() == "1"
+
+    try:
+        user_ids = json.loads(request.form.get("user_ids") or "[]")
+    except Exception:
+        user_ids = []
+
+    if media_type not in ("photo", "video", "document"):
+        return jsonify({"error": "media_type نامعتبر است"}), 400
+
+    up_file = request.files.get("media")
+    if not up_file or not up_file.filename:
+        return jsonify({"error": "فایل رسانه لازم است"}), 400
+
+    file_bytes = up_file.read()
+    if not file_bytes:
+        return jsonify({"error": "فایل خالی است"}), 400
+    filename = up_file.filename
+
+    bot, loop = get_bot(timeout=10)
+    if not bot or not loop:
+        return jsonify({"error": "ربات آماده نیست. لطفاً چند ثانیه صبر کنید"}), 503
+
+    all_users = storage.get_all_users()
+    target_users = []
+    if target == "all":
+        target_users = all_users
+    elif target == "vip":
+        now = now_ir()
+        for u in all_users:
+            if u.get("vip_expiry"):
+                try:
+                    exp = datetime.fromisoformat(u["vip_expiry"])
+                    if exp > now:
+                        target_users.append(u)
+                except: pass
+    elif target == "specific":
+        if not user_ids:
+            return jsonify({"error": "حداقل یک کاربر انتخاب کنید"}), 400
+        for u in all_users:
+            if u.get("uid") in user_ids:
+                target_users.append(u)
+    elif target == "channel":
+        target_users = []  # فقط کانال
+    else:
+        return jsonify({"error": "target نامعتبر"}), 400
+
+    if not target_users and target != "channel" and not also_channel:
+        return jsonify({"error": "هیچ کاربری برای ارسال یافت نشد"}), 404
+
+    sent = 0
+    failed = 0
+    channel_sent = False
+    channel_error = None
+
+    send_fn_name = {"photo": "send_photo", "video": "send_video", "document": "send_document"}[media_type]
+    field_name = media_type
+
+    async def send_all():
+        nonlocal sent, failed, channel_sent, channel_error
+        send_fn = getattr(bot, send_fn_name)
+        file_id_cache = None  # بعد از اولین ارسال موفق، file_id را کش می‌کنیم تا سریع‌تر و مطمئن‌تر باشد
+
+        # اول به کانال (در صورت درخواست) تا هم پیام در کانال باشد و هم file_id برای بقیه آماده شود
+        if also_channel or target == "channel":
+            vip_id_full = get_vip_channel_id_full()
+            if vip_id_full:
+                try:
+                    msg = await send_fn(
+                        chat_id=vip_id_full,
+                        **{field_name: BytesIO(file_bytes)},
+                        caption=caption or None,
+                        parse_mode=ParseMode.HTML,
+                        filename=filename if media_type == "document" else None,
+                    )
+                    channel_sent = True
+                    media_obj = getattr(msg, field_name, None)
+                    if media_type == "photo" and msg.photo:
+                        file_id_cache = msg.photo[-1].file_id
+                    elif media_obj is not None:
+                        file_id_cache = media_obj.file_id
+                except Exception as e:
+                    log.error(f"Broadcast media -> channel failed: {e}")
+                    channel_error = str(e)
+            else:
+                channel_error = "VIP_CHANNEL_ID تنظیم نشده"
+
+        for u in target_users:
+            uid = u.get("uid")
+            try:
+                media_arg = file_id_cache if file_id_cache else BytesIO(file_bytes)
+                msg = await send_fn(
+                    chat_id=uid,
+                    **{field_name: media_arg},
+                    caption=caption or None,
+                    parse_mode=ParseMode.HTML,
+                    filename=filename if (media_type == "document" and not file_id_cache) else None,
+                )
+                if not file_id_cache:
+                    if media_type == "photo" and msg.photo:
+                        file_id_cache = msg.photo[-1].file_id
+                    else:
+                        media_obj = getattr(msg, field_name, None)
+                        if media_obj is not None:
+                            file_id_cache = media_obj.file_id
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                log.error(f"Broadcast media failed for {uid}: {e}")
+                failed += 1
+
+    future = asyncio.run_coroutine_threadsafe(send_all(), loop)
+    try:
+        future.result(timeout=180)
+    except Exception as e:
+        log.error(f"Broadcast media timeout: {e}")
+        return jsonify({"error": f"Timeout: {str(e)}"}), 500
+
+    log.info(f"📢 Broadcast media: {sent} sent, {failed} failed, target={target}, channel_sent={channel_sent}")
+
+    return jsonify({
+        "message": f"ارسال انجام شد: {sent} موفق، {failed} ناموفق" + (" | کانال: ✅" if channel_sent else (f" | کانال: ❌ {channel_error}" if channel_error else "")),
+        "sent": sent,
+        "failed": failed,
+        "total": len(target_users),
+        "channel_sent": channel_sent,
+        "channel_error": channel_error,
     })
 
 
