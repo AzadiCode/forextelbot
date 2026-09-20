@@ -49,7 +49,7 @@ _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554")
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip().isdigit()}
 
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@GoldLiveHunters")
-VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004296206176")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1003988077931", "-1004296206176")
 
 def get_vip_channel_id_full() -> Optional[int]:
     """آیدی عددی کامل کانال VIP (با پیشوند -100) را برمی‌گرداند، یا None اگر نامعتبر باشد."""
@@ -2234,11 +2234,21 @@ async def _run_telegram_push(job: dict, bot, users: list, text: str, kb, media: 
         log.info(f"✈️ Telegram push done: {job['telegram']['sent']} sent / {job['telegram']['failed']} failed")
 
 
-async def _send_to_vip_channel(bot, text: str, kb, media: Optional[dict] = None) -> dict:
+async def _send_to_vip_channel(bot, text: str, button_text: Optional[str], media: Optional[dict] = None) -> dict:
     """ارسال یک اطلاعیه/رسانه به کانال VIP. برای پست تکی در کانال، جدا از حلقه‌ی کاربران انجام می‌شود."""
     vip_id_full = get_vip_channel_id_full()
     if not vip_id_full:
         return {"sent": False, "error": "VIP_CHANNEL_ID تنظیم نشده"}
+    # دکمه‌ی web_app در کانال‌ها مجاز نیست؛ به‌جایش دکمه‌ی لینک عمیق ربات: با زدن آن ربات استارت می‌شود
+    # و پیام /start همراه دکمه‌ی «داشبورد VIP» (مینی‌اپ) نمایش داده می‌شود. یوزرنیم ربات خودکار خوانده می‌شود.
+    kb = None
+    if button_text:
+        try:
+            uname = os.environ.get("BOT_USERNAME", "").strip().lstrip("@") or (await bot.get_me()).username
+            if uname:
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=f"https://t.me/{uname}?start=dashboard")]])
+        except Exception as e:
+            log.warning(f"Could not build channel button: {e}")
     last_err = ""
     for markup in ((kb, None) if kb else (None,)):
         try:
@@ -2322,12 +2332,6 @@ def api_admin_send_push():
     kb = None
     if with_link and WEBAPP_URL:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, web_app=WebAppInfo(url=WEBAPP_URL))]])
-    # دکمه‌ی web_app (مینی‌اپ) در کانال‌ها مجاز نیست و تلگرام BUTTON_TYPE_INVALID برمی‌گرداند؛
-    # برای پست کانال از دکمه‌ی لینک عادی استفاده می‌شود. (اختیاری: لینک t.me مینی‌اپ را در CHANNEL_BUTTON_URL بگذارید)
-    kb_channel = None
-    _ch_url = os.environ.get("CHANNEL_BUTTON_URL", "").strip() or WEBAPP_URL
-    if with_link and _ch_url:
-        kb_channel = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=_ch_url)]])
 
     bot, loop = get_bot(timeout=5) if (channels["telegram"] or also_channel) else (None, None)
 
@@ -2364,7 +2368,7 @@ def api_admin_send_push():
         if not bot or not loop:
             channel_result = {"sent": False, "error": "ربات هنوز آماده نیست"}
         else:
-            fut = asyncio.run_coroutine_threadsafe(_send_to_vip_channel(bot, text, kb_channel, media), loop)
+            fut = asyncio.run_coroutine_threadsafe(_send_to_vip_channel(bot, text, (button_text if (with_link and WEBAPP_URL) else None), media), loop)
             try:
                 channel_result = fut.result(timeout=30)
             except Exception as e:
