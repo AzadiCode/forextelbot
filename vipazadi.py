@@ -49,7 +49,7 @@ _admin_raw = os.environ.get("ADMIN_IDS", os.environ.get("ADMIN_ID", "605611554")
 ADMIN_IDS = {int(x) for x in _admin_raw.replace(" ", "").split(",") if x.strip().isdigit()}
 
 FORCE_JOIN_CHANNEL = os.environ.get("FORCE_JOIN_CHANNEL", "@GoldLiveHunters")
-VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1004296206176")
+VIP_CHANNEL_ID = os.environ.get("VIP_CHANNEL_ID", "-1003988077931")
 
 def get_vip_channel_id_full() -> Optional[int]:
     """آیدی عددی کامل کانال VIP (با پیشوند -100) را برمی‌گرداند، یا None اگر نامعتبر باشد."""
