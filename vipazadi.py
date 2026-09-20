@@ -1956,147 +1956,6 @@ def api_admin_broadcast():
     })
 
 
-@flask_app.post("/api/admin/broadcast-media")
-@admin_required
-def api_admin_broadcast_media():
-    """ارسال همگانی همراه با فایل/عکس/ویدیو (multipart/form-data)
-    فیلدها: media (فایل), media_type ('photo'|'video'|'document'),
-    caption (متن), target ('all'|'vip'|'specific'|'channel'),
-    user_ids (JSON list, برای target=specific), also_channel ('1'/'0')
-    """
-    media_type = (request.form.get("media_type") or "photo").strip().lower()
-    caption = (request.form.get("caption") or "").strip()
-    target = (request.form.get("target") or "all").strip()
-    also_channel = (request.form.get("also_channel") or "0").strip() == "1"
-
-    try:
-        user_ids = json.loads(request.form.get("user_ids") or "[]")
-    except Exception:
-        user_ids = []
-
-    if media_type not in ("photo", "video", "document"):
-        return jsonify({"error": "media_type نامعتبر است"}), 400
-
-    up_file = request.files.get("media")
-    if not up_file or not up_file.filename:
-        return jsonify({"error": "فایل رسانه لازم است"}), 400
-
-    file_bytes = up_file.read()
-    if not file_bytes:
-        return jsonify({"error": "فایل خالی است"}), 400
-    filename = up_file.filename
-
-    bot, loop = get_bot(timeout=10)
-    if not bot or not loop:
-        return jsonify({"error": "ربات آماده نیست. لطفاً چند ثانیه صبر کنید"}), 503
-
-    all_users = storage.get_all_users()
-    target_users = []
-    if target == "all":
-        target_users = all_users
-    elif target == "vip":
-        now = now_ir()
-        for u in all_users:
-            if u.get("vip_expiry"):
-                try:
-                    exp = datetime.fromisoformat(u["vip_expiry"])
-                    if exp > now:
-                        target_users.append(u)
-                except: pass
-    elif target == "specific":
-        if not user_ids:
-            return jsonify({"error": "حداقل یک کاربر انتخاب کنید"}), 400
-        for u in all_users:
-            if u.get("uid") in user_ids:
-                target_users.append(u)
-    elif target == "channel":
-        target_users = []  # فقط کانال
-    else:
-        return jsonify({"error": "target نامعتبر"}), 400
-
-    if not target_users and target != "channel" and not also_channel:
-        return jsonify({"error": "هیچ کاربری برای ارسال یافت نشد"}), 404
-
-    sent = 0
-    failed = 0
-    channel_sent = False
-    channel_error = None
-
-    send_fn_name = {"photo": "send_photo", "video": "send_video", "document": "send_document"}[media_type]
-    field_name = media_type
-
-    async def send_all():
-        nonlocal sent, failed, channel_sent, channel_error
-        send_fn = getattr(bot, send_fn_name)
-        file_id_cache = None  # بعد از اولین ارسال موفق، file_id را کش می‌کنیم تا سریع‌تر و مطمئن‌تر باشد
-
-        # اول به کانال (در صورت درخواست) تا هم پیام در کانال باشد و هم file_id برای بقیه آماده شود
-        if also_channel or target == "channel":
-            vip_id_full = get_vip_channel_id_full()
-            if vip_id_full:
-                try:
-                    msg = await send_fn(
-                        chat_id=vip_id_full,
-                        **{field_name: BytesIO(file_bytes)},
-                        caption=caption or None,
-                        parse_mode=ParseMode.HTML,
-                        filename=filename if media_type == "document" else None,
-                    )
-                    channel_sent = True
-                    media_obj = getattr(msg, field_name, None)
-                    if media_type == "photo" and msg.photo:
-                        file_id_cache = msg.photo[-1].file_id
-                    elif media_obj is not None:
-                        file_id_cache = media_obj.file_id
-                except Exception as e:
-                    log.error(f"Broadcast media -> channel failed: {e}")
-                    channel_error = str(e)
-            else:
-                channel_error = "VIP_CHANNEL_ID تنظیم نشده"
-
-        for u in target_users:
-            uid = u.get("uid")
-            try:
-                media_arg = file_id_cache if file_id_cache else BytesIO(file_bytes)
-                msg = await send_fn(
-                    chat_id=uid,
-                    **{field_name: media_arg},
-                    caption=caption or None,
-                    parse_mode=ParseMode.HTML,
-                    filename=filename if (media_type == "document" and not file_id_cache) else None,
-                )
-                if not file_id_cache:
-                    if media_type == "photo" and msg.photo:
-                        file_id_cache = msg.photo[-1].file_id
-                    else:
-                        media_obj = getattr(msg, field_name, None)
-                        if media_obj is not None:
-                            file_id_cache = media_obj.file_id
-                sent += 1
-                await asyncio.sleep(0.05)
-            except Exception as e:
-                log.error(f"Broadcast media failed for {uid}: {e}")
-                failed += 1
-
-    future = asyncio.run_coroutine_threadsafe(send_all(), loop)
-    try:
-        future.result(timeout=180)
-    except Exception as e:
-        log.error(f"Broadcast media timeout: {e}")
-        return jsonify({"error": f"Timeout: {str(e)}"}), 500
-
-    log.info(f"📢 Broadcast media: {sent} sent, {failed} failed, target={target}, channel_sent={channel_sent}")
-
-    return jsonify({
-        "message": f"ارسال انجام شد: {sent} موفق، {failed} ناموفق" + (" | کانال: ✅" if channel_sent else (f" | کانال: ❌ {channel_error}" if channel_error else "")),
-        "sent": sent,
-        "failed": failed,
-        "total": len(target_users),
-        "channel_sent": channel_sent,
-        "channel_error": channel_error,
-    })
-
-
 @flask_app.post("/api/admin/users/<int:uid>/message")
 @admin_required
 def api_admin_send_to_user(uid):
@@ -2299,7 +2158,19 @@ def _run_web_push(job: dict, subs: list, payload: dict):
         log.info(f"📱 Web push done: {job['web']['sent']} sent / {job['web']['failed']} failed")
 
 
-async def _run_telegram_push(job: dict, bot, users: list, text: str, kb):
+async def _run_telegram_push(job: dict, bot, users: list, text: str, kb, media: Optional[dict] = None):
+    """ارسال پیام تلگرام به لیست کاربران. اگر media داده شود (dict با type/bytes/filename)
+    به‌جای متن ساده، عکس/ویدیو/فایل همراه با کپشن ارسال می‌شود. برای سرعت و پایداری،
+    بعد از اولین ارسال موفق، file_id تلگرام کش می‌شود و برای بقیه کاربران دوباره آپلود نمی‌شود."""
+    send_fn = None
+    field_name = None
+    file_id_cache = None
+    caption = None
+    if media:
+        field_name = media["type"]  # 'photo' | 'video' | 'document'
+        send_fn = getattr(bot, {"photo": "send_photo", "video": "send_video", "document": "send_document"}[field_name])
+        caption = text[:1024] if text else None
+
     try:
         for u in users:
             try:
@@ -2310,8 +2181,23 @@ async def _run_telegram_push(job: dict, bot, users: list, text: str, kb):
             attempts = 0
             while True:
                 try:
-                    await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML,
-                                           reply_markup=kb, disable_web_page_preview=True)
+                    if media:
+                        media_arg = file_id_cache if file_id_cache else BytesIO(media["bytes"])
+                        kwargs = {field_name: media_arg, "caption": caption, "parse_mode": ParseMode.HTML,
+                                  "reply_markup": kb}
+                        if field_name == "document" and not file_id_cache:
+                            kwargs["filename"] = media.get("filename") or "file"
+                        msg = await send_fn(chat_id=chat_id, **kwargs)
+                        if not file_id_cache:
+                            if field_name == "photo" and msg.photo:
+                                file_id_cache = msg.photo[-1].file_id
+                            else:
+                                media_obj = getattr(msg, field_name, None)
+                                if media_obj is not None:
+                                    file_id_cache = media_obj.file_id
+                    else:
+                        await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML,
+                                               reply_markup=kb, disable_web_page_preview=True)
                     _push_job_bump(job, "telegram", "sent")
                     break
                 except RetryAfter as e:          # محدودیت نرخ تلگرام: صبر و تلاش مجدد
@@ -2340,37 +2226,88 @@ async def _run_telegram_push(job: dict, bot, users: list, text: str, kb):
         log.info(f"✈️ Telegram push done: {job['telegram']['sent']} sent / {job['telegram']['failed']} failed")
 
 
+async def _send_to_vip_channel(bot, text: str, kb, media: Optional[dict] = None) -> dict:
+    """ارسال یک اطلاعیه/رسانه به کانال VIP. برای پست تکی در کانال، جدا از حلقه‌ی کاربران انجام می‌شود."""
+    vip_id_full = get_vip_channel_id_full()
+    if not vip_id_full:
+        return {"sent": False, "error": "VIP_CHANNEL_ID تنظیم نشده"}
+    try:
+        if media:
+            field_name = media["type"]
+            send_fn = getattr(bot, {"photo": "send_photo", "video": "send_video", "document": "send_document"}[field_name])
+            kwargs = {field_name: BytesIO(media["bytes"]), "caption": text[:1024] if text else None,
+                      "parse_mode": ParseMode.HTML, "reply_markup": kb}
+            if field_name == "document":
+                kwargs["filename"] = media.get("filename") or "file"
+            await send_fn(chat_id=vip_id_full, **kwargs)
+        else:
+            await bot.send_message(chat_id=vip_id_full, text=text, parse_mode=ParseMode.HTML,
+                                    reply_markup=kb, disable_web_page_preview=True)
+        return {"sent": True, "error": None}
+    except Exception as e:
+        log.error(f"Send to VIP channel failed: {e}")
+        return {"sent": False, "error": str(e)[:120]}
+
+
 @flask_app.post("/api/admin/push/send")
 @admin_required
 def api_admin_send_push():
-    """ارسال اعلان به کاربران از هر دو مسیر (نوتیف مرورگر + ربات تلگرام) بر اساس گزینه انتخابی"""
-    data = request.get_json(force=True) or {}
-    title = (data.get("title") or "").strip()[:100]
-    body = (data.get("body") or "").strip()[:1000]
-    icon = data.get("icon", "chart")
-    target = data.get("target", "all")
-    user_ids = data.get("user_ids", [])
-    with_link = bool(data.get("with_link", True))
-    ch_in = data.get("channels") or {}
-    channels = {"web": bool(ch_in.get("web", True)), "telegram": bool(ch_in.get("telegram", True))}
+    """ارسال اعلان به کاربران از هر مسیر انتخابی: نوتیف مرورگر + پیام/رسانه در ربات تلگرام + پست در کانال VIP.
+    multipart/form-data: title, body, icon, target, user_ids(JSON), with_link('1'/'0'), button_text,
+    channels_web('1'/'0'), channels_telegram('1'/'0'), also_channel('1'/'0'),
+    media_type('photo'|'video'|'document', اختیاری), media(فایل، اختیاری)"""
+    form = request.form
+    title = (form.get("title") or "").strip()[:100]
+    body = (form.get("body") or "").strip()[:1000]
+    icon = form.get("icon", "chart")
+    target = form.get("target", "all")
+    try:
+        user_ids = json.loads(form.get("user_ids") or "[]")
+    except Exception:
+        user_ids = []
+    with_link = (form.get("with_link") or "0") == "1"
+    button_text = (form.get("button_text") or "").strip()[:64] or "🏆 داشبورد VIP"
+    also_channel = (form.get("also_channel") or "0") == "1"
+    channels = {
+        "web": (form.get("channels_web") or "0") == "1",
+        "telegram": (form.get("channels_telegram") or "0") == "1",
+    }
+
+    media = None
+    media_type = (form.get("media_type") or "").strip().lower()
+    up_file = request.files.get("media")
+    if up_file and up_file.filename:
+        if media_type not in ("photo", "video", "document"):
+            return jsonify({"error": "نوع رسانه نامعتبر است"}), 400
+        file_bytes = up_file.read()
+        if not file_bytes:
+            return jsonify({"error": "فایل رسانه خالی است"}), 400
+        media = {"type": media_type, "bytes": file_bytes, "filename": up_file.filename}
 
     if not title or not body:
         return jsonify({"error": "عنوان و متن لازم است"}), 400
-    if not (channels["web"] or channels["telegram"]):
+    if not (channels["web"] or channels["telegram"] or also_channel):
         return jsonify({"error": "حداقل یک روش ارسال را انتخاب کنید"}), 400
     if target not in ("all", "vip", "specific"):
         return jsonify({"error": "target نامعتبر"}), 400
     if target == "specific" and not user_ids:
         return jsonify({"error": "حداقل یک کاربر انتخاب کنید"}), 400
 
-    targets = _resolve_push_targets(target, user_ids)
-    if not targets:
+    targets = _resolve_push_targets(target, user_ids) if (channels["web"] or channels["telegram"]) else []
+    if (channels["web"] or channels["telegram"]) and not targets:
         return jsonify({"error": "کاربری برای دریافت اعلان یافت نشد"}), 404
     uid_set = {int(u["uid"]) for u in targets}
 
+    text = f"🔔 <b>{_html.escape(title)}</b>\n\n{_html.escape(body)}"
+    kb = None
+    if with_link and WEBAPP_URL:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, web_app=WebAppInfo(url=WEBAPP_URL))]])
+
+    bot, loop = get_bot(timeout=5) if (channels["telegram"] or also_channel) else (None, None)
+
     job = _push_job_new(target, channels)
 
-    # ── مسیر ۱: نوتیف مرورگر ──
+    # ── مسیر ۱: نوتیف مرورگر (فقط متن؛ رسانه در نوتیف مرورگر پشتیبانی نمی‌شود) ──
     if channels["web"]:
         if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
             job["web"]["note"] = "کلیدهای VAPID تنظیم نشده‌اند"
@@ -2386,27 +2323,35 @@ def api_admin_send_push():
                            "timestamp": int(time.time() * 1000)}
                 threading.Thread(target=_run_web_push, args=(job, subs, payload), daemon=True).start()
 
-    # ── مسیر ۲: پیام در ربات تلگرام ──
+    # ── مسیر ۲: پیام/رسانه در ربات تلگرام ──
     if channels["telegram"]:
-        bot, loop = get_bot(timeout=5)
         if not bot or not loop:
             job["telegram"]["note"] = "ربات هنوز آماده نیست"
             _push_job_finish(job, "telegram")
         else:
             job["telegram"]["total"] = len(targets)
-            text = f"🔔 <b>{_html.escape(title)}</b>\n\n{_html.escape(body)}"
-            kb = None
-            if with_link and WEBAPP_URL:
-                kb = InlineKeyboardMarkup([[InlineKeyboardButton("🌐 باز کردن پنل", web_app=WebAppInfo(url=WEBAPP_URL))]])
-            asyncio.run_coroutine_threadsafe(_run_telegram_push(job, bot, targets, text, kb), loop)
+            asyncio.run_coroutine_threadsafe(_run_telegram_push(job, bot, targets, text, kb, media), loop)
+
+    # ── مسیر ۳: پست در کانال VIP (تکی، همزمان با درخواست) ──
+    channel_result = None
+    if also_channel:
+        if not bot or not loop:
+            channel_result = {"sent": False, "error": "ربات هنوز آماده نیست"}
+        else:
+            fut = asyncio.run_coroutine_threadsafe(_send_to_vip_channel(bot, text, kb, media), loop)
+            try:
+                channel_result = fut.result(timeout=30)
+            except Exception as e:
+                channel_result = {"sent": False, "error": str(e)[:120]}
 
     snap = _push_job_snapshot(job)
-    if snap["web"]["total"] == 0 and snap["telegram"]["total"] == 0:
+    if snap["web"]["total"] == 0 and snap["telegram"]["total"] == 0 and not (also_channel and channel_result and channel_result.get("sent")):
         notes = " | ".join(n for n in (snap["web"]["note"], snap["telegram"]["note"]) if n) or "ارسالی انجام نشد"
-        return jsonify({"error": notes}), 404
+        if not also_channel:
+            return jsonify({"error": notes}), 404
 
-    log.info(f"🔔 Admin push started: job={job['id']} target={target} web={snap['web']['total']} tg={snap['telegram']['total']}")
-    return jsonify({"job_id": job["id"], "job": snap, "recipients": len(targets)})
+    log.info(f"🔔 Admin push started: job={job['id']} target={target} web={snap['web']['total']} tg={snap['telegram']['total']} channel={channel_result}")
+    return jsonify({"job_id": job["id"], "job": snap, "recipients": len(targets), "channel": channel_result})
 
 
 @flask_app.get("/api/admin/push/job/<job_id>")
