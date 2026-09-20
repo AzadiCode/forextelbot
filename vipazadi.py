@@ -772,8 +772,9 @@ def is_first_membership(user: dict) -> bool:
 def promo_state_for(user: dict) -> dict:
     promo = storage.get_promo()
     left = promo_seconds_left(promo)
-    eligible = is_first_membership(user)
-    live = bool(promo["active"]) and left > 0 and eligible
+    # جشنواره برای همه کاربران (چه اشتراک داشته باشند چه نه) در بازه‌ی فعال قابل استفاده است
+    eligible = True
+    live = bool(promo["active"]) and left > 0
     return {
         "active": bool(promo["active"]),
         "percent": DISCOUNT_PERCENT,
@@ -1352,7 +1353,7 @@ def api_plans():
                 "features": ["دسترسی 30 روز اشتراک پرمیوم هوشمند", "تمام امکانات پرمیوم", "پشتیبانی اختصاصی"]
             }
         ],
-        # کد تخفیف فقط وقتی جشنواره فعال/در بازه/اولین عضویت باشد برمی‌گردد
+        # کد تخفیف فقط وقتی جشنواره فعال و در بازه‌ی زمانی باشد برمی‌گردد
         "discount_code": _promo["code"] if _promo_live else None,
         "discount_percent": DISCOUNT_PERCENT if _promo_live else 0,
         "payment_info": PAYMENT_INFO,
@@ -1392,14 +1393,12 @@ def api_apply_discount():
     if not DISCOUNT_CODE or code != DISCOUNT_CODE:
         return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
 
-    # ✅ کد تخفیف فقط در طول جشنواره‌ی فعال و فقط برای اولین عضویت معتبر است
+    # ✅ کد تخفیف در طول جشنواره‌ی فعال برای همه‌ی کاربران معتبر است
     promo = promo_state_for(g.current_user)
     if not promo["active"]:
         return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
     if promo["seconds_left"] <= 0:
         return jsonify({"error": "زمان جشنواره به پایان رسیده است"}), 400
-    if not promo["eligible"]:
-        return jsonify({"error": "این تخفیف فقط برای اولین عضویت است"}), 400
     
     payment_id = data.get("payment_id")
     if not payment_id:
