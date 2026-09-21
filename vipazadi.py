@@ -27,6 +27,7 @@ from telegram.ext import (
     ContextTypes, MessageHandler, filters,
 )
 from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -72,6 +73,33 @@ DISCOUNT_PERCENT = float(os.environ.get("DISCOUNT_PERCENT", "30"))
 PROMO_HOURS = float(os.environ.get("PROMO_HOURS", "24"))
 # پلنی که کد جشنواره فقط روی آن کار می‌کند
 PROMO_PLAN = "monthly"
+
+# ══════════════════════════════════════════════════════════════════════
+# اعلان‌ها — هر اعلان برای هر کاربر حداکثر NOTIF_MAX_ALERTS بار هشدار می‌دهد
+# ══════════════════════════════════════════════════════════════════════
+NOTIF_MAX_ALERTS  = max(1, int(os.environ.get("NOTIF_MAX_ALERTS", "3")))    # سقف تعداد هشدار برای هر سیگنال/پست
+NOTIF_MIN_GAP_SEC = max(0, int(os.environ.get("NOTIF_MIN_GAP_SEC", "60")))  # حداقل فاصله‌ی دو هشدار پشت‌سرهم (ثانیه)
+NOTIF_MAX_AGE_MIN = max(1, int(os.environ.get("NOTIF_MAX_AGE_MIN", "30")))  # اعلان قدیمی‌تر از این (دقیقه) دیگر هشدار نمی‌دهد
+SIGNAL_DEDUP_TTL  = 600   # همان متن/آلبوم/آپدیت تکراری کانال در این بازه (ثانیه) اعلان و پوش جدید نمی‌سازد
+
+# ══════════════════════════════════════════════════════════════════════
+# کد تخفیف مخفی (بدون بنر) — فقط برای کسانی که ادمین کد را به آن‌ها داده
+#   • کاربر آن را در همان کادر «کد تخفیف» صفحه‌ی پرداخت وارد می‌کند
+#   • هر کاربر فقط یک‌بار می‌تواند استفاده کند (سقف کلِ اختیاری با max_uses)
+#   • مقدار اولیه از همین‌جا (یا متغیرهای محیطی Render) خوانده می‌شود؛
+#     هر مقداری که ادمین از پنل ذخیره کند روی مقدار داخل کد اولویت دارد
+# ══════════════════════════════════════════════════════════════════════
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+SECRET_CODE_DEFAULTS = {
+    "code":     os.environ.get("SECRET_CODE", "").strip(),          # خودِ کد (بدون تفاوت حروف بزرگ/کوچک)
+    "active":   _env_flag("SECRET_CODE_ACTIVE", "0"),               # فعال/غیرفعال
+    "type":     os.environ.get("SECRET_CODE_TYPE", "percent").strip().lower(),   # percent = درصد | fixed = مبلغ ثابت (دلار)
+    "value":    float(os.environ.get("SECRET_CODE_VALUE", "20")),   # مقدار تخفیف (درصد یا دلار)
+    "max_uses": int(os.environ.get("SECRET_CODE_MAX_USES", "0")),   # سقف کل استفاده‌ها؛ ۰ = نامحدود
+    "plans":    [x.strip() for x in os.environ.get("SECRET_CODE_PLANS", "weekly,monthly").split(",") if x.strip()],
+}
 
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "-3445WNET5gQwfQt0upQ3r_PH9iGHIm6OyEB1J9Ue8g")
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BF1laYA2pDxRak_LkTZnA7VgotZWEibqHueGwyl73zk0PBP8BjK_wIXGfjZ78I0_bussAAkVOKoq3tTUpSbdHDs")
@@ -439,6 +467,59 @@ class Storage:
             self._meta.update_one({"_id": "promo"}, {"$set": new}, upsert=True)
         return new
 
+    # ── کد تخفیف مخفی ──
+    def get_secret_code_cfg(self) -> dict:
+        """مقدار پیش‌فرض داخل کد + هر چیزی که ادمین از پنل ذخیره کرده (اولویت با پنل)"""
+        cfg = dict(SECRET_CODE_DEFAULTS)
+        if self._is_memory:
+            saved = dict(self._meta.get("secret_code") or {})
+        else:
+            saved = dict(self._meta.find_one({"_id": "secret_code"}) or {})
+        for k in ("code", "active", "type", "value", "max_uses"):
+            if k in saved:
+                cfg[k] = saved[k]
+        cfg["code"] = str(cfg.get("code") or "").strip()
+        cfg["active"] = bool(cfg.get("active"))
+        cfg["type"] = "fixed" if str(cfg.get("type")).lower() == "fixed" else "percent"
+        try: cfg["value"] = float(cfg.get("value") or 0)
+        except Exception: cfg["value"] = 0.0
+        try: cfg["max_uses"] = max(0, int(cfg.get("max_uses") or 0))
+        except Exception: cfg["max_uses"] = 0
+        return cfg
+
+    def set_secret_code_cfg(self, fields: dict) -> dict:
+        fields = {k: v for k, v in fields.items() if k in ("code", "active", "type", "value", "max_uses")}
+        if self._is_memory:
+            cur = dict(self._meta.get("secret_code") or {})
+            cur.update(fields)
+            self._meta["secret_code"] = cur
+        else:
+            self._meta.update_one({"_id": "secret_code"}, {"$set": fields}, upsert=True)
+        return self.get_secret_code_cfg()
+
+    def count_code_uses(self, code_key: str, uid: Optional[int] = None, exclude_payment_id: Optional[str] = None) -> int:
+        """تعداد استفاده‌ی «واقعی» از کد: پرداخت تاییدشده، یا در انتظار با رسید ثبت‌شده.
+        (پرداخت‌های لغو/ردشده یا هنوز بدون رسید، کد را مصرف‌شده حساب نمی‌کنند؛ پس بستن و باز کردن پنجره‌ی خرید کدِ کاربر را نمی‌سوزاند)"""
+        if not code_key:
+            return 0
+        if self._is_memory:
+            n = 0
+            with self._lock:
+                for p in self._payments.values():
+                    if p.get("secret_code") != code_key: continue
+                    if uid is not None and p.get("uid") != uid: continue
+                    if exclude_payment_id and p.get("payment_id") == exclude_payment_id: continue
+                    if p.get("status") == "approved" or (p.get("status") == "pending" and self.is_receipt_submitted(p)):
+                        n += 1
+            return n
+        q = {"secret_code": code_key, "$or": [
+            {"status": "approved"},
+            {"status": "pending", "submitted_at": {"$nin": [None, ""]}, "tx_id": {"$nin": [None, ""]}},
+        ]}
+        if uid is not None: q["uid"] = uid
+        if exclude_payment_id: q["payment_id"] = {"$ne": exclude_payment_id}
+        return self._payments.count_documents(q)
+
     # ── Notifications (Internal WebApp) ──
     def _ensure_notifications_collection(self):
         """مطمئن شو collection notifications وجود دارد"""
@@ -507,6 +588,73 @@ class Storage:
                     result.append(n)
             
             return result[:20]
+
+    def get_recent_notifications(self, uid: int, is_vip: bool, max_age_min: int) -> list:
+        """اعلان‌های اخیرِ مربوط به این کاربر (فقط در بازه‌ی max_age_min دقیقه‌ی اخیر).
+        مقایسه با زمان سرور انجام می‌شود (نه ساعت کلاینت) تا اختلاف منطقه‌ی زمانی باعث تکرار نشود."""
+        col = self._ensure_notifications_collection()
+        cutoff = (now_ir() - timedelta(minutes=max_age_min)).isoformat()
+        if self._is_memory:
+            src = [n for n in col if n.get("created_at", "") > cutoff]
+        else:
+            src = list(col.find({"created_at": {"$gt": cutoff}}, {"_id": 0}).sort("created_at", -1).limit(50))
+        out = []
+        for n in src:
+            target = n.get("target", "all")
+            if target == "all" or (target == "vip" and is_vip) or (target == "specific" and uid in n.get("user_ids", [])):
+                out.append(n)
+        out.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return out[:20]
+
+    def _ensure_alerts_collection(self):
+        if not hasattr(self, "_alerts_col"):
+            if self._is_memory:
+                self._alerts_col = {}
+            else:
+                col = self._client.get_database()["notif_alerts"]
+                try:
+                    col.create_index([("uid", 1), ("notif_id", 1)], unique=True)
+                    col.create_index("ts", expireAfterSeconds=3 * 86400)   # پاکسازی خودکار بعد از ۳ روز
+                except Exception as e:
+                    log.warning(f"notif_alerts index error: {e}")
+                self._alerts_col = col
+        return self._alerts_col
+
+    def claim_notification_alerts(self, uid: int, notifs: list, max_alerts: int, min_gap_sec: int) -> list:
+        """فقط اعلان‌هایی را برمی‌گرداند که هنوز سهمیه‌ی هشدارشان (max_alerts) برای این کاربر تمام نشده
+        و از هشدار قبلی‌شان حداقل min_gap_sec گذشته است؛ همان لحظه یک هشدار از سهمیه کم می‌کند.
+        شمارنده سمت سرور است، پس چند تب/چند دستگاه/Service Worker هم نمی‌توانند از سقف رد شوند."""
+        col = self._ensure_alerts_collection()
+        now_ts = time.time()
+        allowed = []
+        for n in notifs:
+            nid = n.get("notif_id")
+            if not nid:
+                continue
+            try:
+                if self._is_memory:
+                    with self._lock:
+                        rec = col.get((uid, nid))
+                        if rec and (rec["count"] >= max_alerts or now_ts - rec["last"] < min_gap_sec):
+                            continue
+                        col[(uid, nid)] = {"count": (rec["count"] + 1) if rec else 1, "last": now_ts}
+                    allowed.append(n)
+                else:
+                    res = col.update_one(
+                        {"uid": uid, "notif_id": nid, "count": {"$lt": max_alerts}, "last_ts": {"$lte": now_ts - min_gap_sec}},
+                        {"$inc": {"count": 1}, "$set": {"last_ts": now_ts}})
+                    if res.modified_count == 1:
+                        allowed.append(n)
+                        continue
+                    try:
+                        col.insert_one({"uid": uid, "notif_id": nid, "count": 1, "last_ts": now_ts,
+                                        "ts": datetime.now(timezone.utc)})
+                        allowed.append(n)
+                    except DuplicateKeyError:
+                        pass      # سهمیه تمام شده یا هنوز زود است
+            except Exception as e:
+                log.error(f"claim_notification_alerts error: {e}")   # در خطا اسپم نکن
+        return allowed
 
     # ── Stats ──
     def get_stats(self) -> dict:
@@ -788,6 +936,45 @@ def promo_state_for(user: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# کد تخفیف مخفی — کمکی‌ها
+# ══════════════════════════════════════════════════════════════════════
+def match_secret_code(code: str) -> Optional[dict]:
+    """اگر کد وارد‌شده همان کد مخفیِ «فعال» باشد، تنظیماتش را برمی‌گرداند؛ وگرنه None
+    (برای غیرفعال/اشتباه/ناقص یک جواب یکسان می‌دهیم تا وجود کد لو نرود)"""
+    cfg = storage.get_secret_code_cfg()
+    stored = cfg["code"]
+    if not cfg["active"] or not stored or not code:
+        return None
+    v = cfg["value"]
+    if cfg["type"] == "percent" and not (0 < v <= 100): return None
+    if cfg["type"] == "fixed" and v <= 0: return None
+    if not hmac.compare_digest(code.strip().upper().encode("utf-8"), stored.upper().encode("utf-8")):
+        return None
+    return {"key": stored.upper(), "type": cfg["type"], "value": v,
+            "max_uses": cfg["max_uses"], "plans": list(cfg["plans"])}
+
+def secret_code_price(price: float, secret: dict) -> float:
+    new = price - secret["value"] if secret["type"] == "fixed" else price * (100 - secret["value"]) / 100
+    return round(max(new, 0.0), 2)
+
+# محدودیت حدس‌زدن کد (جلوگیری از brute-force): ۸ تلاش ناموفق در ۱۰ دقیقه
+_CODE_FAILS: dict = {}
+_CODE_FAILS_LOCK = threading.Lock()
+CODE_MAX_FAILS, CODE_FAIL_WINDOW = 8, 600
+
+def _code_attempts_blocked(uid: int) -> bool:
+    now = time.time()
+    with _CODE_FAILS_LOCK:
+        lst = [t for t in _CODE_FAILS.get(uid, []) if now - t < CODE_FAIL_WINDOW]
+        _CODE_FAILS[uid] = lst
+        return len(lst) >= CODE_MAX_FAILS
+
+def _code_attempt_failed(uid: int):
+    with _CODE_FAILS_LOCK:
+        _CODE_FAILS.setdefault(uid, []).append(time.time())
+
+
+# ══════════════════════════════════════════════════════════════════════
 # GLOBAL BOT INSTANCE (برای استفاده در Flask endpoints)
 # ══════════════════════════════════════════════════════════════════════
 bot_instance = None
@@ -1008,6 +1195,20 @@ async def expiration_watcher(bot: Bot):
 # ══════════════════════════════════════════════════════════════════════
 # SIGNAL FORWARDING — فوروارد پست‌های کانال VIP برای همه اعضای فعال
 # ══════════════════════════════════════════════════════════════════════
+_RECENT_SIGNALS: dict = {}
+_RECENT_SIGNALS_LOCK = threading.Lock()
+
+def _is_duplicate_signal(keys: list) -> bool:
+    """اگر هر کدام از کلیدها اخیراً دیده شده باشد True؛ در غیر این صورت همه را ثبت می‌کند"""
+    now = time.time()
+    with _RECENT_SIGNALS_LOCK:
+        for k in [k for k, t in _RECENT_SIGNALS.items() if now - t > SIGNAL_DEDUP_TTL]:
+            del _RECENT_SIGNALS[k]
+        dup = any(k in _RECENT_SIGNALS for k in keys)
+        for k in keys:
+            _RECENT_SIGNALS.setdefault(k, now)
+        return dup
+
 async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     post = update.channel_post
     if not post:
@@ -1053,6 +1254,17 @@ async def on_channel_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ═══ اعلان داخل وب‌اپ (زنگوله / چک دوره‌ای در داشبورد) ═══
     signal_text = (getattr(post, "text", None) or getattr(post, "caption", None) or "یک سیگنال جدید منتشر شد").strip()
     notif_body = signal_text if len(signal_text) <= 150 else signal_text[:147] + "..."
+
+    # اگر سیگنال/پست/متن جدیدی نیست (آلبوم چندعکسی، آپدیت تکراری، یا همان متنِ چند دقیقه‌ی پیش) اعلان و پوش نساز
+    dup_keys = [f"post:{post.chat.id}:{post.message_id}"]
+    if getattr(post, "media_group_id", None):
+        dup_keys.append(f"mg:{post.media_group_id}")
+    if (getattr(post, "text", None) or getattr(post, "caption", None) or "").strip():
+        dup_keys.append("txt:" + hashlib.md5(signal_text.encode("utf-8")).hexdigest())
+    if _is_duplicate_signal(dup_keys):
+        log.info("🔁 اعلان/پوش تکراری نادیده گرفته شد (سیگنال جدیدی نبود)")
+        return
+
     try:
         storage.create_notification(
             title="🔔 سیگنال جدید VIP",
@@ -1390,39 +1602,65 @@ def api_subscribe():
 def api_apply_discount():
     data = request.get_json(force=True) or {}
     code = (data.get("code") or "").strip()
-    
-    # بررسی کد تخفیف (بدون چک کردن used_discount)
-    if not DISCOUNT_CODE or code != DISCOUNT_CODE:
-        return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
+    uid = g.current_user["uid"]
 
-    # ✅ کد تخفیف در طول جشنواره‌ی فعال برای همه‌ی کاربران معتبر است
-    promo = promo_state_for(g.current_user)
-    if not promo["active"]:
-        return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
-    if promo["seconds_left"] <= 0:
-        return jsonify({"error": "زمان جشنواره به پایان رسیده است"}), 400
-    
+    # کد جشنواره‌ی عمومی، یا کد مخفی (فقط برای کسانی که ادمین کد را به آن‌ها گفته)
+    is_festival = bool(DISCOUNT_CODE) and code == DISCOUNT_CODE
+    secret = None
+    if not is_festival:
+        if _code_attempts_blocked(uid):
+            return jsonify({"error": "تعداد تلاش‌های ناموفق زیاد است؛ چند دقیقه بعد دوباره امتحان کنید"}), 429
+        secret = match_secret_code(code)
+        if not secret:
+            _code_attempt_failed(uid)
+            return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
+
+    # ✅ کد جشنواره در طول جشنواره‌ی فعال برای همه‌ی کاربران معتبر است
+    if is_festival:
+        promo = promo_state_for(g.current_user)
+        if not promo["active"]:
+            return jsonify({"error": "کد تخفیف نامعتبر یا غیرفعال"}), 400
+        if promo["seconds_left"] <= 0:
+            return jsonify({"error": "زمان جشنواره به پایان رسیده است"}), 400
+
     payment_id = data.get("payment_id")
     if not payment_id:
         return jsonify({"error": "payment_id لازم است"}), 400
-    
+
     payment = storage.get_payment(payment_id)
     if not payment or payment.get("status") != "pending":
         return jsonify({"error": "پرداخت یافت نشد"}), 404
-    
-    if payment["uid"] != g.current_user["uid"]:
+
+    if payment["uid"] != uid:
         return jsonify({"error": "دسترسی ندارید"}), 403
-    
-    # ✅ کد جشنواره فقط برای پلن ماهانه
-    if payment.get("plan") != PROMO_PLAN:
-        return jsonify({"error": "این تخفیف فقط برای پلن ماهانه است"}), 400
+
+    if is_festival:
+        # ✅ کد جشنواره فقط برای پلن ماهانه
+        if payment.get("plan") != PROMO_PLAN:
+            return jsonify({"error": "این تخفیف فقط برای پلن ماهانه است"}), 400
+    elif payment.get("plan") not in secret["plans"]:
+        return jsonify({"error": "این کد برای این پلن قابل استفاده نیست"}), 400
 
     # بررسی اینکه قبلاً تخفیف اعمال نشده باشد (فقط روی همین payment)
     if payment.get("discount_applied"):
         return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
-    
-    new_price = get_discounted_price(payment["amount_usd"])
-    
+
+    extra = {}
+    if is_festival:
+        new_price = get_discounted_price(payment["amount_usd"])
+        percent = DISCOUNT_PERCENT
+    else:
+        # یک‌بار مصرف برای هر کاربر + سقف کل اختیاری
+        if storage.count_code_uses(secret["key"], uid=uid, exclude_payment_id=payment_id) > 0:
+            return jsonify({"error": "این کد قبلاً استفاده شده است"}), 400
+        if secret["max_uses"] > 0 and storage.count_code_uses(secret["key"], exclude_payment_id=payment_id) >= secret["max_uses"]:
+            return jsonify({"error": "ظرفیت استفاده از این کد تکمیل شده است"}), 400
+        old_price = payment["amount_usd"]
+        new_price = secret_code_price(old_price, secret)
+        percent = round((1 - new_price / old_price) * 100, 1) if old_price > 0 else 0
+        percent = int(percent) if percent == int(percent) else percent
+        extra = {"secret_code": secret["key"]}
+
     # اعمال تخفیف به پرداخت — با گارد اتمی روی discount_applied تا دو درخواست هم‌زمان
     # نتوانند تخفیف را دوبار روی یک پرداخت اعمال کنند
     if storage._is_memory:
@@ -1432,17 +1670,21 @@ def api_apply_discount():
                 return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
             p["amount_usd"] = new_price
             p["discount_applied"] = True
+            p.update(extra)
     else:
         result = storage._payments.update_one(
             {"payment_id": payment_id, "status": "pending", "discount_applied": {"$ne": True}},
-            {"$set": {"amount_usd": new_price, "discount_applied": True}}
+            {"$set": {"amount_usd": new_price, "discount_applied": True, **extra}}
         )
         if result.modified_count == 0:
             return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
-    
+
+    if secret:
+        log.info(f"🎟️ کد تخفیف مخفی اعمال شد (uid={uid}, payment={payment_id})")
+
     return jsonify({
         "new_price": new_price,
-        "discount_percent": DISCOUNT_PERCENT,
+        "discount_percent": percent,
     })
 
 @flask_app.post("/api/payment/submit")
@@ -1598,6 +1840,56 @@ def api_admin_promo():
     log.info(f"🎁 جشنواره {'فعال' if data['active'] else 'غیرفعال'} شد (admin={g.current_user.get('uid')})")
     return jsonify(promo_state_for(g.current_user))
 
+def _secret_code_admin_view() -> dict:
+    cfg = storage.get_secret_code_cfg()
+    return {
+        "code": cfg["code"], "active": cfg["active"], "type": cfg["type"], "value": cfg["value"],
+        "max_uses": cfg["max_uses"], "plans": cfg["plans"],
+        "used": storage.count_code_uses(cfg["code"].upper()) if cfg["code"] else 0,
+    }
+
+@flask_app.get("/api/admin/secret-code")
+@admin_required
+def api_admin_secret_code_get():
+    return jsonify(_secret_code_admin_view())
+
+@flask_app.post("/api/admin/secret-code")
+@admin_required
+def api_admin_secret_code_set():
+    """تنظیم کد تخفیف مخفی از پنل ادمین (هر فیلد اختیاری است)"""
+    data = request.get_json(force=True) or {}
+    fields = {}
+    if "code" in data:
+        c = str(data.get("code") or "").strip()
+        if c and (len(c) < 4 or len(c) > 40 or re.search(r"\s", c)):
+            return jsonify({"error": "کد باید ۴ تا ۴۰ کاراکتر و بدون فاصله باشد"}), 400
+        fields["code"] = c
+    if "type" in data:
+        t = str(data.get("type")).lower()
+        if t not in ("percent", "fixed"):
+            return jsonify({"error": "نوع تخفیف نامعتبر"}), 400
+        fields["type"] = t
+    if "value" in data:
+        try: fields["value"] = float(data.get("value"))
+        except Exception: return jsonify({"error": "مقدار تخفیف نامعتبر"}), 400
+    if "max_uses" in data:
+        try: fields["max_uses"] = max(0, int(data.get("max_uses") or 0))
+        except Exception: return jsonify({"error": "سقف استفاده نامعتبر"}), 400
+    if "active" in data:
+        fields["active"] = bool(data.get("active"))
+
+    merged = {**storage.get_secret_code_cfg(), **fields}
+    if merged["type"] == "percent" and not (0 < merged["value"] <= 100):
+        return jsonify({"error": "درصد تخفیف باید بین ۱ تا ۱۰۰ باشد"}), 400
+    if merged["type"] == "fixed" and merged["value"] <= 0:
+        return jsonify({"error": "مبلغ تخفیف باید بیشتر از صفر باشد"}), 400
+    if merged["active"] and not merged["code"]:
+        return jsonify({"error": "برای فعال‌سازی ابتدا کد را وارد کنید"}), 400
+
+    storage.set_secret_code_cfg(fields)
+    log.info(f"🎟️ تنظیمات کد مخفی تغییر کرد (admin={g.current_user.get('uid')}, فیلدها={sorted(fields)})")
+    return jsonify(_secret_code_admin_view())
+
 @flask_app.get("/api/admin/stats")
 @admin_required
 def api_admin_stats():
@@ -1692,10 +1984,11 @@ def api_admin_approve(payment_id):
 @flask_app.get("/api/notifications/check")
 @auth_required
 def api_check_notifications():
-    """چک کردن اعلان‌های جدید (polling توسط Service Worker)"""
+    """چک اعلان‌های جدید (polling وب‌اپ و Service Worker).
+    تصمیم‌گیری کاملاً سمت سرور است: هر اعلان برای هر کاربر حداکثر NOTIF_MAX_ALERTS بار برمی‌گردد
+    و اگر اعلان تازه‌ای نباشد لیست خالی است (پارامتر last_check فقط برای سازگاری با کلاینت قدیمی است)."""
     uid = g.current_user["uid"]
-    last_check = request.args.get("last_check", "1970-01-01T00:00:00")
-    
+
     # بررسی VIP بودن
     is_vip = False
     if g.current_user.get("vip_expiry"):
@@ -1704,12 +1997,14 @@ def api_check_notifications():
             if exp > now_ir():
                 is_vip = True
         except: pass
-    
-    notifications = storage.get_notifications_after(last_check, uid, is_vip)
-    
+
+    recent = storage.get_recent_notifications(uid, is_vip, NOTIF_MAX_AGE_MIN)
+    notifications = storage.claim_notification_alerts(uid, recent, NOTIF_MAX_ALERTS, NOTIF_MIN_GAP_SEC) if recent else []
+
     return jsonify({
         "notifications": notifications,
         "count": len(notifications),
+        "server_time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     })
 
 
