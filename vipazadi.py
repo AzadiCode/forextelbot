@@ -1641,41 +1641,62 @@ def api_apply_discount():
     elif payment.get("plan") not in secret["plans"]:
         return jsonify({"error": "این کد برای این پلن قابل استفاده نیست"}), 400
 
-    # بررسی اینکه قبلاً تخفیف اعمال نشده باشد (فقط روی همین payment)
-    if payment.get("discount_applied"):
-        return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
+    # تخفیف قبلی روی همین پرداخت (مثلاً کد جشنواره که خودکار زده شده): تا قبل از ثبت رسید می‌شود آن را
+    # با کد دیگری «عوض» کرد (جایگزین می‌شود، جمع نمی‌شود)؛ بعد از ثبت رسید قفل است
+    source = "festival" if is_festival else secret["key"]
+    had_discount = bool(payment.get("discount_applied"))
+    cur_source = (payment.get("discount_source") or "festival") if had_discount else None
+    plan_base = PLAN_WEEKLY_USD if payment.get("plan") == "weekly" else PLAN_MONTHLY_USD
+    base_price = plan_base if had_discount else payment["amount_usd"]
 
-    extra = {}
+    def _pct(new: float) -> float:
+        v = round((1 - new / base_price) * 100, 1) if base_price > 0 else 0
+        return int(v) if v == int(v) else v
+
+    if had_discount:
+        if storage.is_receipt_submitted(payment):
+            return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
+        if cur_source == source:      # همان کد دوباره زده شد؛ بدون تغییر موفق برگردان
+            return jsonify({"new_price": payment["amount_usd"], "discount_percent": _pct(payment["amount_usd"])})
+
+    extra = {"discount_source": source}
+    unset = {}
     if is_festival:
-        new_price = get_discounted_price(payment["amount_usd"])
-        percent = DISCOUNT_PERCENT
+        new_price = get_discounted_price(base_price)
+        unset = {"secret_code": ""}     # اگر قبلاً کد مخفی بود، مصرفِ آن آزاد می‌شود
     else:
         # یک‌بار مصرف برای هر کاربر + سقف کل اختیاری
         if storage.count_code_uses(secret["key"], uid=uid, exclude_payment_id=payment_id) > 0:
             return jsonify({"error": "این کد قبلاً استفاده شده است"}), 400
         if secret["max_uses"] > 0 and storage.count_code_uses(secret["key"], exclude_payment_id=payment_id) >= secret["max_uses"]:
             return jsonify({"error": "ظرفیت استفاده از این کد تکمیل شده است"}), 400
-        old_price = payment["amount_usd"]
-        new_price = secret_code_price(old_price, secret)
-        percent = round((1 - new_price / old_price) * 100, 1) if old_price > 0 else 0
-        percent = int(percent) if percent == int(percent) else percent
-        extra = {"secret_code": secret["key"]}
+        new_price = secret_code_price(base_price, secret)
+        extra["secret_code"] = secret["key"]
+    percent = _pct(new_price)
 
-    # اعمال تخفیف به پرداخت — با گارد اتمی روی discount_applied تا دو درخواست هم‌زمان
-    # نتوانند تخفیف را دوبار روی یک پرداخت اعمال کنند
+    # اعمال تخفیف به پرداخت — با گارد اتمی تا دو درخواست هم‌زمان نتوانند هم‌زمان روی یک پرداخت بنشینند
     if storage._is_memory:
         with storage._lock:
             p = storage._payments.get(payment_id)
-            if not p or p.get("status") != "pending" or p.get("discount_applied"):
+            if (not p or p.get("status") != "pending" or bool(p.get("discount_applied")) != had_discount
+                    or p.get("discount_source") != payment.get("discount_source")
+                    or (had_discount and storage.is_receipt_submitted(p))):
                 return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
             p["amount_usd"] = new_price
             p["discount_applied"] = True
             p.update(extra)
+            for k in unset: p.pop(k, None)
     else:
-        result = storage._payments.update_one(
-            {"payment_id": payment_id, "status": "pending", "discount_applied": {"$ne": True}},
-            {"$set": {"amount_usd": new_price, "discount_applied": True, **extra}}
-        )
+        flt = {"payment_id": payment_id, "status": "pending"}
+        if had_discount:
+            flt["discount_applied"] = True
+            flt["discount_source"] = payment.get("discount_source")    # None ⇒ فیلد وجود ندارد (پرداخت قدیمی)
+            flt["tx_id"] = {"$in": [None, ""]}                          # رسید هنوز ثبت نشده
+        else:
+            flt["discount_applied"] = {"$ne": True}
+        upd = {"$set": {"amount_usd": new_price, "discount_applied": True, **extra}}
+        if unset: upd["$unset"] = unset
+        result = storage._payments.update_one(flt, upd)
         if result.modified_count == 0:
             return jsonify({"error": "تخفیف قبلاً روی این پرداخت اعمال شده"}), 400
 
