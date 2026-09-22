@@ -178,10 +178,12 @@ class Storage:
                 self._subscriptions = db["subscriptions"]
                 self._meta = db["meta"]
                 self._trades = db["trades"]
+                self._archive_views = db["archive_views"]
                 self._users.create_index("uid", unique=True)
                 self._payments.create_index("payment_id", unique=True)
                 self._trades.create_index("id", unique=True)
                 self._trades.create_index("week_start")
+                self._archive_views.create_index("uid", unique=True)
                 log.info("✅ MongoDB متصل شد")
             except Exception as e:
                 log.warning(f"⚠️ MongoDB خطا: {e}. Memory mode")
@@ -197,6 +199,7 @@ class Storage:
         self._subscriptions = {}
         self._meta = {}
         self._trades = {}
+        self._archive_views = {}
     
     # ── Users ──
     def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> dict:
@@ -525,6 +528,23 @@ class Storage:
         else:
             weeks = set(self._trades.distinct("week_start"))
         return sorted(weeks, reverse=True)[:limit]
+
+    # ── Archive Views (بازدید بخش برآیند) ──
+    def record_archive_view(self, uid: int):
+        ts = now_ir().isoformat()
+        if self._is_memory:
+            with self._lock:
+                self._archive_views[uid] = {"uid": uid, "last_seen": ts}
+        else:
+            self._archive_views.update_one({"uid": uid}, {"$set": {"uid": uid, "last_seen": ts}}, upsert=True)
+
+    def get_archive_views(self) -> list:
+        if self._is_memory:
+            items = list(self._archive_views.values())
+        else:
+            items = list(self._archive_views.find({}, {"_id": 0}))
+        items.sort(key=lambda v: v.get("last_seen") or "", reverse=True)
+        return items
 
     # ── Promo (جشنواره‌ی تخفیف اولین عضویت) ──
     def get_promo(self) -> dict:
@@ -1927,6 +1947,16 @@ def api_archive_week(week_start):
     trades = storage.get_week_trades(week_start)
     return jsonify({"week_start": week_start, "trades": trades})
 
+@flask_app.post("/api/archive/seen")
+@auth_required
+def api_archive_seen():
+    try:
+        uid = int(g.current_user["uid"])
+    except Exception:
+        return jsonify({"ok": False}), 400
+    storage.record_archive_view(uid)
+    return jsonify({"ok": True})
+
 @flask_app.get("/api/my-payments")
 @auth_required
 def api_my_payments():
@@ -2854,6 +2884,30 @@ def api_admin_users_list():
         rows.append({"uid": uid, "full_name": u.get("full_name") or "",
                      "username": u.get("username") or "", "is_vip": is_vip})
     rows.sort(key=lambda r: (not r["is_vip"], (r["full_name"] or r["username"] or "").lower()))
+    return jsonify({"users": rows})
+
+
+@flask_app.get("/api/admin/archive/views")
+@admin_required
+def api_admin_archive_views():
+    """کاربرانی که بخش برآیند را دیده‌اند، به‌همراه آخرین زمان بازدید (جدیدترین اول)"""
+    now = now_ir()
+    users_by_uid = {u.get("uid"): u for u in storage.get_all_users() if u.get("uid") is not None}
+    rows = []
+    for v in storage.get_archive_views():
+        uid = v.get("uid")
+        u = users_by_uid.get(uid, {})
+        is_vip = False
+        if u.get("vip_expiry"):
+            try: is_vip = datetime.fromisoformat(u["vip_expiry"]) > now
+            except Exception: pass
+        rows.append({
+            "uid": uid,
+            "full_name": u.get("full_name") or "",
+            "username": u.get("username") or "",
+            "is_vip": is_vip,
+            "last_seen": v.get("last_seen"),
+        })
     return jsonify({"users": rows})
 
 
