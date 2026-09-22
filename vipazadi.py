@@ -460,7 +460,7 @@ class Storage:
             "direction": data.get("direction") if data.get("direction") in ("buy", "sell") else None,
             "result": data.get("result") if data.get("result") in ("win", "loss", "be") else "win",
             "pips": data.get("pips"),
-            "reward": (data.get("reward") or "").strip()[:20],
+            "reward": data.get("reward"),
             "note": (data.get("note") or "").strip()[:300],
             "before_image": data.get("before_image") or "",
             "after_image": data.get("after_image") or "",
@@ -478,7 +478,7 @@ class Storage:
         if "hashtag" in data: fields["hashtag"] = (data.get("hashtag") or "").strip()[:40]
         if "symbol" in data: fields["symbol"] = (data.get("symbol") or "").strip()[:20]
         if "note" in data: fields["note"] = (data.get("note") or "").strip()[:300]
-        if "reward" in data: fields["reward"] = (data.get("reward") or "").strip()[:20]
+        if "reward" in data: fields["reward"] = data.get("reward")
         if "direction" in data and data["direction"] in ("buy", "sell", None):
             fields["direction"] = data["direction"]
         if "result" in data and data["result"] in ("win", "loss", "be"):
