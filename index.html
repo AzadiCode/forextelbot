@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>گرام‌ساز — ربات‌ساز تلگرام</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2333;
+    --border: #30363d;
+    --border-light: #21262d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #484f58;
+    --accent: #58a6ff;
+    --accent-glow: rgba(88,166,255,0.15);
+    --green: #3fb950;
+    --green-glow: rgba(63,185,80,0.12);
+    --purple: #bc8cff;
+    --orange: #ffa657;
+    --red: #f85149;
+    --yellow: #d29922;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Vazirmatn', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    direction: rtl;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── App Shell ── */
+  .app { display: flex; min-height: 100vh; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .sidebar-brand {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #58a6ff, #bc8cff);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .brand-text { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+  .brand-sub { font-size: 10px; color: var(--text-muted); }
+
+  .sidebar-nav { padding: 12px 8px; flex: 1; }
+
+  .nav-section {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    padding: 8px 12px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: all 0.15s;
+    margin-bottom: 1px;
+    border: none; background: none; width: 100%; text-align: right;
+  }
+
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--accent-glow); color: var(--accent); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+  .nav-badge {
+    margin-right: auto;
+    background: var(--accent);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 20px;
+  }
+
+  .sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border-light);
+  }
+
+  .user-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    cursor: pointer;
+  }
+
+  .user-avatar {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--purple), var(--accent));
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .user-name { font-size: 13px; font-weight: 600; }
+  .user-plan { font-size: 11px; color: var(--accent); }
+
+  /* ── Main Content ── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .topbar {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg);
+    position: sticky; top: 0; z-index: 10;
+  }
+
+  .topbar h1 { font-size: 18px; font-weight: 700; flex: 1; }
+  .topbar .sub { font-size: 12px; color: var(--text-muted); display: block; font-weight: 400; }
+
+  .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+  /* ── Screens ── */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .card-title { font-size: 14px; font-weight: 600; }
+  .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Grid ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+
+  /* ── Stat Boxes ── */
+  .stat-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-val { font-size: 26px; font-weight: 700; letter-spacing: -1px; }
+  .stat-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .stat-green .stat-val { color: var(--green); }
+  .stat-blue .stat-val { color: var(--accent); }
+  .stat-purple .stat-val { color: var(--purple); }
+  .stat-orange .stat-val { color: var(--orange); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #79b8ff; }
+  .btn-success { background: var(--green); color: #000; }
+  .btn-success:hover { opacity: 0.85; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { opacity: 0.85; }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-lg { padding: 12px 24px; font-size: 15px; }
+  .btn-full { width: 100%; justify-content: center; }
+  .btn-icon { padding: 8px; border-radius: 8px; }
+
+  /* ── Inputs ── */
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    display: block;
+    font-size: 12px; font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .form-control {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13.5px;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+
+  .form-control:focus { border-color: var(--accent); }
+  .form-control::placeholder { color: var(--text-dim); }
+
+  textarea.form-control { resize: vertical; min-height: 80px; }
+
+  /* ── Bot Cards ── */
+  .bot-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 10px;
+  }
+
+  .bot-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .bot-card.selected { border-color: var(--accent); background: var(--accent-glow); }
+
+  .bot-avatar {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, #1f6feb, var(--accent));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  .bot-name { font-size: 15px; font-weight: 700; }
+  .bot-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .bot-actions { margin-right: auto; display: flex; gap: 8px; }
+
+  .status-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-left: 5px;
+  }
+  .status-on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-off { background: var(--text-dim); }
+
+  /* ── Tags / Badges ── */
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .tag-green { background: var(--green-glow); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .tag-blue { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+  .tag-red { background: rgba(248,81,73,0.1); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .tag-purple { background: rgba(188,140,255,0.1); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
+  .tag-orange { background: rgba(255,166,87,0.1); color: var(--orange); border: 1px solid rgba(255,166,87,0.3); }
+
+  /* ── Command Row ── */
+  .cmd-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    margin-bottom: 6px;
+    border: 1px solid var(--border-light);
+    transition: all 0.15s;
+  }
+  .cmd-row:hover { border-color: var(--border); }
+  .cmd-name { font-size: 13px; font-weight: 700; color: var(--accent); font-family: monospace; }
+  .cmd-preview { font-size: 12px; color: var(--text-muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmd-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ── Plan Cards ── */
+  .plan-card {
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .plan-card.current { border-color: var(--green); }
+  .plan-card.featured { border-color: var(--accent); }
+
+  .plan-badge {
+    position: absolute; top: 12px; left: 12px;
+    font-size: 10px; font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+  }
+  .plan-badge.popular { background: var(--accent); color: #000; }
+  .plan-badge.active { background: var(--green); color: #000; }
+
+  .plan-icon { font-size: 28px; margin-bottom: 8px; }
+  .plan-name { font-size: 16px; font-weight: 800; }
+  .plan-price { font-size: 24px; font-weight: 700; margin: 8px 0; }
+  .plan-price span { font-size: 13px; font-weight: 400; color: var(--text-muted); }
+  .plan-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+  .plan-features { font-size: 12.5px; }
+  .plan-feature { padding: 5px 0; display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+  .plan-feature .check { color: var(--green); }
+  .plan-feature .lock { color: var(--text-dim); }
+
+  /* ── Progress Bar ── */
+  .progress-wrap { margin-bottom: 14px; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+  .progress-bar-bg { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+
+  /* ── Steps ── */
+  .steps { display: flex; gap: 0; margin-bottom: 20px; }
+  .step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--border);
+    z-index: 0;
+  }
+  .step.done:not(:last-child)::after { background: var(--green); }
+  .step.active:not(:last-child)::after { background: var(--accent); }
+
+  .step-dot {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 6px;
+    font-size: 13px; font-weight: 700;
+    position: relative; z-index: 1;
+  }
+  .step.done .step-dot { background: var(--green); border-color: var(--green); color: #000; }
+  .step.active .step-dot { background: var(--accent); border-color: var(--accent); color: #000; }
+  .step-label { font-size: 11px; color: var(--text-muted); }
+  .step.active .step-label { color: var(--text); }
+
+  /* ── Token Input Field ── */
+  .token-input-wrap {
+    position: relative;
+  }
+  .token-input-wrap .form-control {
+    padding-left: 40px;
+    font-family: monospace;
+    letter-spacing: 0.5px;
+  }
+  .token-input-wrap .token-icon {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    font-size: 15px;
+  }
+
+  /* ── Inline Notification ── */
+  .alert {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .alert-info { background: var(--accent-glow); border: 1px solid rgba(88,166,255,0.3); }
+  .alert-success { background: var(--green-glow); border: 1px solid rgba(63,185,80,0.3); }
+  .alert-warn { background: rgba(210,153,34,0.1); border: 1px solid rgba(210,153,34,0.3); color: var(--yellow); }
+  .alert-error { background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); color: var(--red); }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px; }
+
+  /* ── Logs ── */
+  .log-box {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    font-family: monospace;
+    font-size: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--accent); }
+  .log-muted { color: var(--text-dim); }
+
+  /* ── Broadcast Builder ── */
+  .preview-bubble {
+    background: #1e3a5f;
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 0 12px 12px 12px;
+    padding: 12px 16px;
+    max-width: 280px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+    margin-top: 10px;
+  }
+
+  /* ── Empty State ── */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+  .empty-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .empty-desc { font-size: 13px; color: var(--text-muted); max-width: 300px; margin: 0 auto 20px; }
+
+  /* ── Referral ── */
+  .ref-link-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    word-break: break-all;
+  }
+
+  /* ── Leaderboard ── */
+  .lb-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 4px;
+    background: var(--surface2);
+  }
+  .lb-rank { font-size: 16px; width: 24px; text-align: center; flex-shrink: 0; }
+  .lb-name { flex: 1; font-size: 13px; font-weight: 500; }
+  .lb-count { font-size: 13px; color: var(--orange); font-weight: 700; }
+
+  /* ── Toggle ── */
+  .toggle {
+    position: relative; display: inline-block;
+    width: 44px; height: 24px; flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 2px; top: 2px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: 0.2s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--green); border-color: var(--green); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: #000; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--border-light); margin: 20px 0; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* ── Loading Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: inline-block;
+  }
+
+  /* ── Coin display ── */
+  .coin-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(210,153,34,0.12);
+    border: 1px solid rgba(210,153,34,0.3);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+    color: var(--yellow);
+  }
+
+  .section-gap { margin-bottom: 24px; }
+
+  /* AI Loading */
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .ai-loading { display: flex; gap: 4px; align-items: center; }
+  .ai-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; animation: pulse 1s ease-in-out infinite; }
+  .ai-dot:nth-child(2){animation-delay:.2s}
+  .ai-dot:nth-child(3){animation-delay:.4s}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">🤖</div>
+      <div>
+        <div class="brand-text">گرام‌ساز</div>
+        <div class="brand-sub">ربات‌ساز حرفه‌ای تلگرام</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">منوی اصلی</div>
+      <button class="nav-item active" onclick="showScreen('dashboard')">
+        <span class="icon">📊</span> داشبورد
+      </button>
+      <button class="nav-item" onclick="showScreen('mybots')">
+        <span class="icon">🤖</span> ربات‌های من
+        <span class="nav-badge" id="bot-count-badge">0</span>
+      </button>
+      <button class="nav-item" onclick="showScreen('create')">
+        <span class="icon">➕</span> ساخت ربات جدید
+      </button>
+
+      <div class="nav-section" style="margin-top:8px">مدیریت</div>
+      <button class="nav-item" onclick="showScreen('broadcast')">
+        <span class="icon">📢</span> پیام‌رسانی
+      </button>
+      <button class="nav-item" onclick="showScreen('analytics')">
+        <span class="icon">📈</span> آمار و تحلیل
+      </button>
+
+      <div class="nav-section" style="margin-top:8px">حساب</div>
+      <button class="nav-item" onclick="showScreen('plans')">
+        <span class="icon">💎</span> پلن‌ها و ارتقا
+      </button>
+      <button class="nav-item" onclick="showScreen('referral')">
+        <span class="icon">🔗</span> دعوت دوستان
+      </button>
+      <button class="nav-item" onclick="showScreen('account')">
+        <span class="icon">👤</span> حساب من
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-card" onclick="showScreen('account')">
+        <div class="user-avatar" id="sidebar-avatar">U</div>
+        <div>
+          <div class="user-name" id="sidebar-name">کاربر</div>
+          <div class="user-plan" id="sidebar-plan">پلن پایه</div>
+        </div>
+        <span class="coin-badge" id="sidebar-coins" style="margin-right:auto">🪙 0</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <main class="main">
+    <div class="topbar">
+      <div style="flex:1">
+        <h1 id="topbar-title">داشبورد</h1>
+        <span class="sub" id="topbar-sub">خوش آمدی به گرام‌ساز</span>
+      </div>
+      <div class="coin-badge" id="topbar-coins">🪙 0 GC</div>
+    </div>
+
+    <div class="content">
+
+      <!-- ══ SCREEN: DASHBOARD ══ -->
+      <div class="screen active" id="screen-dashboard">
+        <div class="grid-3 section-gap" id="dashboard-stats">
+          <div class="stat-box stat-blue">
+            <div class="stat-label">ربات‌های فعال</div>
+            <div class="stat-val" id="stat-active-bots">0</div>
+            <div class="stat-note">از مجموع <span id="stat-total-bots">0</span> ربات</div>
+          </div>
+          <div class="stat-box stat-green">
+            <div class="stat-label">کل کاربران ربات‌ها</div>
+            <div class="stat-val" id="stat-total-users">0</div>
+            <div class="stat-note">کاربران یکتا</div>
+          </div>
+          <div class="stat-box stat-purple">
+            <div class="stat-label">پیام‌های ارسالی</div>
+            <div class="stat-val" id="stat-total-msgs">0</div>
+            <div class="stat-note">کل خروجی</div>
+          </div>
+        </div>
+
+        <div class="grid-2 section-gap">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">آخرین ربات‌ها</div>
+                <div class="card-sub">ربات‌های اخیر شما</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="showScreen('mybots')">همه ←</button>
+            </div>
+            <div id="dashboard-bots-list">
+              <div class="empty"><div class="empty-icon">🤖</div><div class="empty-title">هنوز رباتی نساختی</div><button class="btn btn-primary btn-sm" onclick="showScreen('create')">ساخت اولین ربات</button></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">ارسال سریع پیام همگانی</div>
+                <div class="card-sub">برای ربات انتخاب‌شده</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">انتخاب ربات</label>
+              <select class="form-control" id="quick-bc-bot"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">متن پیام</label>
+              <textarea class="form-control" id="quick-bc-text" rows="3" placeholder="پیامت رو اینجا بنویس..."></textarea>
+            </div>
+            <button class="btn btn-success btn-full" onclick="quickBroadcast()">📢 ارسال همگانی</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🚀 شروع سریع</div>
+          </div>
+          <div class="grid-3">
+            <div class="stat-box" style="cursor:pointer;text-align:center" onclick="showScreen('create')">
+              <div style="font-size:24px;margin-bottom:8px">➕</div>
+              <div style="font-weight:600;font-size:13px">ساخت ربات</div>
+              <div class="stat-note">چند دقیقه‌ای</div>
+            </div>
+            <div class="stat-box" style="cursor:pointer;text-align:center" onclick="showScreen('broadcast')">
+              <div style="font-size:24px;margin-bottom:8px">📢</div>
+              <div style="font-weight:600;font-size:13px">پیام همگانی</div>
+              <div class="stat-note">اطلاع‌رسانی سریع</div>
+            </div>
+            <div class="stat-box" style="cursor:pointer;text-align:center" onclick="showScreen('referral')">
+              <div style="font-size:24px;margin-bottom:8px">🔗</div>
+              <div style="font-weight:600;font-size:13px">دعوت دوستان</div>
+              <div class="stat-note">کسب کوین رایگان</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: MY BOTS ══ -->
+      <div class="screen" id="screen-mybots">
+        <div class="card" style="margin-bottom:16px">
+          <div id="mybots-list"></div>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: BOT MANAGER (injected) ══ -->
+      <div class="screen" id="screen-bot-manager">
+        <div id="bot-manager-content"></div>
+      </div>
+
+      <!-- ══ SCREEN: CREATE ══ -->
+      <div class="screen" id="screen-create">
+        <div class="card" style="max-width:520px;margin:0 auto">
+          <div class="card-header">
+            <div>
+              <div class="card-title">ساخت ربات جدید</div>
+              <div class="card-sub">توکن ربات را از @BotFather دریافت کن</div>
+            </div>
+          </div>
+
+          <div class="steps">
+            <div class="step done" id="step1">
+              <div class="step-dot">✓</div>
+              <div class="step-label">@BotFather</div>
+            </div>
+            <div class="step active" id="step2">
+              <div class="step-dot">2</div>
+              <div class="step-label">وارد کردن توکن</div>
+            </div>
+            <div class="step" id="step3">
+              <div class="step-dot">3</div>
+              <div class="step-label">تنظیم ربات</div>
+            </div>
+          </div>
+
+          <div class="alert alert-info" style="margin-bottom:20px">
+            <span>💡</span>
+            <span>در @BotFather با دستور <b>/newbot</b> یک ربات بساز، توکن ارسال‌شده را کپی کن و اینجا بزن.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">توکن ربات (Bot Token)</label>
+            <div class="token-input-wrap">
+              <span class="token-icon">🔑</span>
+              <input type="text" class="form-control" id="bot-token-input" 
+                placeholder="1234567890:AABBCCDDEEFFaabbccdd..." 
+                oninput="validateTokenInput(this)">
+            </div>
+          </div>
+
+          <div id="token-check-result" style="margin-bottom:16px"></div>
+
+          <div class="form-group">
+            <label class="form-label">پیام خوش‌آمدگویی (/start)</label>
+            <textarea class="form-control" id="bot-start-msg" rows="3" 
+              placeholder="👋 سلام! به ربات ما خوش آمدید."></textarea>
+          </div>
+
+          <button class="btn btn-primary btn-full btn-lg" onclick="createBot()">
+            🤖 ساخت و راه‌اندازی ربات
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: BROADCAST ══ -->
+      <div class="screen" id="screen-broadcast">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">ارسال پیام همگانی</div>
+                <div class="card-sub">به تمام کاربران ربات انتخابی</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">انتخاب ربات</label>
+              <select class="form-control" id="bc-bot-select" onchange="updateBcInfo()"></select>
+            </div>
+            <div id="bc-bot-info" class="alert alert-info" style="display:none"></div>
+            <div class="form-group">
+              <label class="form-label">متن پیام</label>
+              <textarea class="form-control" id="bc-text" rows="5" 
+                placeholder="متن پیامت رو بنویس..." 
+                oninput="updateBcPreview()"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">ارسال زمان‌بندی‌شده (دقیقه)</label>
+              <input type="number" class="form-control" id="bc-delay" 
+                placeholder="0 = همین الان" min="0" value="0">
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-success btn-full" onclick="sendBroadcast()">📢 ارسال</button>
+              <button class="btn btn-ghost" onclick="document.getElementById('bc-text').value='';updateBcPreview()">🗑</button>
+            </div>
+            <div id="bc-result" style="margin-top:12px"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">پیش‌نمایش پیام</div>
+            </div>
+            <div style="background:#010409;border-radius:var(--radius-sm);padding:16px;min-height:200px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                <div style="width:32px;height:32px;background:linear-gradient(135deg,#1f6feb,var(--accent));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px">🤖</div>
+                <div style="font-size:12px;color:var(--text-muted)" id="bc-preview-name">ربات شما</div>
+              </div>
+              <div class="preview-bubble" id="bc-preview-text">متن پیامت اینجا نمایش داده می‌شه...</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:8px;text-align:left">الان ✓✓</div>
+            </div>
+            <div class="log-box" id="bc-log" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: ANALYTICS ══ -->
+      <div class="screen" id="screen-analytics">
+        <div class="form-group" style="max-width:280px;margin-bottom:20px">
+          <label class="form-label">انتخاب ربات</label>
+          <select class="form-control" id="an-bot-select" onchange="renderAnalytics()"></select>
+        </div>
+        <div id="analytics-content">
+          <div class="empty"><div class="empty-icon">📊</div><div class="empty-title">یک ربات انتخاب کن</div></div>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: PLANS ══ -->
+      <div class="screen" id="screen-plans">
+        <div class="alert alert-info section-gap">
+          <span>💡</span>
+          <span>با دعوت دوستان کوین رایگان بگیر و پلن‌ت رو ارتقا بده! هر دعوت موفق = <b>80 GC</b></span>
+        </div>
+        <div class="grid-3" id="plans-grid"></div>
+      </div>
+
+      <!-- ══ SCREEN: REFERRAL ══ -->
+      <div class="screen" id="screen-referral">
+        <div class="grid-2 section-gap">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔗 لینک دعوت اختصاصی</div>
+            </div>
+            <div class="ref-link-box" id="ref-link-box">
+              <span id="ref-link-text">—</span>
+              <button class="btn btn-ghost btn-sm" onclick="copyRef()">📋 کپی</button>
+            </div>
+            <div style="margin-top:16px">
+              <div class="stat-box" style="text-align:center">
+                <div class="stat-label">مجموع دعوت‌شدگان</div>
+                <div class="stat-val stat-green" id="ref-count" style="color:var(--green)">0</div>
+                <div class="stat-note">نفر با لینک شما عضو شدند</div>
+              </div>
+            </div>
+            <hr class="divider">
+            <div style="font-size:13px;color:var(--text-muted);line-height:2">
+              🎁 به ازای هر دعوت: <b style="color:var(--text)">80 GC</b><br>
+              🎁 پاداش دوست دعوت‌شده: <b style="color:var(--text)">20 GC</b><br>
+              👥 به ازای هر کاربر جدید ربات: <b style="color:var(--text)">3 GC</b> (سقف ۱۵/روز)
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🏆 لیدربورد برتر</div>
+            </div>
+            <div id="referral-leaderboard">
+              <div class="empty" style="padding:30px 0"><div class="empty-icon">🏆</div><div class="empty-title">هنوز کسی دعوت نکرده</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SCREEN: ACCOUNT ══ -->
+      <div class="screen" id="screen-account">
+        <div class="grid-2 section-gap">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">👤 اطلاعات حساب</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+              <div style="width:56px;height:56px;background:linear-gradient(135deg,var(--purple),var(--accent));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700" id="acc-avatar">U</div>
+              <div>
+                <div style="font-size:18px;font-weight:700" id="acc-name">—</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px" id="acc-id">—</div>
+                <span class="tag tag-blue" id="acc-plan-badge">پایه 🌱</span>
+              </div>
+            </div>
+            <div class="stat-box" style="margin-bottom:12px">
+              <div class="stat-label">💰 موجودی کوین</div>
+              <div class="stat-val" style="color:var(--yellow)" id="acc-balance">0</div>
+              <div class="stat-note">GC — گرام کوین</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">تاریخ عضویت</label>
+              <div class="form-control" style="cursor:default" id="acc-date">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📊 مصرف پلن</div>
+            </div>
+            <div id="acc-usage"></div>
+            <hr class="divider">
+            <button class="btn btn-ghost btn-full" onclick="showScreen('plans')">💎 مشاهده پلن‌ها ←</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div><!-- /app -->
+
+<!-- ══ MODALS ══ -->
+<div class="modal-overlay" id="modal-upgrade">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="upgrade-title">ارتقا پلن</div>
+      <button class="modal-close" onclick="closeModal('modal-upgrade')">✕</button>
+    </div>
+    <div id="upgrade-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cmd">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="cmd-modal-title">مدیریت دستور</div>
+      <button class="modal-close" onclick="closeModal('modal-cmd')">✕</button>
+    </div>
+    <div id="cmd-modal-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-delete">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <div class="modal-title">⚠️ تأیید حذف</div>
+      <button class="modal-close" onclick="closeModal('modal-delete')">✕</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px" id="delete-desc">آیا مطمئنی؟</p>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-danger btn-full" id="delete-confirm-btn">بله، حذف شود</button>
+      <button class="btn btn-ghost btn-full" onclick="closeModal('modal-delete')">انصراف</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+const COIN_SYMBOL = 'GC';
+const PLANS = {
+  starter: {
+    order:0, label:'پایه', badge:'🌱', price:0,
+    max_bots:1, max_commands:5, max_callbacks:8,
+    broadcast:false, scheduled_broadcast:false,
+    custom_force_join:false, analytics:'ساده',
+    tagline:'برای شروع — یک ربات با امکانات پایه.'
+  },
+  professional: {
+    order:1, label:'حرفه‌ای', badge:'🚀', price:1200,
+    max_bots:3, max_commands:30, max_callbacks:40,
+    broadcast:true, scheduled_broadcast:true,
+    custom_force_join:true, analytics:'پیشرفته',
+    tagline:'ابزار کامل برای کسب‌وکارها — پیام همگانی، زمان‌بندی و عضویت اجباری.'
+  },
+  enterprise: {
+    order:2, label:'سازمانی', badge:'💎', price:4500,
+    max_bots:999, max_commands:999, max_callbacks:999,
+    broadcast:true, scheduled_broadcast:true,
+    custom_force_join:true, analytics:'حرفه‌ای + پشتیبانی اختصاصی',
+    tagline:'راهکار نامحدود برای کسب‌وکارهای بزرگ.'
+  }
+};
+
+let state = {
+  user: {
+    uid: 605611554,
+    full_name: 'کاربر گرام‌ساز',
+    plan: 'starter',
+    coin_balance: 50,
+    referral_code: 'abc12345',
+    referral_count: 0,
+    referral_earned_coins: 0,
+    created_at: new Date().toISOString(),
+    signup_bonus_claimed: true,
+  },
+  bots: [],
+  currentBotId: null,
+  currentScreen: 'dashboard',
+  botToken: '',
+  bcScheduled: [],
+};
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function uid() { return Math.random().toString(36).slice(2,10); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtLimit(n) { return n >= 900 ? '♾ نامحدود' : n; }
+function planRank(key) { return (PLANS[key]||PLANS.starter).order; }
+
+function saveState() {
+  try { localStorage.setItem('gs_state', JSON.stringify(state)); } catch(e) {}
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem('gs_state');
+    if (raw) { const parsed = JSON.parse(raw); Object.assign(state, parsed); }
+  } catch(e) {}
+}
+
+function progressBar(cur, max) {
+  if (max >= 900) return `<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${Math.min(100,cur/10)}%;background:var(--accent)"></div></div>`;
+  const pct = Math.min(100, max > 0 ? (cur/max)*100 : 0);
+  const color = pct > 80 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--green)';
+  return `<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%;background:${color}"></div></div>`;
+}
+
+function addLog(boxId, msg, type='info') {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  const cls = {ok:'log-ok',err:'log-err',info:'log-info',muted:'log-muted'}[type]||'log-info';
+  const ts = new Date().toLocaleTimeString('fa-IR');
+  box.innerHTML += `<div class="${cls}">[${ts}] ${esc(msg)}</div>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ══════════════════════════════════════════════════════
+// SCREENS
+// ══════════════════════════════════════════════════════
+const screenTitles = {
+  dashboard: ['داشبورد', 'خلاصه وضعیت ربات‌هات'],
+  mybots: ['ربات‌های من', 'مدیریت و تنظیم ربات‌ها'],
+  'bot-manager': ['مدیریت ربات', ''],
+  create: ['ساخت ربات جدید', 'توکن را از @BotFather بگیر'],
+  broadcast: ['پیام‌رسانی', 'ارسال پیام به کاربران ربات‌ها'],
+  analytics: ['آمار و تحلیل', 'عملکرد ربات‌هات'],
+  plans: ['پلن‌ها و ارتقا', 'سطح دسترسی خودت رو ارتقا بده'],
+  referral: ['دعوت دوستان', 'کوین رایگان کسب کن'],
+  account: ['حساب من', 'اطلاعات و موجودی کوین'],
+};
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const sc = document.getElementById('screen-' + name) ||
+             document.getElementById('screen-dashboard');
+  if (sc) sc.classList.add('active');
+
+  const [title, sub] = screenTitles[name] || ['گرام‌ساز', ''];
+  document.getElementById('topbar-title').textContent = title;
+  document.getElementById('topbar-sub').textContent = sub;
+  state.currentScreen = name;
+
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    if (btn.getAttribute('onclick') === `showScreen('${name}')`) {
+      btn.classList.add('active');
+    }
+  });
+
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'mybots') renderMyBots();
+  if (name === 'broadcast') renderBroadcastScreen();
+  if (name === 'analytics') renderAnalyticsScreen();
+  if (name === 'plans') renderPlans();
+  if (name === 'referral') renderReferral();
+  if (name === 'account') renderAccount();
+  updateSidebar();
+}
+
+// ══════════════════════════════════════════════════════
+// SIDEBAR UPDATE
+// ══════════════════════════════════════════════════════
+function updateSidebar() {
+  const u = state.user;
+  const plan = PLANS[u.plan] || PLANS.starter;
+  document.getElementById('sidebar-name').textContent = u.full_name || 'کاربر';
+  document.getElementById('sidebar-plan').textContent = `پلن ${plan.label}`;
+  document.getElementById('sidebar-avatar').textContent = (u.full_name || 'U')[0];
+  document.getElementById('sidebar-coins').textContent = `🪙 ${u.coin_balance}`;
+  document.getElementById('topbar-coins').textContent = `🪙 ${u.coin_balance} ${COIN_SYMBOL}`;
+  document.getElementById('bot-count-badge').textContent = state.bots.length;
+}
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderDashboard() {
+  const activeBots = state.bots.filter(b => b.is_active).length;
+  const totalUsers = state.bots.reduce((s,b) => s + (b.bot_users||[]).length, 0);
+  const totalMsgs = state.bots.reduce((s,b) => s + (b.stats?.messages_sent||0), 0);
+
+  document.getElementById('stat-active-bots').textContent = activeBots;
+  document.getElementById('stat-total-bots').textContent = state.bots.length;
+  document.getElementById('stat-total-users').textContent = totalUsers;
+  document.getElementById('stat-total-msgs').textContent = totalMsgs;
+
+  // Recent bots
+  const dbList = document.getElementById('dashboard-bots-list');
+  if (!state.bots.length) {
+    dbList.innerHTML = `<div class="empty"><div class="empty-icon">🤖</div><div class="empty-title">هنوز رباتی نساختی</div><button class="btn btn-primary btn-sm" onclick="showScreen('create')">ساخت اولین ربات</button></div>`;
+  } else {
+    dbList.innerHTML = state.bots.slice(0,3).map(b => `
+      <div class="bot-card" onclick="openBotManager('${b.bot_id}')">
+        <div class="bot-avatar">🤖</div>
+        <div>
+          <div class="bot-name">@${esc(b.bot_username||'—')}</div>
+          <div class="bot-meta"><span class="status-dot ${b.is_active?'status-on':'status-off'}"></span>${b.is_active?'فعال':'غیرفعال'} · ${(b.bot_users||[]).length} کاربر</div>
+        </div>
+        <div class="bot-actions"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openBotManager('${b.bot_id}')">⚙️ مدیریت</button></div>
+      </div>`).join('');
+  }
+
+  // Quick bc bot selector
+  const sel = document.getElementById('quick-bc-bot');
+  sel.innerHTML = state.bots.length
+    ? state.bots.map(b => `<option value="${b.bot_id}">@${b.bot_username||'—'}</option>`).join('')
+    : '<option value="">— ابتدا ربات بساز —</option>';
+}
+
+// ══════════════════════════════════════════════════════
+// MY BOTS
+// ══════════════════════════════════════════════════════
+function renderMyBots() {
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  const el = document.getElementById('mybots-list');
+
+  if (!state.bots.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🤖</div><div class="empty-title">هنوز رباتی نساختی</div><div class="empty-desc">در چند دقیقه اولین ربات حرفه‌ای‌ات رو بساز.</div><button class="btn btn-primary" onclick="showScreen('create')">➕ ساخت اولین ربات</button></div>`;
+    return;
+  }
+
+  const header = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div class="card-title">ربات‌های شما</div>
+        <div class="card-sub">${state.bots.length} از ${fmtLimit(plan.max_bots)} ربات استفاده شده</div>
+      </div>
+      ${state.bots.length < plan.max_bots
+        ? '<button class="btn btn-primary btn-sm" onclick="showScreen(\'create\')">➕ ربات جدید</button>'
+        : '<button class="btn btn-ghost btn-sm" onclick="showScreen(\'plans\')">ارتقا پلن ←</button>'}
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label"><span>ربات‌ها</span><span>${state.bots.length} / ${fmtLimit(plan.max_bots)}</span></div>
+      ${progressBar(state.bots.length, plan.max_bots)}
+    </div>`;
+
+  el.innerHTML = header + state.bots.map(b => `
+    <div class="bot-card" onclick="openBotManager('${b.bot_id}')">
+      <div class="bot-avatar">🤖</div>
+      <div style="flex:1">
+        <div class="bot-name">@${esc(b.bot_username||'—')}</div>
+        <div class="bot-meta">
+          <span class="status-dot ${b.is_active?'status-on':'status-off'}"></span>
+          ${b.is_active?'<span style="color:var(--green)">فعال</span>':'<span>غیرفعال</span>'}
+          · ${(b.bot_users||[]).length} کاربر · ${Object.keys(b.commands||{}).length} دستور
+        </div>
+      </div>
+      <div class="bot-actions">
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();toggleBot('${b.bot_id}')">${b.is_active?'🔴 خاموش':'🟢 روشن'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();confirmDeleteBot('${b.bot_id}')">🗑</button>
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openBotManager('${b.bot_id}')">⚙️ مدیریت</button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// BOT MANAGER
+// ══════════════════════════════════════════════════════
+function openBotManager(botId) {
+  state.currentBotId = botId;
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  screenTitles['bot-manager'] = [`⚙️ @${b.bot_username||'—'}`, 'مدیریت ربات'];
+  showScreen('bot-manager');
+  renderBotManager(botId);
+}
+
+function renderBotManager(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  const cmds = b.commands || {};
+  const cmdKeys = Object.keys(cmds).sort((a,b) => a === 'start' ? -1 : b === 'start' ? 1 : a.localeCompare(b));
+
+  document.getElementById('bot-manager-content').innerHTML = `
+    <!-- Header -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="bot-avatar" style="width:52px;height:52px;font-size:22px">🤖</div>
+        <div style="flex:1">
+          <div style="font-size:18px;font-weight:700">@${esc(b.bot_username||'—')}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
+            <span class="status-dot ${b.is_active?'status-on':'status-off'}"></span>
+            ${b.is_active?'<b style="color:var(--green)">فعال</b>':'<b style="color:var(--text-dim)">غیرفعال</b>'}
+            · ${(b.bot_users||[]).length} کاربر یکتا
+            · ${(b.stats?.messages_received||0)} پیام دریافتی
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="toggleBot('${botId}');renderBotManager('${botId}')">${b.is_active?'🔴 خاموش کن':'🟢 روشن کن'}</button>
+          <button class="btn btn-ghost btn-sm" onclick="showScreen('mybots')">← برگشت</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Interactive Menu -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🎯 منوی تعاملی</div>
+            <div class="card-sub">دستورها و دکمه‌های ربات</div>
+          </div>
+          ${Object.keys(cmds).length < plan.max_commands
+            ? `<button class="btn btn-primary btn-sm" onclick="openAddCmdModal('${botId}')">➕ دستور</button>`
+            : `<span class="tag tag-red">سقف پر</span>`}
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>دستورها</span><span>${Object.keys(cmds).length} / ${fmtLimit(plan.max_commands)}</span></div>
+          ${progressBar(Object.keys(cmds).length, plan.max_commands)}
+        </div>
+        ${cmdKeys.length
+          ? cmdKeys.map(name => {
+              const cmd = cmds[name];
+              const isStart = name === 'start';
+              const cbCount = Object.keys(cmd.callbacks||{}).length;
+              return `<div class="cmd-row">
+                <span class="cmd-name">${isStart?'⭐':''} /${esc(name)}</span>
+                <span class="cmd-preview">${esc((cmd.response||'').slice(0,40))}${(cmd.response||'').length>40?'…':''}</span>
+                ${cmd.photo?'<span title="دارای عکس">🖼</span>':''}
+                ${cbCount?`<span class="tag tag-purple" title="دکمه‌های تعاملی">⚡${cbCount}</span>`:''}
+                <div class="cmd-actions">
+                  <button class="btn btn-ghost btn-sm btn-icon" onclick="openCmdModal('${botId}','${name}')" title="ویرایش">✏️</button>
+                  ${!isStart ? `<button class="btn btn-ghost btn-sm btn-icon" onclick="deleteCmd('${botId}','${name}')" title="حذف">🗑</button>` : ''}
+                </div>
+              </div>`;
+            }).join('')
+          : '<div class="empty" style="padding:30px 0"><div class="empty-icon" style="font-size:32px">📋</div><div class="empty-title">دستوری تعریف نشده</div></div>'}
+      </div>
+
+      <!-- Settings -->
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><div class="card-title">⚙️ تنظیمات</div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:13px">وضعیت ربات</span>
+            <label class="toggle">
+              <input type="checkbox" ${b.is_active?'checked':''} onchange="toggleBot('${botId}');setTimeout(()=>renderBotManager('${botId}'),50)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">عضویت اجباری اختصاصی</label>
+            ${plan.custom_force_join
+              ? `<div style="display:flex;gap:8px">
+                  <input class="form-control" id="fj-input-${botId}" value="${esc(b.force_join_channel||'')}" placeholder="@channel یا خالی">
+                  <button class="btn btn-ghost btn-sm" onclick="saveFJ('${botId}')">ذخیره</button>
+                </div>`
+              : `<div class="alert alert-warn" style="margin:0">🔒 نیاز به پلن حرفه‌ای <button class="btn btn-ghost btn-sm" onclick="showScreen('plans')" style="margin-right:8px">ارتقا ←</button></div>`}
+          </div>
+          <button class="btn btn-danger btn-full btn-sm" style="margin-top:8px" onclick="confirmDeleteBot('${botId}')">🗑 حذف ربات</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">📊 آمار سریع</div></div>
+          <div class="grid-2" style="gap:10px">
+            <div class="stat-box stat-blue"><div class="stat-label">کاربران</div><div class="stat-val" style="font-size:20px">${(b.bot_users||[]).length}</div></div>
+            <div class="stat-box stat-green"><div class="stat-label">ارسالی</div><div class="stat-val" style="font-size:20px">${b.stats?.messages_sent||0}</div></div>
+            <div class="stat-box"><div class="stat-label">دریافتی</div><div class="stat-val" style="font-size:20px">${b.stats?.messages_received||0}</div></div>
+            <div class="stat-box stat-purple"><div class="stat-label">همگانی</div><div class="stat-val" style="font-size:20px">${b.stats?.broadcasts_sent||0}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// CMD MODAL
+// ══════════════════════════════════════════════════════
+function openCmdModal(botId, name) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const cmd = (b.commands || {})[name] || {};
+  const isStart = name === 'start';
+  const cbs = cmd.callbacks || {};
+  const cbKeys = Object.keys(cbs);
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+
+  document.getElementById('cmd-modal-title').textContent = `${isStart?'⭐ ':''}/` + name;
+  document.getElementById('cmd-modal-body').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">متن پاسخ</label>
+      <textarea class="form-control" id="cmd-edit-text" rows="4">${esc(cmd.response||'')}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">دکمه‌ها (هر خط = یک ردیف)</label>
+      <textarea class="form-control" id="cmd-edit-buttons" rows="3" placeholder="متن۱|id1, متن۲|id2\nمتن۳|id3">${cmd.buttons ? cmd.buttons.map(row=>row.map(b=>`${b.text}|${b.id}`).join(', ')).join('\n') : ''}</textarea>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px">فرمت: متن|شناسه — هر خط یک ردیف، دکمه‌های یک ردیف با کاما جدا می‌شن</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">عکس (file_id تلگرام)</label>
+      <input class="form-control" id="cmd-edit-photo" value="${esc(cmd.photo||'')}" placeholder="AgACAgIAAxkBAAI...">
+    </div>
+
+    <hr class="divider">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title">⚡ پاسخ دکمه‌ها (${cbKeys.length})</div>
+      ${cbKeys.length < plan.max_callbacks
+        ? `<button class="btn btn-ghost btn-sm" onclick="addCbRow('${botId}','${name}')">➕ پاسخ جدید</button>`
+        : `<span class="tag tag-red" style="font-size:11px">سقف ${plan.max_callbacks}</span>`}
+    </div>
+    <div id="cb-list">
+      ${cbKeys.map(id => `
+        <div class="cmd-row" id="cb-row-${id}" style="margin-bottom:6px">
+          <code style="color:var(--accent);font-size:12px;min-width:80px">${esc(id)}</code>
+          <input class="form-control" style="flex:1;padding:6px 10px" id="cb-val-${id}" value="${esc(cbs[id]||'')}">
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="deleteCb('${botId}','${name}','${id}')">🗑</button>
+        </div>`).join('')}
+    </div>
+
+    <hr class="divider">
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary btn-full" onclick="saveCmd('${botId}','${name}')">💾 ذخیره تغییرات</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-cmd')">انصراف</button>
+    </div>
+    <div id="cmd-save-result" style="margin-top:10px"></div>`;
+  openModal('modal-cmd');
+}
+
+function addCbRow(botId, cmdName) {
+  const id = prompt('شناسه دکمه (callback_data) را وارد کن:');
+  if (!id || id.includes(' ')) return alert('شناسه نامعتبر');
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const cmd = (b.commands||{})[cmdName];
+  if (!cmd) return;
+  cmd.callbacks = cmd.callbacks || {};
+  if (cmd.callbacks[id]) return alert('این شناسه قبلاً وجود دارد');
+  cmd.callbacks[id] = '';
+  saveState();
+  openCmdModal(botId, cmdName);
+}
+
+function deleteCb(botId, cmdName, cbId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const cmd = (b.commands||{})[cmdName];
+  if (!cmd) return;
+  delete cmd.callbacks[cbId];
+  saveState();
+  openCmdModal(botId, cmdName);
+}
+
+function saveCmd(botId, name) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const text = document.getElementById('cmd-edit-text').value;
+  const buttonsRaw = document.getElementById('cmd-edit-buttons').value.trim();
+  const photo = document.getElementById('cmd-edit-photo').value.trim() || null;
+
+  let buttons = null;
+  if (buttonsRaw) {
+    try {
+      buttons = buttonsRaw.split('\n').filter(Boolean).map(line =>
+        line.split(',').map(part => {
+          const [t,id] = part.trim().split('|').map(s=>s.trim());
+          if (!t||!id) throw new Error('فرمت نادرست');
+          return {text:t, id};
+        })
+      );
+    } catch(e) {
+      document.getElementById('cmd-save-result').innerHTML = `<div class="alert alert-error">❌ ${e.message}</div>`;
+      return;
+    }
+  }
+
+  b.commands = b.commands || {};
+  const existingCb = ((b.commands[name]||{}).callbacks) || {};
+  // Save updated callback values
+  Object.keys(existingCb).forEach(cbId => {
+    const inp = document.getElementById(`cb-val-${cbId}`);
+    if (inp) existingCb[cbId] = inp.value;
+  });
+
+  b.commands[name] = { response: text, buttons, photo, callbacks: existingCb };
+  if (name === 'start') { b.start_msg = text; b.start_buttons = buttons; b.start_photo = photo; }
+  saveState();
+  document.getElementById('cmd-save-result').innerHTML = `<div class="alert alert-success">✅ ذخیره شد!</div>`;
+  setTimeout(() => {
+    closeModal('modal-cmd');
+    if (state.currentScreen === 'bot-manager') renderBotManager(botId);
+  }, 700);
+}
+
+function openAddCmdModal(botId) {
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  if (Object.keys(b.commands||{}).length >= plan.max_commands) {
+    alert(`سقف ${plan.max_commands} دستور برای پلن شما پر شده.`);
+    return;
+  }
+  document.getElementById('cmd-modal-title').textContent = '➕ دستور جدید';
+  document.getElementById('cmd-modal-body').innerHTML = `
+    <div class="alert alert-info">دستورات رزرو‌شده: <b>start, cancel, help, id</b></div>
+    <div class="form-group">
+      <label class="form-label">نام دستور (بدون /)</label>
+      <input class="form-control" id="new-cmd-name" placeholder="مثلاً: info, price, contact">
+    </div>
+    <div class="form-group">
+      <label class="form-label">متن پاسخ</label>
+      <textarea class="form-control" id="new-cmd-text" rows="3" placeholder="پاسخ این دستور..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary btn-full" onclick="addCmd('${botId}')">✅ افزودن دستور</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-cmd')">انصراف</button>
+    </div>
+    <div id="cmd-save-result" style="margin-top:10px"></div>`;
+  openModal('modal-cmd');
+}
+
+function addCmd(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const name = (document.getElementById('new-cmd-name').value||'').toLowerCase().trim().replace('/','');
+  const text = document.getElementById('new-cmd-text').value;
+  const reserved = ['start','cancel','help','id'];
+  if (!name || name.includes(' ') || reserved.includes(name)) {
+    document.getElementById('cmd-save-result').innerHTML = `<div class="alert alert-error">❌ نام نامعتبر یا رزرو‌شده</div>`;
+    return;
+  }
+  if (b.commands && b.commands[name]) {
+    document.getElementById('cmd-save-result').innerHTML = `<div class="alert alert-error">❌ این دستور قبلاً وجود دارد</div>`;
+    return;
+  }
+  b.commands = b.commands || {};
+  b.commands[name] = { response: text, buttons: null, photo: null, callbacks: {} };
+  saveState();
+  document.getElementById('cmd-save-result').innerHTML = `<div class="alert alert-success">✅ دستور /${name} اضافه شد!</div>`;
+  setTimeout(() => { closeModal('modal-cmd'); renderBotManager(botId); }, 700);
+}
+
+function deleteCmd(botId, name) {
+  if (name === 'start') { alert('دستور /start قابل حذف نیست'); return; }
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  delete b.commands[name];
+  saveState();
+  renderBotManager(botId);
+}
+
+// ══════════════════════════════════════════════════════
+// CREATE BOT
+// ══════════════════════════════════════════════════════
+function validateTokenInput(inp) {
+  const val = inp.value.trim();
+  const result = document.getElementById('token-check-result');
+  if (!val) { result.innerHTML = ''; return; }
+  const valid = /^\d{8,12}:[A-Za-z0-9_-]{35}$/.test(val);
+  result.innerHTML = valid
+    ? `<div class="alert alert-success">✅ فرمت توکن معتبر به نظر می‌رسد</div>`
+    : `<div class="alert alert-warn">⚠️ فرمت توکن نامعتبر — باید مثل این باشه: 123456789:ABC...</div>`;
+}
+
+async function createBot() {
+  const token = document.getElementById('bot-token-input').value.trim();
+  const startMsg = document.getElementById('bot-start-msg').value.trim() || '👋 سلام! به ربات ما خوش آمدید.';
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+
+  if (!token || !/^\d{8,12}:[A-Za-z0-9_-]{35}$/.test(token)) {
+    alert('توکن نامعتبر است');
+    return;
+  }
+  if (state.bots.length >= plan.max_bots) {
+    alert(`شما به سقف ${plan.max_bots} ربات پلن ${plan.label} رسیدی. پلن‌ت رو ارتقا بده.`);
+    showScreen('plans');
+    return;
+  }
+  if (state.bots.find(b => b.bot_token === token)) {
+    alert('این توکن قبلاً ثبت شده');
+    return;
+  }
+
+  // Simulate bot validation
+  const botId = uid();
+  const tokenPart = token.split(':')[0];
+  const username = `bot_${tokenPart}`;
+
+  const newBot = {
+    bot_id: botId,
+    owner_uid: state.user.uid,
+    bot_token: token,
+    bot_username: username,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    last_activity: null,
+    start_msg: startMsg,
+    start_buttons: null,
+    start_photo: null,
+    commands: {
+      start: { response: startMsg, buttons: null, photo: null, callbacks: {} }
+    },
+    force_join_channel: null,
+    bot_users: [],
+    stats: { messages_received: 0, messages_sent: 0, unique_users: 0, broadcasts_sent: 0 },
+    daily_stats: {},
+  };
+
+  state.bots.push(newBot);
+  saveState();
+
+  document.getElementById('bot-token-input').value = '';
+  document.getElementById('bot-start-msg').value = '';
+  document.getElementById('token-check-result').innerHTML = '';
+
+  alert(`✅ ربات @${username} با موفقیت ساخته شد!`);
+  openBotManager(botId);
+}
+
+// ══════════════════════════════════════════════════════
+// TOGGLE / DELETE BOT
+// ══════════════════════════════════════════════════════
+function toggleBot(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  b.is_active = !b.is_active;
+  saveState();
+  if (state.currentScreen === 'mybots') renderMyBots();
+}
+
+function confirmDeleteBot(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  document.getElementById('delete-desc').textContent = `آیا مطمئنی می‌خوای ربات @${b.bot_username||'—'} رو حذف کنی؟ این عمل غیرقابل بازگشت است.`;
+  document.getElementById('delete-confirm-btn').onclick = () => {
+    state.bots = state.bots.filter(x => x.bot_id !== botId);
+    saveState();
+    closeModal('modal-delete');
+    showScreen('mybots');
+  };
+  openModal('modal-delete');
+}
+
+// Force Join
+function saveFJ(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const val = document.getElementById(`fj-input-${botId}`).value.trim() || null;
+  b.force_join_channel = val;
+  saveState();
+  alert(val ? `✅ عضویت اجباری روی «${val}» تنظیم شد.` : '✅ عضویت اجباری غیرفعال شد.');
+}
+
+// ══════════════════════════════════════════════════════
+// BROADCAST
+// ══════════════════════════════════════════════════════
+function renderBroadcastScreen() {
+  const sel = document.getElementById('bc-bot-select');
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  sel.innerHTML = state.bots.length
+    ? state.bots.map(b => `<option value="${b.bot_id}">@${b.bot_username||'—'}</option>`).join('')
+    : '<option value="">— ابتدا ربات بساز —</option>';
+  updateBcInfo();
+
+  const anSel = document.getElementById('an-bot-select');
+  anSel.innerHTML = state.bots.length
+    ? state.bots.map(b => `<option value="${b.bot_id}">@${b.bot_username||'—'}</option>`).join('')
+    : '<option value="">—</option>';
+}
+
+function updateBcInfo() {
+  const sel = document.getElementById('bc-bot-select');
+  const info = document.getElementById('bc-bot-info');
+  const previewName = document.getElementById('bc-preview-name');
+  if (!sel.value) { info.style.display='none'; return; }
+  const b = state.bots.find(x => x.bot_id === sel.value);
+  if (!b) return;
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  const userCount = (b.bot_users||[]).length;
+  if (previewName) previewName.textContent = `@${b.bot_username||'—'}`;
+  if (!plan.broadcast) {
+    info.style.display='flex';
+    info.className='alert alert-warn';
+    info.innerHTML='<span>🔒</span><span>پیام همگانی فقط در پلن حرفه‌ای به بالا. <button class="btn btn-ghost btn-sm" onclick="showScreen(\'plans\')">ارتقا ←</button></span>';
+  } else {
+    info.style.display='flex';
+    info.className='alert alert-info';
+    info.innerHTML=`<span>ℹ️</span><span>${userCount} کاربر دریافت خواهند کرد</span>`;
+  }
+}
+
+function updateBcPreview() {
+  const t = document.getElementById('bc-text').value || 'متن پیامت اینجا نمایش داده می‌شه...';
+  const p = document.getElementById('bc-preview-text');
+  if (p) p.textContent = t;
+}
+
+async function sendBroadcast() {
+  const sel = document.getElementById('bc-bot-select');
+  const text = document.getElementById('bc-text').value.trim();
+  const delay = parseInt(document.getElementById('bc-delay').value)||0;
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+
+  if (!plan.broadcast) { showScreen('plans'); return; }
+  if (!sel.value || !text) { alert('ربات و متن پیام رو انتخاب کن'); return; }
+
+  const b = state.bots.find(x => x.bot_id === sel.value);
+  if (!b) return;
+
+  const log = id => addLog('bc-log', id, 'info');
+  const result = document.getElementById('bc-result');
+
+  if (delay > 0) {
+    result.innerHTML = `<div class="alert alert-info">⏰ پیام بعد از ${delay} دقیقه ارسال خواهد شد.</div>`;
+    addLog('bc-log', `زمان‌بندی: ${delay} دقیقه دیگر`, 'info');
+    return;
+  }
+
+  result.innerHTML = `<div class="alert alert-info"><div class="ai-loading"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div></div> در حال ارسال...</div>`;
+  addLog('bc-log', `شروع ارسال به ${(b.bot_users||[]).length} کاربر...`, 'info');
+
+  // Simulate broadcast
+  await new Promise(r => setTimeout(r, 1500));
+  const sent = (b.bot_users||[]).length || Math.floor(Math.random()*100)+10;
+  b.stats.broadcasts_sent = (b.stats.broadcasts_sent||0) + 1;
+  b.stats.messages_sent = (b.stats.messages_sent||0) + sent;
+  saveState();
+
+  addLog('bc-log', `✅ ارسال موفق: ${sent} نفر`, 'ok');
+  result.innerHTML = `<div class="alert alert-success">✅ پیام همگانی به <b>${sent}</b> کاربر ارسال شد.</div>`;
+}
+
+async function quickBroadcast() {
+  const botId = document.getElementById('quick-bc-bot').value;
+  const text = document.getElementById('quick-bc-text').value.trim();
+  if (!botId || !text) { alert('ربات و متن پیام رو انتخاب کن'); return; }
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  if (!plan.broadcast) { showScreen('plans'); return; }
+  await new Promise(r => setTimeout(r, 800));
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (b) { b.stats.broadcasts_sent = (b.stats.broadcasts_sent||0)+1; saveState(); }
+  alert('✅ پیام همگانی ارسال شد!');
+  document.getElementById('quick-bc-text').value = '';
+}
+
+// ══════════════════════════════════════════════════════
+// ANALYTICS
+// ══════════════════════════════════════════════════════
+function renderAnalyticsScreen() {
+  const sel = document.getElementById('an-bot-select');
+  sel.innerHTML = state.bots.length
+    ? state.bots.map(b => `<option value="${b.bot_id}">@${b.bot_username||'—'}</option>`).join('')
+    : '<option value="">—</option>';
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const sel = document.getElementById('an-bot-select');
+  const cont = document.getElementById('analytics-content');
+  if (!sel.value || !state.bots.length) {
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">یک ربات انتخاب کن</div></div>';
+    return;
+  }
+  const b = state.bots.find(x => x.bot_id === sel.value);
+  if (!b) return;
+  const stats = b.stats || {};
+  const plan = PLANS[state.user.plan] || PLANS.starter;
+  const daily = b.daily_stats || {};
+  const days = Object.keys(daily).sort().slice(-7);
+
+  const showAdvanced = plan.analytics !== 'ساده';
+
+  cont.innerHTML = `
+    <div class="grid-3 section-gap">
+      <div class="stat-box stat-green"><div class="stat-label">کاربران یکتا</div><div class="stat-val">${stats.unique_users||0}</div></div>
+      <div class="stat-box stat-blue"><div class="stat-label">پیام دریافتی</div><div class="stat-val">${stats.messages_received||0}</div></div>
+      <div class="stat-box stat-purple"><div class="stat-label">پیام ارسالی</div><div class="stat-val">${stats.messages_sent||0}</div></div>
+    </div>
+
+    ${showAdvanced ? `
+    <div class="card">
+      <div class="card-header"><div class="card-title">📈 روند ۷ روز اخیر</div></div>
+      ${days.length ? `
+        <div style="display:flex;gap:0;align-items:flex-end;height:100px;margin-bottom:10px">
+          ${days.map(d => {
+            const v = (daily[d]?.received||0);
+            const pct = Math.max(5, Math.min(100, v * 5 + 10));
+            return `<div style="flex:1;margin:0 2px;background:var(--accent);border-radius:4px 4px 0 0;height:${pct}%;opacity:0.8;position:relative" title="${d}: ${v}">
+              <div style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--text-dim);white-space:nowrap">${d.slice(5)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="height:16px"></div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <tr style="color:var(--text-muted)"><th style="text-align:right;padding:4px">تاریخ</th><th style="text-align:center">دریافتی</th><th style="text-align:center">کاربر جدید</th></tr>
+          ${days.map(d => `<tr style="border-top:1px solid var(--border-light)">
+            <td style="padding:6px 4px;color:var(--text-muted)">${d}</td>
+            <td style="text-align:center">${daily[d]?.received||0}</td>
+            <td style="text-align:center;color:var(--green)">${daily[d]?.new_users||0}</td>
+          </tr>`).join('')}
+        </table>` : '<div style="color:var(--text-dim);font-size:13px">هنوز داده‌ای ثبت نشده.</div>'}
+    </div>` : `
+    <div class="card"><div class="alert alert-warn"><span>🔒</span><span>نمودار ۷ روزه مخصوص پلن حرفه‌ای است. <button class="btn btn-ghost btn-sm" onclick="showScreen('plans')">ارتقا ←</button></span></div></div>`}
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">💾 پشتیبان تنظیمات</div></div>
+      <button class="btn btn-ghost" onclick="exportBot('${b.bot_id}')">⬇️ دانلود JSON</button>
+    </div>`;
+}
+
+function exportBot(botId) {
+  const b = state.bots.find(x => x.bot_id === botId);
+  if (!b) return;
+  const data = { bot_username: b.bot_username, start_msg: b.start_msg, commands: b.commands, force_join_channel: b.force_join_channel };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${b.bot_username}_backup.json`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════
+// PLANS
+// ══════════════════════════════════════════════════════
+function renderPlans() {
+  const u = state.user;
+  const curPlan = u.plan;
+  const grid = document.getElementById('plans-grid');
+
+  grid.innerHTML = Object.entries(PLANS).map(([key, p]) => {
+    const isCur = key === curPlan;
+    const canUpgrade = p.order > planRank(curPlan);
+    const cost = p.price - (PLANS[curPlan]?.price||0);
+    const canAfford = u.coin_balance >= cost;
+
+    return `
+    <div class="plan-card ${isCur?'current':''} ${key==='professional'?'featured':''}">
+      ${isCur ? '<div class="plan-badge active">✅ پلن فعلی شما</div>' : key==='professional' ? '<div class="plan-badge popular">⭐ محبوب‌ترین</div>' : ''}
+      <div style="margin-top:${isCur||key==='professional'?'24px':'0'}">
+        <div class="plan-icon">${p.badge}</div>
+        <div class="plan-name">${p.label}</div>
+        <div class="plan-price">${p.price ? `${p.price.toLocaleString()} <span>${COIN_SYMBOL}</span>` : '<span>رایگان 🎉</span>'}</div>
+        <div class="plan-desc">${p.tagline}</div>
+      </div>
+      <div class="plan-features">
+        <div class="plan-feature"><span class="check">✓</span> ${fmtLimit(p.max_bots)} ربات</div>
+        <div class="plan-feature"><span class="check">✓</span> ${fmtLimit(p.max_commands)} دستور</div>
+        <div class="plan-feature"><span class="${p.broadcast?'check':'lock'}">${p.broadcast?'✓':'✗'}</span> پیام همگانی</div>
+        <div class="plan-feature"><span class="${p.scheduled_broadcast?'check':'lock'}">${p.scheduled_broadcast?'✓':'✗'}</span> ارسال زمان‌بندی‌شده</div>
+        <div class="plan-feature"><span class="${p.custom_force_join?'check':'lock'}">${p.custom_force_join?'✓':'✗'}</span> عضویت اجباری اختصاصی</div>
+        <div class="plan-feature"><span class="check">✓</span> آنالیتیکس ${p.analytics}</div>
+      </div>
+      <div style="margin-top:16px">
+        ${isCur
+          ? `<button class="btn btn-ghost btn-full" disabled>پلن فعلی شماست</button>`
+          : canUpgrade
+            ? `<button class="btn ${canAfford?'btn-primary':'btn-ghost'} btn-full" onclick="upgradePlan('${key}')">
+                ${canAfford ? `🚀 ارتقا — ${cost.toLocaleString()} ${COIN_SYMBOL}` : `🔒 موجودی کافی نیست (${cost-u.coin_balance} کم دارید)`}
+              </button>`
+            : `<button class="btn btn-ghost btn-full" disabled>پایین‌تر از پلن فعلی</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function upgradePlan(key) {
+  const u = state.user;
+  const target = PLANS[key];
+  const cur = PLANS[u.plan] || PLANS.starter;
+  if (!target) return;
+  if (target.order <= cur.order) { alert('شما همین الان این پلن یا بالاتر را دارید.'); return; }
+  const cost = target.price - cur.price;
+  if (u.coin_balance < cost) {
+    alert(`موجودی کافی نیست. ${cost - u.coin_balance} ${COIN_SYMBOL} دیگر لازم دارید.`);
+    return;
+  }
+  if (!confirm(`ارتقا به ${target.label} به قیمت ${cost} ${COIN_SYMBOL}؟`)) return;
+  u.coin_balance -= cost;
+  u.plan = key;
+  saveState();
+  alert(`🎉 پلن شما به ${target.label} ارتقا یافت!`);
+  renderPlans();
+  updateSidebar();
+}
+
+// ══════════════════════════════════════════════════════
+// REFERRAL
+// ══════════════════════════════════════════════════════
+function renderReferral() {
+  const u = state.user;
+  const link = `https://t.me/gramsaz_bot?start=${u.referral_code}`;
+  document.getElementById('ref-link-text').textContent = link;
+  document.getElementById('ref-count').textContent = u.referral_count;
+
+  const lb = document.getElementById('referral-leaderboard');
+  const medals = ['🥇','🥈','🥉'];
+  // Simulated leaderboard
+  const board = [
+    {name:'@user_alpha', count:42},
+    {name:'@beta_dev', count:31},
+    {name:'@ghasemi', count:18},
+    {name:'@ahmadi', count:12},
+  ];
+  lb.innerHTML = board.map((r,i) => `
+    <div class="lb-row">
+      <span class="lb-rank">${medals[i]||`${i+1}.`}</span>
+      <span class="lb-name">${esc(r.name)}</span>
+      <span class="lb-count">${r.count} دعوت</span>
+    </div>`).join('');
+}
+
+function copyRef() {
+  const link = document.getElementById('ref-link-text').textContent;
+  navigator.clipboard.writeText(link).then(() => alert('✅ لینک کپی شد!'));
+}
+
+// ══════════════════════════════════════════════════════
+// ACCOUNT
+// ══════════════════════════════════════════════════════
+function renderAccount() {
+  const u = state.user;
+  const plan = PLANS[u.plan] || PLANS.starter;
+  document.getElementById('acc-avatar').textContent = (u.full_name||'U')[0];
+  document.getElementById('acc-name').textContent = u.full_name || 'کاربر';
+  document.getElementById('acc-id').textContent = `آیدی: ${u.uid}`;
+  document.getElementById('acc-plan-badge').textContent = `${plan.badge} ${plan.label}`;
+  document.getElementById('acc-balance').textContent = u.coin_balance;
+  document.getElementById('acc-date').textContent = new Date(u.created_at).toLocaleDateString('fa-IR');
+
+  const usage = document.getElementById('acc-usage');
+  const botCount = state.bots.length;
+  const totalCmds = state.bots.reduce((s,b) => s + Object.keys(b.commands||{}).length, 0);
+
+  usage.innerHTML = `
+    <div class="progress-wrap">
+      <div class="progress-label"><span>ربات‌ها</span><span>${botCount} / ${fmtLimit(plan.max_bots)}</span></div>
+      ${progressBar(botCount, plan.max_bots)}
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label"><span>کل دستورات</span><span>${totalCmds} / ${fmtLimit(plan.max_commands * Math.max(1, botCount))}</span></div>
+      ${progressBar(totalCmds, plan.max_commands * Math.max(1, state.bots.length||1))}
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:12px">
+      🔗 کد دعوت: <code style="color:var(--accent)">${u.referral_code}</code><br>
+      👥 دعوت‌شدگان: <b>${u.referral_count}</b> نفر (+${u.referral_earned_coins} ${COIN_SYMBOL})
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+function init() {
+  loadState();
+
+  // Give signup bonus if first time
+  if (!state.user.signup_bonus_claimed) {
+    state.user.coin_balance += 50;
+    state.user.signup_bonus_claimed = true;
+    saveState();
+  }
+
+  updateSidebar();
+  showScreen('dashboard');
+}
+
+init();
+</script>
+</body>
+</html>
