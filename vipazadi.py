@@ -7,7 +7,7 @@ Azadi VIP Trading Bot — WebApp Edition
 """
 
 from __future__ import annotations
-import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, signal, atexit
+import os, sys, json, time, hmac, hashlib, uuid, asyncio, logging, threading, signal, atexit
 import json
 from io import BytesIO
 from pywebpush import webpush, WebPushException
@@ -177,8 +177,11 @@ class Storage:
                 self._payments = db["payments"]
                 self._subscriptions = db["subscriptions"]
                 self._meta = db["meta"]
+                self._trades = db["trades"]
                 self._users.create_index("uid", unique=True)
                 self._payments.create_index("payment_id", unique=True)
+                self._trades.create_index("id", unique=True)
+                self._trades.create_index("week_start")
                 log.info("✅ MongoDB متصل شد")
             except Exception as e:
                 log.warning(f"⚠️ MongoDB خطا: {e}. Memory mode")
@@ -192,7 +195,8 @@ class Storage:
         self._users = {}
         self._payments = {}
         self._subscriptions = {}
-        self._meta = {"archive_text": "Coming Soon ..."}
+        self._meta = {}
+        self._trades = {}
     
     # ── Users ──
     def ensure_user(self, uid: int, username: str = "", full_name: str = "") -> dict:
@@ -433,18 +437,94 @@ class Storage:
             return [p for p in self._payments.values() if p.get("uid") == uid]
         return list(self._payments.find({"uid": uid}, {"_id": 0}))
     
-    # ── Meta (Archive) ──
-    def get_archive_text(self) -> str:
+    # ── Trades (ژورنال معاملات / آرشیو ساختاریافته) ──
+    @staticmethod
+    def week_monday(date_str: str) -> str:
+        """تاریخ ورودی (YYYY-MM-DD) را به دوشنبه‌ی همان هفته (YYYY-MM-DD) گرد می‌کند."""
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            d = now_ir().date()
+        monday = d - timedelta(days=d.weekday())  # weekday(): Monday=0 ... Sunday=6
+        return monday.isoformat()
+
+    def create_trade(self, data: dict) -> str:
+        trade_id = uuid.uuid4().hex[:12]
+        trade = {
+            "id": trade_id,
+            "week_start": data["week_start"],
+            "day": int(data["day"]),
+            "order": int(time.time() * 1000),
+            "hashtag": (data.get("hashtag") or "").strip()[:40],
+            "symbol": (data.get("symbol") or "").strip()[:20],
+            "direction": data.get("direction") if data.get("direction") in ("buy", "sell") else None,
+            "result": data.get("result") if data.get("result") in ("win", "loss", "be") else "win",
+            "pips": data.get("pips"),
+            "reward": (data.get("reward") or "").strip()[:20],
+            "note": (data.get("note") or "").strip()[:300],
+            "before_image": data.get("before_image") or "",
+            "after_image": data.get("after_image") or "",
+            "created_at": now_ir().isoformat(),
+        }
         if self._is_memory:
-            return self._meta.get("archive_text", "Coming Soon ...")
-        doc = self._meta.find_one({"_id": "archive"})
-        return doc.get("text", "Coming Soon ...") if doc else "Coming Soon ..."
-    
-    def set_archive_text(self, text: str):
-        if self._is_memory:
-            self._meta["archive_text"] = text
+            with self._lock:
+                self._trades[trade_id] = trade
         else:
-            self._meta.update_one({"_id": "archive"}, {"$set": {"text": text}}, upsert=True)
+            self._trades.insert_one(dict(trade))
+        return trade_id
+
+    def update_trade(self, trade_id: str, data: dict) -> bool:
+        fields = {}
+        if "hashtag" in data: fields["hashtag"] = (data.get("hashtag") or "").strip()[:40]
+        if "symbol" in data: fields["symbol"] = (data.get("symbol") or "").strip()[:20]
+        if "note" in data: fields["note"] = (data.get("note") or "").strip()[:300]
+        if "reward" in data: fields["reward"] = (data.get("reward") or "").strip()[:20]
+        if "direction" in data and data["direction"] in ("buy", "sell", None):
+            fields["direction"] = data["direction"]
+        if "result" in data and data["result"] in ("win", "loss", "be"):
+            fields["result"] = data["result"]
+        if "pips" in data: fields["pips"] = data["pips"]
+        if "day" in data:
+            try: fields["day"] = int(data["day"])
+            except (TypeError, ValueError): pass
+        if "week_start" in data and data["week_start"]: fields["week_start"] = data["week_start"]
+        if "before_image" in data: fields["before_image"] = data.get("before_image") or ""
+        if "after_image" in data: fields["after_image"] = data.get("after_image") or ""
+        if not fields:
+            return False
+        if self._is_memory:
+            with self._lock:
+                t = self._trades.get(trade_id)
+                if not t: return False
+                t.update(fields)
+                return True
+        else:
+            result = self._trades.update_one({"id": trade_id}, {"$set": fields})
+            return result.matched_count > 0
+
+    def delete_trade(self, trade_id: str) -> bool:
+        if self._is_memory:
+            with self._lock:
+                return self._trades.pop(trade_id, None) is not None
+        else:
+            result = self._trades.delete_one({"id": trade_id})
+            return result.deleted_count > 0
+
+    def get_week_trades(self, week_start: str) -> list:
+        if self._is_memory:
+            items = [dict(t) for t in self._trades.values() if t.get("week_start") == week_start]
+        else:
+            items = list(self._trades.find({"week_start": week_start}, {"_id": 0}))
+        items.sort(key=lambda t: (t.get("day", 0), t.get("order", 0)))
+        return items
+
+    def get_archive_weeks(self, limit: int = 30) -> list:
+        """لیست هفته‌هایی که حداقل یک معامله دارند، جدیدترین اول."""
+        if self._is_memory:
+            weeks = {t.get("week_start") for t in self._trades.values() if t.get("week_start")}
+        else:
+            weeks = set(self._trades.distinct("week_start"))
+        return sorted(weeks, reverse=True)[:limit]
 
     # ── Promo (جشنواره‌ی تخفیف اولین عضویت) ──
     def get_promo(self) -> dict:
@@ -1834,10 +1914,18 @@ def api_regenerate_vip_link():
         log.error(f"VIP link error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@flask_app.get("/api/archive")
+@flask_app.get("/api/archive/weeks")
 @auth_required
-def api_archive():
-    return jsonify({"text": storage.get_archive_text()})
+def api_archive_weeks():
+    return jsonify({"weeks": storage.get_archive_weeks()})
+
+@flask_app.get("/api/archive/week/<week_start>")
+@auth_required
+def api_archive_week(week_start):
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", week_start):
+        return jsonify({"error": "تاریخ هفته نامعتبر است"}), 400
+    trades = storage.get_week_trades(week_start)
+    return jsonify({"week_start": week_start, "trades": trades})
 
 @flask_app.get("/api/my-payments")
 @auth_required
@@ -2313,15 +2401,54 @@ def api_admin_reject(payment_id):
         return jsonify({"message": "پرداخت رد شد"})
     return jsonify({"error": "خطا"}), 400
 
-@flask_app.post("/api/admin/archive")
+def _validate_trade_images(data: dict):
+    for img_key in ("before_image", "after_image"):
+        img = data.get(img_key)
+        if img and len(img) > 2_800_000:  # ~2 مگابایت هر تصویر (بعد از فشرده‌سازی سمت کلاینت)
+            return f"حجم تصویر «{'قبل' if img_key == 'before_image' else 'بعد'}» بیش از حد مجاز است"
+    return None
+
+@flask_app.post("/api/admin/archive/trade")
 @admin_required
-def api_admin_set_archive():
+def api_admin_create_trade():
     data = request.get_json(force=True) or {}
-    text = data.get("text", "")
-    if not text:
-        return jsonify({"error": "متن لازم است"}), 400
-    storage.set_archive_text(text)
-    return jsonify({"message": "آرشیو به‌روزرسانی شد"})
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", str(data.get("week_start") or "")):
+        return jsonify({"error": "تاریخ هفته نامعتبر است"}), 400
+    try:
+        day = int(data.get("day"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "روز نامعتبر است"}), 400
+    if day not in range(5):
+        return jsonify({"error": "روز باید یکی از روزهای معاملاتی (دوشنبه تا جمعه) باشد"}), 400
+    img_err = _validate_trade_images(data)
+    if img_err:
+        return jsonify({"error": img_err}), 400
+    trade_id = storage.create_trade(data)
+    return jsonify({"message": "معامله ثبت شد", "id": trade_id})
+
+@flask_app.put("/api/admin/archive/trade/<trade_id>")
+@admin_required
+def api_admin_update_trade(trade_id):
+    data = request.get_json(force=True) or {}
+    if "day" in data:
+        try:
+            if int(data["day"]) not in range(5):
+                return jsonify({"error": "روز نامعتبر است"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "روز نامعتبر است"}), 400
+    img_err = _validate_trade_images(data)
+    if img_err:
+        return jsonify({"error": img_err}), 400
+    if storage.update_trade(trade_id, data):
+        return jsonify({"message": "معامله ویرایش شد"})
+    return jsonify({"error": "معامله یافت نشد"}), 404
+
+@flask_app.delete("/api/admin/archive/trade/<trade_id>")
+@admin_required
+def api_admin_delete_trade(trade_id):
+    if storage.delete_trade(trade_id):
+        return jsonify({"message": "معامله حذف شد"})
+    return jsonify({"error": "معامله یافت نشد"}), 404
 
 
 # ══════════════════════════════════════════════════════════════════════
