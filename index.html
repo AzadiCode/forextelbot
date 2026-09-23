@@ -6,26 +6,26 @@
       name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0d0e10" />
+    <meta name="theme-color" content="#0e0f11" />
     <title>GramSaz</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link
-      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
-        --bg: #0d0e10;
-        --card: #16181b;
-        --card2: #1d2024;
-        --line: #26292e;
-        --tx: #eceae4;
-        --mu: #878a91;
+        --bg: #0e0f11;
+        --card: #151719;
+        --card2: #1b1e21;
+        --line: #25282c;
+        --tx: #e9e8e3;
+        --mu: #80848b;
         --ac: #d4ff3f;
         --acx: #12140a;
-        --red: #ff5d5d;
+        --red: #ff6161;
         --ok: #3ddc97;
-        --r: 16px;
+        --r: 14px;
       }
       * {
         box-sizing: border-box;
@@ -54,11 +54,11 @@
         background: none;
       }
       svg {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         fill: none;
         stroke: currentColor;
-        stroke-width: 1.8;
+        stroke-width: 1.7;
         stroke-linecap: round;
         stroke-linejoin: round;
         flex: none;
@@ -66,50 +66,66 @@
       #view {
         max-width: 560px;
         margin: 0 auto;
-        padding: 20px 16px 110px;
+        padding: 18px 16px 100px;
+        animation: fade 0.2s;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+        }
       }
       h1 {
-        font-size: 24px;
-        font-weight: 800;
-        letter-spacing: -0.5px;
+        font-size: 21px;
+        font-weight: 700;
       }
       h2 {
         font-size: 12px;
         color: var(--mu);
         font-weight: 500;
-        margin: 24px 4px 10px;
+        margin: 22px 2px 8px;
       }
       .top {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
       }
       .sub {
         color: var(--mu);
-        font-size: 13px;
+        font-size: 12.5px;
+      }
+      .num,
+      .tag,
+      .chips span,
+      .av {
+        font-family: Inter, Vazirmatn, sans-serif;
+        font-variant-numeric: tabular-nums;
+      }
+      .sec {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 14px 0 8px;
       }
       .card {
         background: var(--card);
         border: 1px solid var(--line);
         border-radius: var(--r);
-        padding: 16px;
+        padding: 14px;
       }
       .row {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 14px 16px;
+        padding: 11px 12px;
         background: var(--card);
         border: 1px solid var(--line);
         border-radius: var(--r);
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         cursor: pointer;
-        transition: 0.15s;
       }
       .row:active {
-        transform: scale(0.985);
         background: var(--card2);
       }
       .row .g {
@@ -118,73 +134,94 @@
       }
       .row b {
         display: block;
-        font-weight: 700;
+        font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       .row small {
+        display: block;
         color: var(--mu);
         font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .av {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+        background: var(--card2);
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ac);
+        flex: none;
       }
       .dot {
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: var(--mu);
+        background: #555a61;
         flex: none;
       }
       .dot.on {
         background: var(--ok);
-        box-shadow: 0 0 0 4px #3ddc9722;
       }
-      .grid {
+      .av .dot {
+        position: absolute;
+        bottom: -2px;
+        left: -2px;
+        border: 2px solid var(--card);
+        box-sizing: content-box;
+      }
+      .kpis {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      .stat {
-        padding: 16px;
-        background: var(--card);
+        grid-template-columns: repeat(var(--c, 4), 1fr);
+        gap: 1px;
+        background: var(--line);
         border: 1px solid var(--line);
         border-radius: var(--r);
+        overflow: hidden;
       }
-      .stat b {
+      .kpis > div {
+        background: var(--card);
+        padding: 11px 4px;
+        text-align: center;
+      }
+      .kpis b {
         display: block;
-        font-size: 26px;
-        font-weight: 800;
-        letter-spacing: -1px;
-        line-height: 1.2;
+        font:
+          700 18px/1.3 Inter,
+          Vazirmatn,
+          sans-serif;
+        letter-spacing: -0.3px;
       }
-      .stat span {
-        font-size: 12px;
+      .kpis span {
+        font-size: 11px;
         color: var(--mu);
       }
-      .stat.hi {
-        background: var(--ac);
-        color: var(--acx);
-        border: 0;
-      }
-      .stat.hi span {
-        color: #12140aa8;
+      .kpis .ac b {
+        color: var(--ac);
       }
       .btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        height: 46px;
-        padding: 0 20px;
-        border-radius: 14px;
+        gap: 6px;
+        height: 44px;
+        padding: 0 18px;
+        border-radius: 12px;
         background: var(--ac);
         color: var(--acx);
-        font-weight: 700;
+        font-weight: 600;
         cursor: pointer;
         width: 100%;
-        transition: 0.15s;
       }
       .btn:active {
-        transform: scale(0.97);
+        opacity: 0.85;
       }
       .btn:disabled {
         opacity: 0.5;
@@ -195,41 +232,67 @@
         border: 1px solid var(--line);
       }
       .btn.d {
-        background: #ff5d5d1f;
+        background: #ff61611a;
         color: var(--red);
       }
       .btn.sm {
-        height: 36px;
+        height: 34px;
         width: auto;
-        padding: 0 14px;
+        padding: 0 12px;
         font-size: 13px;
-        border-radius: 11px;
+        border-radius: 10px;
       }
       .ib {
-        width: 40px;
-        height: 40px;
-        border-radius: 12px;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
         background: var(--card);
         border: 1px solid var(--line);
         display: grid;
         place-items: center;
         cursor: pointer;
         flex: none;
+        color: var(--mu);
+      }
+      .ib.d {
+        color: var(--red);
+        background: #ff61611a;
+        border-color: transparent;
+      }
+      .mini {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        color: var(--mu);
+        background: var(--card);
+        cursor: pointer;
+        flex: none;
+      }
+      .mini svg {
+        width: 16px;
+        height: 16px;
+      }
+      .mini.on {
+        color: var(--ac);
+      }
+      .mini:active {
+        color: var(--red);
       }
       .in {
         width: 100%;
         background: var(--card2);
         border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 10px;
-        transition: 0.15s;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
       }
       .in:focus {
-        border-color: var(--ac);
+        border-color: #59642c;
       }
       textarea.in {
-        min-height: 110px;
+        min-height: 96px;
         resize: vertical;
       }
       .in[dir="ltr"] {
@@ -239,34 +302,33 @@
         display: block;
         font-size: 12px;
         color: var(--mu);
-        margin: 0 4px 6px;
+        margin: 0 2px 5px;
       }
       .seg {
         display: flex;
         background: var(--card);
         border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 4px;
-        margin: 16px 0;
+        border-radius: 12px;
+        padding: 3px;
+        margin: 14px 0;
       }
       .seg button {
         flex: 1;
-        height: 38px;
-        border-radius: 10px;
+        height: 34px;
+        border-radius: 9px;
         color: var(--mu);
-        font-weight: 500;
         cursor: pointer;
       }
       .seg button.on {
-        background: var(--ac);
-        color: var(--acx);
-        font-weight: 700;
+        background: var(--card2);
+        color: var(--ac);
+        font-weight: 600;
       }
       .sw {
         position: relative;
-        width: 48px;
-        height: 28px;
-        border-radius: 14px;
+        width: 40px;
+        height: 24px;
+        border-radius: 12px;
         background: var(--line);
         cursor: pointer;
         flex: none;
@@ -277,81 +339,99 @@
         position: absolute;
         top: 3px;
         right: 3px;
-        width: 22px;
-        height: 22px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
-        background: #fff;
+        background: #aaa;
         transition: 0.2s;
       }
       .sw.on {
         background: var(--ac);
       }
       .sw.on::after {
-        right: 23px;
+        right: 19px;
         background: var(--acx);
       }
       .plug {
         background: var(--card);
         border: 1px solid var(--line);
         border-radius: var(--r);
-        padding: 16px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+        overflow: hidden;
       }
       .plug .h {
         display: flex;
         align-items: center;
-        gap: 12px;
-      }
-      .plug .h .g {
-        flex: 1;
-      }
-      .plug .h b {
-        display: block;
+        gap: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
       }
       .plug .ic {
-        width: 42px;
-        height: 42px;
-        border-radius: 13px;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
         background: var(--card2);
         display: grid;
         place-items: center;
         color: var(--ac);
       }
+      .plug .g {
+        flex: 1;
+        min-width: 0;
+      }
+      .plug b {
+        display: block;
+        font-weight: 600;
+        font-size: 13.5px;
+        line-height: 1.4;
+      }
+      .plug small {
+        color: var(--mu);
+        font-size: 11.5px;
+      }
+      .plug .chev {
+        color: var(--mu);
+        transition: 0.2s;
+      }
+      .plug.open .chev {
+        transform: rotate(180deg);
+      }
       .plug .bd {
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px dashed var(--line);
+        display: none;
+        padding: 12px;
+        border-top: 1px solid var(--line);
+      }
+      .plug.open .bd {
+        display: block;
       }
       .tag {
         font-size: 11px;
-        padding: 2px 8px;
+        padding: 1px 8px;
         border-radius: 8px;
         background: var(--card2);
         color: var(--mu);
-        margin-inline-start: 4px;
       }
       .tabbar {
         position: fixed;
-        bottom: max(14px, env(safe-area-inset-bottom));
+        bottom: max(12px, env(safe-area-inset-bottom));
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 4px;
-        background: #1a1c20ee;
-        backdrop-filter: blur(16px);
+        gap: 2px;
+        background: var(--card);
         border: 1px solid var(--line);
-        border-radius: 22px;
-        padding: 6px;
+        border-radius: 18px;
+        padding: 4px;
         z-index: 20;
       }
       .tabbar button {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 2px;
-        width: 68px;
-        padding: 8px 0;
-        border-radius: 16px;
+        gap: 1px;
+        width: 64px;
+        padding: 7px 0;
+        border-radius: 14px;
         color: var(--mu);
         font-size: 11px;
         cursor: pointer;
@@ -359,12 +439,12 @@
       .tabbar button.on {
         background: var(--ac);
         color: var(--acx);
-        font-weight: 700;
+        font-weight: 600;
       }
       .sheet-bg {
         position: fixed;
         inset: 0;
-        background: #000a;
+        background: #000b;
         z-index: 40;
         display: none;
         align-items: flex-end;
@@ -378,47 +458,183 @@
         margin: 0 auto;
         background: var(--bg);
         border: 1px solid var(--line);
-        border-radius: 24px 24px 0 0;
-        padding: 18px 16px 28px;
+        border-bottom: 0;
+        border-radius: 20px 20px 0 0;
+        display: flex;
+        flex-direction: column;
         max-height: 92vh;
-        overflow: auto;
-        animation: up 0.25s ease;
+        animation: up 0.2s;
       }
       @keyframes up {
         from {
-          transform: translateY(40px);
+          transform: translateY(30px);
           opacity: 0;
         }
       }
-      .sheet .grab {
-        width: 40px;
-        height: 4px;
-        border-radius: 2px;
-        background: var(--line);
-        margin: 0 auto 16px;
+      .sh-h {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 600;
       }
-      .bb {
+      .sh-b {
+        padding: 14px 16px;
+        overflow: auto;
+        flex: 1;
+      }
+      .sh-f {
+        display: flex;
+        gap: 8px;
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+        border-top: 1px solid var(--line);
+      }
+      .pfx {
+        display: flex;
+        align-items: center;
+        direction: ltr;
+        background: var(--card2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0 12px;
+        margin-bottom: 8px;
+      }
+      .pfx span {
+        color: var(--mu);
+        margin-right: 2px;
+      }
+      .pfx input {
+        flex: 1;
+        padding: 10px 0;
+      }
+      .chips {
         display: flex;
         gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .chips span {
+        font-size: 12px;
+        padding: 2px 10px;
+        border-radius: 20px;
+        background: var(--card2);
+        border: 1px solid var(--line);
+        color: var(--mu);
+        cursor: pointer;
+      }
+      .pv {
+        background: #0a0b0c;
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        padding: 12px;
         margin-bottom: 6px;
       }
-      .bb .in {
+      .bub {
+        background: var(--card2);
+        border-radius: 12px 12px 12px 4px;
+        padding: 8px 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13.5px;
+        max-width: 92%;
+      }
+      .mchip {
+        font-size: 11px;
+        color: var(--mu);
+        margin-bottom: 4px;
+      }
+      .pb {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+        max-width: 92%;
+      }
+      .pb i {
+        flex: 1;
+        text-align: center;
+        background: #262a2f;
+        border-radius: 8px;
+        padding: 4px;
+        font-style: normal;
+        font-size: 12.5px;
+        color: #c9d1da;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .brow {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 8px;
+        margin-bottom: 8px;
+      }
+      .bc {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .bc .in {
         margin: 0;
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+      }
+      .bc .id {
+        flex: 0 0 78px;
+        font-size: 12px;
+      }
+      .lnk {
+        font-size: 12px;
+        color: var(--ac);
+        cursor: pointer;
+      }
+      .med {
+        margin: 14px 0;
+      }
+      .med summary {
+        cursor: pointer;
+        color: var(--mu);
+        font-size: 12px;
+        margin-bottom: 8px;
       }
       .empty {
         text-align: center;
         color: var(--mu);
-        padding: 40px 20px;
+        padding: 36px 20px;
+      }
+      .empty-ic {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 12px;
+        border-radius: 14px;
+        background: var(--card);
+        border: 1px dashed var(--line);
+        display: grid;
+        place-items: center;
+      }
+      .skel {
+        border-radius: var(--r);
+        background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%);
+        background-size: 200% 100%;
+        animation: sh 1.2s infinite linear;
+      }
+      @keyframes sh {
+        to {
+          background-position: -200% 0;
+        }
       }
       #toast {
         position: fixed;
-        top: 16px;
+        top: 14px;
         left: 50%;
         transform: translate(-50%, -90px);
         background: var(--tx);
         color: var(--bg);
-        padding: 10px 18px;
-        border-radius: 14px;
+        padding: 9px 16px;
+        border-radius: 12px;
         font-weight: 500;
         z-index: 99;
         transition: 0.3s;
@@ -448,24 +664,24 @@
         margin: 0 auto;
       }
       .logo {
-        width: 56px;
-        height: 56px;
-        border-radius: 18px;
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
         background: var(--ac);
         color: var(--acx);
         display: grid;
         place-items: center;
-        margin-bottom: 22px;
+        margin-bottom: 20px;
       }
       .logo svg {
-        width: 28px;
-        height: 28px;
+        width: 26px;
+        height: 26px;
       }
       .bar {
-        height: 6px;
+        height: 5px;
         border-radius: 3px;
         background: var(--card2);
-        margin-top: 6px;
+        margin-top: 5px;
         overflow: hidden;
       }
       .bar i {
@@ -473,128 +689,11 @@
         height: 100%;
         background: var(--ac);
       }
-      .spin {
-        display: none;
-      }
-
-      /* ── Polish layer ── */
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0 0 auto 0;
-        height: 320px;
-        background: radial-gradient(60% 100% at 85% 0%, rgba(212, 255, 63, 0.09), transparent 70%);
-        pointer-events: none;
-        z-index: 0;
-      }
-      #view,
-      .tabbar {
-        position: relative;
-        z-index: 1;
-      }
-      .tabbar {
-        position: fixed;
-      }
-      #view > * {
-        animation: rise 0.35s ease both;
-      }
-      #view > *:nth-child(2) { animation-delay: 0.04s; }
-      #view > *:nth-child(3) { animation-delay: 0.08s; }
-      #view > *:nth-child(4) { animation-delay: 0.12s; }
-      @keyframes rise {
-        from { opacity: 0; transform: translateY(10px); }
-      }
-      .card,
-      .row,
-      .stat,
-      .plug {
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
-      }
-      .stat {
-        background: linear-gradient(160deg, var(--card), #131518);
-      }
-      .stat.hi {
-        background: linear-gradient(160deg, #e2ff6b, var(--ac));
-        box-shadow: 0 14px 30px -14px rgba(212, 255, 63, 0.55);
-      }
-      .btn:not(.s):not(.d) {
-        box-shadow: 0 10px 24px -12px rgba(212, 255, 63, 0.6);
-      }
-      .in:focus {
-        border-color: var(--ac);
-        box-shadow: 0 0 0 3px rgba(212, 255, 63, 0.14);
-      }
-      .row:hover {
-        border-color: #33373d;
-      }
-      h2 {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      h2::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: var(--line);
-      }
-      .av {
-        position: relative;
-        width: 42px;
-        height: 42px;
-        border-radius: 14px;
-        background: var(--card2);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        font-weight: 800;
-        color: var(--ac);
-        flex: none;
-      }
-      .av .dot {
-        position: absolute;
-        bottom: -3px;
-        left: -3px;
-        border: 2px solid var(--card);
-        box-sizing: content-box;
-      }
-      .av .dot.on {
-        box-shadow: none;
-      }
-      .tabbar button {
-        transition: 0.2s;
-      }
-      .tabbar button.on {
-        box-shadow: 0 6px 16px -6px rgba(212, 255, 63, 0.6);
-      }
-      .seg button {
-        transition: 0.2s;
-      }
-      .plug .ic {
-        border: 1px solid var(--line);
-      }
-      .empty-ic {
-        width: 56px;
-        height: 56px;
-        margin: 0 auto 14px;
-        border-radius: 18px;
-        background: var(--card);
-        border: 1px dashed var(--line);
-        display: grid;
-        place-items: center;
-        color: var(--mu);
-      }
-      .skel {
-        border-radius: var(--r);
-        background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%);
-        background-size: 200% 100%;
-        animation: shimmer 1.2s infinite linear;
-      }
-      @keyframes shimmer {
-        to { background-position: -200% 0; }
-      }
       @media (prefers-reduced-motion: reduce) {
-        * { animation: none !important; transition: none !important; }
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
       }
     </style>
   </head>
@@ -616,8 +715,8 @@
         tg.ready();
         tg.expand();
         try {
-          tg.setHeaderColor("#0d0e10");
-          tg.setBackgroundColor("#0d0e10");
+          tg.setHeaderColor("#0e0f11");
+          tg.setBackgroundColor("#0e0f11");
         } catch (e) {}
       }
       let token = localStorage.getItem("authToken") || "",
@@ -631,13 +730,16 @@
         new URLSearchParams(location.search).get("ref") || localStorage.getItem("pending_referral") || "";
       if (ref) localStorage.setItem("pending_referral", ref);
       const $ = (id) => document.getElementById(id),
-        n = (x) => (+x || 0).toLocaleString("fa");
+        n = (x) => (+x || 0).toLocaleString("en-US");
       const esc = (s) =>
         String(s ?? "").replace(
           /[&<>"']/g,
           (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
         );
       const I = {
+        x: '<path d="M6 6l12 12M18 6L6 18"/>',
+        down: '<path d="M6 9l6 6 6-6"/>',
+        msg: '<path d="M4 5h16v11H9l-5 4z"/>',
         home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',
         bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
         plus: '<path d="M12 5v14M5 12h14"/>',
@@ -806,23 +908,29 @@
       const head = (t, s, r = "") =>
         `<div class="top"><div><h1>${t}</h1>${s ? `<div class="sub">${s}</div>` : ""}</div>${r}</div>`;
       const botRow = (b) =>
-        `<div class="row" onclick="go('bot','${b.bot_id}')"><span class="av">${esc((b.bot_username || "?").charAt(0).toUpperCase())}<i class="dot ${b.is_running ? "on" : ""}"></i></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div><span style="color:var(--mu);transform:scaleX(-1)">${ic("back")}</span></div>`;
+        `<div class="row" onclick="go('bot','${b.bot_id}')"><span class="av">${esc((b.bot_username || "?")[0].toUpperCase())}<i class="dot ${b.is_running ? "on" : ""}"></i></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.bot_username || "—")}</b><small><span class="num">${n(b.stats?.unique_users)}</span> کاربر · <span class="num">${n(b.stats?.messages_received)}</span> پیام</small></div><span style="color:var(--mu);transform:scaleX(-1)">${ic("back")}</span></div>`;
       const empty = (t, b = "") =>
-        `<div class="empty"><div class="empty-ic">${ic("bot")}</div>${t}${b ? `<div style="margin-top:16px">${b}</div>` : ""}</div>`;
-
-      const skel = `<div class="skel" style="height:110px;margin-bottom:8px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div>`;
+        `<div class="empty"><div class="empty-ic">${ic("bot")}</div>${t}${b ? `<div style="margin-top:14px">${b}</div>` : ""}</div>`;
+      const skel = `<div class="skel" style="height:64px;margin-bottom:10px"></div><div class="skel" style="height:56px;margin-bottom:6px"></div><div class="skel" style="height:56px"></div>`;
+      const kpis = (a, c = a.length) =>
+        `<div class="kpis" style="--c:${c}">${a.map(([v, t, h]) => `<div class="${h ? "ac" : ""}"><b>${n(v)}</b><span>${t}</span></div>`).join("")}</div>`;
+      const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
       const vHome = guard(async () => {
         $("view").innerHTML = skel;
         ({ bots } = await api("/api/bots"));
-        const S = (k) => bots.reduce((s, b) => s + (b.stats?.[k] || 0), 0);
+        const act = bots.filter((b) => b.is_running).length;
         $("view").innerHTML =
           head(
             "سلام " + esc((user.full_name || user.username || "").split(" ")[0]),
-            "خلاصه‌ی وضعیت ربات‌هایت",
+            `<span class="num">${n(act)}</span> ربات فعال از <span class="num">${n(bots.length)}</span>`,
           ) +
-          `<div class="grid"><div class="stat hi"><b>${n(S("unique_users"))}</b><span>کل کاربران</span></div><div class="stat"><b>${n(bots.length)}</b><span>ربات · ${n(bots.filter((b) => b.is_running).length)} فعال</span></div>
- <div class="stat"><b>${n(S("messages_received"))}</b><span>پیام دریافتی</span></div><div class="stat"><b>${n(S("messages_sent"))}</b><span>پیام ارسالی</span></div></div>
- <h2>ربات‌های اخیر</h2>` +
+          kpis([
+            [S("unique_users"), "کاربر", 1],
+            [bots.length, "ربات"],
+            [S("messages_received"), "دریافتی"],
+            [S("messages_sent"), "ارسالی"],
+          ]) +
+          "<h2>ربات‌های اخیر</h2>" +
           (bots.length
             ? bots.slice(0, 4).map(botRow).join("")
             : empty(
@@ -836,8 +944,8 @@
         $("view").innerHTML =
           head(
             "ربات‌ها",
-            n(bots.length) + " ربات",
-            '<div class="ib" onclick="go(\'new\')">' + ic("plus") + "</div>",
+            `<span class="num">${n(bots.length)}</span> ربات`,
+            `<div class="ib" onclick="go('new')">${ic("plus")}</div>`,
           ) + (bots.length ? bots.map(botRow).join("") : empty("رباتی وجود ندارد."));
       });
       function vNew() {
@@ -870,25 +978,23 @@
         bot = d.bot;
         const s = bot.stats || {};
         $("view").innerHTML =
-          `<div class="top"><div class="ib" onclick="go('bots')" style="transform:scaleX(-1)">${ic("back")}</div><div style="flex:1;min-width:0"><h1 dir="ltr" style="text-align:right;font-size:20px">@${esc(bot.bot_username || "—")}</h1><div class="sub" id="st">${bot.is_running ? "فعال و در حال پاسخ‌گویی" : "خاموش"}</div></div><div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>
- <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:6px">${[
-   ["unique_users", "کاربر"],
-   ["messages_received", "دریافتی"],
-   ["messages_sent", "ارسالی"],
-   ["broadcasts_sent", "همگانی"],
- ]
-   .map(
-     ([k, t]) =>
-       `<div class="stat" style="padding:12px 8px;text-align:center"><b style="font-size:18px">${n(s[k])}</b><span style="font-size:11px">${t}</span></div>`,
-   )
-   .join("")}</div>
- <div class="seg">${[
-   ["cmds", "دستورها"],
-   ["plug", "افزونه‌ها"],
-   ["set", "تنظیمات"],
- ]
-   .map(([k, t]) => `<button class="${tab === k ? "on" : ""}" onclick="tab='${k}';vBot()">${t}</button>`)
-   .join("")}</div><div id="tb"></div>`;
+          `<div class="top"><div class="ib" onclick="go('bots')" style="transform:scaleX(-1)">${ic("back")}</div><div style="flex:1;min-width:0"><h1 dir="ltr" style="text-align:right;font-size:18px">@${esc(bot.bot_username || "—")}</h1><div class="sub" id="st">${bot.is_running ? "فعال و در حال پاسخ‌گویی" : "خاموش"}</div></div><div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>` +
+          kpis([
+            [s.unique_users, "کاربر", 1],
+            [s.messages_received, "دریافتی"],
+            [s.messages_sent, "ارسالی"],
+            [s.broadcasts_sent, "همگانی"],
+          ]) +
+          `<div class="seg">${[
+            ["cmds", "دستورها"],
+            ["plug", "افزونه‌ها"],
+            ["set", "تنظیمات"],
+          ]
+            .map(
+              ([k, t]) =>
+                `<button class="${tab === k ? "on" : ""}" onclick="tab='${k}';vBot()">${t}</button>`,
+            )
+            .join("")}</div><div id="tb"></div>`;
         if (tab === "cmds") await tCmds();
         if (tab === "plug") tPlug();
         if (tab === "set") tSet();
@@ -906,24 +1012,52 @@
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
         ck = Object.keys(cmds);
         $("tb").innerHTML =
-          `<button class="btn s" style="margin-bottom:12px" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button>` +
+          `<div class="sec" style="margin-top:0"><span class="sub"><span class="num">${n(ck.length)}</span> دستور</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button></div>` +
           (ck.length
             ? ck
                 .map((k, i) => {
                   const c = cmds[k],
                     cb = Object.keys(c.callbacks || {}).length;
-                  return `<div class="row" onclick="openCmd(${i})"><div class="g"><b dir="ltr" style="text-align:right">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 50).replace(/\n/g, " ")) || "—"}</small></div>${c.buttons ? '<span class="tag">دکمه</span>' : ""}${c.media?.url ? '<span class="tag">رسانه</span>' : ""}${cb ? `<span class="tag">⚡${n(cb)}</span>` : ""}</div>`;
+                  return `<div class="row" onclick="openCmd(${i})"><div class="g"><b dir="ltr" style="text-align:right">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 60).replace(/\n/g, " ")) || "—"}</small></div>${c.buttons ? '<span class="tag">دکمه</span>' : ""}${c.media?.url ? '<span class="tag">رسانه</span>' : ""}${cb ? `<span class="tag">⚡${n(cb)}</span>` : ""}${k !== "start" ? `<span class="mini" onclick="event.stopPropagation();rmCmd(${i})">${ic("trash")}</span>` : ""}</div>`;
                 })
                 .join("")
             : empty("هنوز دستوری نداری."));
       }
+      const rmCmd = (i) =>
+        sure(
+          `دستور /${ck[i]} حذف شود؟`,
+          guard(async () => {
+            await api(`/api/bots/${botId}/commands/${ck[i]}`, { method: "DELETE" });
+            toast("حذف شد");
+            tCmds();
+          }),
+        );
+
+      /* افزونه‌ها: هر افزونه یک کارت جمع‌شونده است؛ برای افزودن افزونه‌ی جدید فقط یک plug(...) به tPlug اضافه کن */
+      const plug = (id, i, t, d, sw, body, open) =>
+        `<div class="plug ${open ? "open" : ""}" id="pl_${id}"><div class="h" onclick="plOpen('${id}')"><div class="ic">${ic(i)}</div><div class="g"><b>${t}</b><small id="pd_${id}">${d}</small></div>${sw || ""}<span class="chev">${ic("down")}</span></div><div class="bd">${body}</div></div>`;
+      const plOpen = (id) => $("pl_" + id).classList.toggle("open");
+      const fjInfo = () =>
+        bot.force_join_channel ? `فعال · <span dir="ltr">${esc(bot.force_join_channel)}</span>` : "غیرفعال";
       function tPlug() {
-        const on = !!bot.force_join_channel;
+        const ch = bot.force_join_channel || "";
         $("tb").innerHTML =
-          `<div class="plug"><div class="h"><div class="ic">${ic("lock")}</div><div class="g"><b>عضویت اجباری</b><small class="sub">کاربر باید اول عضو کانال شود</small></div><div class="sw ${on ? "on" : ""}" id="fjs" onclick="fjToggle()"></div></div>
- <div class="bd" id="fjb" style="display:${on ? "block" : "none"}"><label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in" id="fj" dir="ltr" placeholder="@channel" value="${esc(bot.force_join_channel || "")}"><button class="btn sm" onclick="fjSave()">ذخیره</button></div></div>
- <div class="plug"><div class="h"><div class="ic">${ic("send")}</div><div class="g"><b>پیام همگانی</b><small class="sub">ارسال پیام به همه‌ی کاربران ربات</small></div></div>
- <div class="bd"><textarea class="in" id="bc" placeholder="متن پیام…"></textarea><button class="btn sm" onclick="bcast()">ارسال به همه</button></div></div>`;
+          plug(
+            "fj",
+            "lock",
+            "عضویت اجباری",
+            fjInfo(),
+            `<div class="sw ${ch ? "on" : ""}" id="fjs" onclick="event.stopPropagation();fjToggle()"></div>`,
+            `<label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in" id="fj" dir="ltr" placeholder="@channel" value="${esc(ch)}"><button class="btn sm" onclick="fjSave()">ذخیره</button>`,
+          ) +
+          plug(
+            "bc",
+            "send",
+            "پیام همگانی",
+            "ارسال پیام به همه‌ی کاربران",
+            "",
+            `<textarea class="in" id="bc" placeholder="متن پیام…"></textarea><button class="btn sm" onclick="bcast()">ارسال به همه</button>`,
+          );
       }
       const fjSave = guard(async () => {
         let c = $("fj").value.trim();
@@ -932,19 +1066,24 @@
         await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } });
         bot.force_join_channel = c;
         $("fj").value = c;
+        $("pd_fj").innerHTML = fjInfo();
+        $("fjs").classList.add("on");
         toast("عضویت اجباری فعال شد");
       });
       const fjToggle = guard(async () => {
         const s = $("fjs"),
           on = !s.classList.contains("on");
         s.classList.toggle("on", on);
-        $("fjb").style.display = on ? "block" : "none";
-        if (!on) {
-          await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } });
-          bot.force_join_channel = "";
-          $("fj").value = "";
-          toast("عضویت اجباری غیرفعال شد");
+        if (on) {
+          $("pl_fj").classList.add("open");
+          $("fj").focus();
+          return;
         }
+        await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } });
+        bot.force_join_channel = "";
+        $("fj").value = "";
+        $("pd_fj").innerHTML = fjInfo();
+        toast("عضویت اجباری غیرفعال شد");
       });
       const bcast = guard(async () => {
         const t = $("bc").value.trim();
@@ -960,7 +1099,7 @@
       });
       function tSet() {
         $("tb").innerHTML =
-          `<div class="card"><b>حذف ربات</b><p class="sub" style="margin:4px 0 14px">با حذف ربات، همه‌ی دستورها و آمار آن پاک می‌شود. این کار برگشت‌پذیر نیست.</p><button class="btn d" onclick="delBot()">${ic("trash")} حذف ربات</button></div>`;
+          `<div class="card"><b>حذف ربات</b><p class="sub" style="margin:4px 0 12px">با حذف ربات، همه‌ی دستورها و آمار آن پاک می‌شود. این کار برگشت‌پذیر نیست.</p><button class="btn d" onclick="delBot()">${ic("trash")} حذف ربات</button></div>`;
       }
       function delBot() {
         sure(
@@ -975,63 +1114,66 @@
 
       /* ───────── Command editor ───────── */
       const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
+      const nb = () => ({ text: "", id: "", r: "", o: 0 });
       function openCmd(i) {
         const k = i < 0 ? "" : ck[i],
-          c = i < 0 ? {} : cmds[k];
+          c = i < 0 ? {} : cmds[k],
+          cb = c.callbacks || {};
         ed = {
           name: k,
           isNew: i < 0,
           response: c.response || "",
-          b: JSON.parse(JSON.stringify(c.buttons || [])),
+          cb,
           m: c.media?.url
             ? { ...c.media }
             : c.photo
               ? { type: "photo", url: c.photo }
               : { type: "photo", url: "" },
-          cb: c.callbacks || {},
+          b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, r: cb[x.id] || "", o: 0 }))),
         };
         drawCmd();
         $("sbg").classList.add("on");
       }
       const closeSheet = () => $("sbg").classList.remove("on");
+      function updPrev() {
+        const p = $("pv");
+        if (!p) return;
+        const bs = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
+        p.innerHTML =
+          (ed.m.url ? `<div class="mchip">📎 ${MT[ed.m.type]}</div>` : "") +
+          `<div class="bub">${esc(ed.response) || '<span class="sub">متن پاسخ اینجا نمایش داده می‌شود</span>'}</div>` +
+          bs.map((r) => `<div class="pb">${r.map((x) => `<i>${esc(x.text)}</i>`).join("")}</div>`).join("");
+      }
+      function rmBtn(r, b) {
+        ed.b[r].splice(b, 1);
+        if (!ed.b[r].length) ed.b.splice(r, 1);
+        drawCmd();
+      }
       function drawCmd() {
+        const st = $("shb")?.scrollTop || 0,
+          m = ed.m,
+          canDel = !ed.isNew && ed.name !== "start";
+        const orph = Object.keys(ed.cb).filter((id) => !ed.b.flat().some((x) => x.id === id));
         $("sheet").innerHTML =
-          `<div class="grab"></div><h1 style="font-size:18px;margin-bottom:16px">${ed.isNew ? "دستور جدید" : "/" + esc(ed.name)}</h1>
- ${ed.isNew ? `<label>نام دستور</label><input class="in" dir="ltr" placeholder="help" oninput="ed.name=this.value">` : ""}
- <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value">${esc(ed.response)}</textarea>
- <label>دکمه‌های شیشه‌ای</label>
- ${ed.b
-   .map(
-     (
-       r,
-       ri,
-     ) => `<div class="bb">${r.map((b, bi) => `<div style="flex:1;min-width:0"><input class="in" style="margin-bottom:4px" placeholder="متن" value="${esc(b.text)}" oninput="ed.b[${ri}][${bi}].text=this.value"><input class="in" dir="ltr" style="margin:0;font-size:12px" placeholder="شناسه" value="${esc(b.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"></div>`).join("")}
- <div class="ib" style="align-self:center" onclick="ed.b[${ri}].push({text:'',id:''});drawCmd()">${ic("plus")}</div><div class="ib" style="align-self:center;color:var(--red)" onclick="ed.b.splice(${ri},1);drawCmd()">${ic("trash")}</div></div>`,
-   )
-   .join("")}
- <button class="btn s sm" style="margin:4px 0 14px" onclick="ed.b.push([{text:'',id:''}]);drawCmd()">${ic("plus")} ردیف دکمه</button>
- <label>رسانه (اختیاری)</label>
- <div class="bb"><select class="in" style="width:110px;margin:0" onchange="ed.m.type=this.value">${Object.entries(
+          `<div class="sh-h"><span dir="ltr">${ed.isNew ? "دستور جدید" : "/" + esc(ed.name)}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+ <div class="sh-b" id="shb">
+ ${ed.isNew ? `<label>نام دستور</label><div class="pfx"><span>/</span><input dir="ltr" placeholder="help" value="${esc(ed.name)}" oninput="ed.name=this.value"></div><div class="chips">${["help", "about", "contact", "rules"].map((x) => `<span onclick="ed.name='${x}';drawCmd()">/${x}</span>`).join("")}</div>` : ""}
+ <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value;updPrev()">${esc(ed.response)}</textarea>
+ <label>پیش‌نمایش در تلگرام</label><div class="pv" id="pv"></div>
+ <div class="sec"><label style="margin:0">دکمه‌های شیشه‌ای</label><span class="lnk" onclick="ed.b.push([nb()]);drawCmd()">+ ردیف جدید</span></div>
+ ${ed.b.length ? ed.b.map((row, ri) => `<div class="brow">${row.map((x, bi) => `<div class="bc"><input class="in" placeholder="متن دکمه" value="${esc(x.text)}" oninput="ed.b[${ri}][${bi}].text=this.value;updPrev()"><input class="in id" dir="ltr" placeholder="شناسه" value="${esc(x.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"><span class="mini ${x.r ? "on" : ""}" onclick="ed.b[${ri}][${bi}].o^=1;drawCmd()">${ic("msg")}</span><span class="mini" onclick="rmBtn(${ri},${bi})">${ic("trash")}</span></div>${x.o ? `<textarea class="in" style="min-height:58px" placeholder="پاسخی که بعد از زدن این دکمه ارسال می‌شود" oninput="ed.b[${ri}][${bi}].r=this.value">${esc(x.r)}</textarea>` : ""}`).join("")}${row.length < 4 ? `<span class="lnk" onclick="ed.b[${ri}].push(nb());drawCmd()">+ دکمه کنار این</span>` : ""}</div>`).join("") + `<p class="sub">شناسه اختیاری است و اگر خالی بماند خودکار ساخته می‌شود. آیکون پیام ← پاسخ اختصاصی هر دکمه.</p>` : `<p class="sub">دکمه‌ای اضافه نشده.</p>`}
+ <details class="med" ${m.url ? "open" : ""}><summary>رسانه (اختیاری)</summary><div class="bc" style="margin-bottom:8px"><select class="in" style="flex:0 0 96px" onchange="ed.m.type=this.value;updPrev()">${Object.entries(
    MT,
  )
-   .map(([k, t]) => `<option value="${k}" ${ed.m.type === k ? "selected" : ""}>${t}</option>`)
+   .map(([k, t]) => `<option value="${k}" ${m.type === k ? "selected" : ""}>${t}</option>`)
    .join(
      "",
-   )}</select><input class="in" dir="ltr" style="margin:0" placeholder="https://… یا آپلود" id="mu" value="${esc(ed.m.url)}" oninput="ed.m.url=this.value"></div>
- <input type="file" id="mf" hidden onchange="upload(this.files[0])"><button class="btn s sm" style="margin:6px 0 16px" onclick="$('mf').click()">آپلود فایل</button>
- ${
-   ed.isNew
-     ? ""
-     : `<label>پاسخ دکمه‌ها (callback)</label>${Object.entries(ed.cb)
-         .map(
-           ([id, r]) =>
-             `<div class="card" style="padding:10px;margin-bottom:8px"><small class="sub" dir="ltr">${esc(id)}</small><textarea class="in" style="min-height:64px;margin:6px 0" id="cb_${esc(id)}">${esc(r)}</textarea><div class="bb"><button class="btn sm" onclick="cbSave('${esc(id)}')">ذخیره</button><button class="btn d sm" onclick="cbDel('${esc(id)}')">حذف</button></div></div>`,
-         )
-         .join("")}
- <div class="card" style="padding:10px;margin-bottom:16px"><input class="in" dir="ltr" placeholder="شناسه‌ی دکمه‌ی جدید" id="cbn"><textarea class="in" style="min-height:64px" placeholder="پاسخ" id="cbt"></textarea><button class="btn s sm" onclick="cbAdd()">افزودن پاسخ</button></div>`
- }
- <button class="btn" onclick="saveCmd()">ذخیره دستور</button>
- ${ed.isNew || ed.name === "start" ? "" : `<button class="btn d" style="margin-top:8px" onclick="delCmd()">حذف دستور</button>`}`;
+   )}</select><input class="in" dir="ltr" placeholder="https://…" value="${esc(m.url)}" oninput="ed.m.url=this.value;updPrev()"></div><input type="file" id="mf" hidden onchange="upload(this.files[0])"><button class="btn s sm" onclick="$('mf').click()">آپلود فایل</button></details>
+ ${orph.length ? `<label>پاسخ‌های بدون دکمه</label>${orph.map((id) => `<div class="row" style="cursor:default;padding:8px 10px"><div class="g"><b dir="ltr" style="text-align:right;font-size:12px">${esc(id)}</b><small>${esc(ed.cb[id])}</small></div><span class="mini" onclick="cbDel('${esc(id)}')">${ic("trash")}</span></div>`).join("")}` : ""}
+ </div>
+ <div class="sh-f">${canDel ? `<div class="ib d" style="width:44px;height:44px" onclick="delCmd()">${ic("trash")}</div>` : ""}<button class="btn" onclick="saveCmd()">ذخیره دستور</button></div>`;
+        updPrev();
+        $("shb").scrollTop = st;
       }
       const upload = guard(async (f) => {
         if (!f) return;
@@ -1048,22 +1190,36 @@
         drawCmd();
         toast("آپلود شد");
       });
+      const cbUrl = (id) => `/api/bots/${botId}/commands/${ed.name}/callbacks/${encodeURIComponent(id)}`;
       const saveCmd = guard(async () => {
         const name = ed.name.trim().toLowerCase().replace(/^\//, "");
         if (!name) return toast("نام دستور خالی است", 1);
         if (!ed.response.trim()) return toast("متن پاسخ خالی است", 1);
-        const b = ed.b.map((r) => r.filter((x) => x.text && x.id)).filter((r) => r.length);
+        const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
+        rows.flat().forEach((x) => {
+          x.text = x.text.trim();
+          x.id = x.id.trim() || "btn_" + Math.random().toString(36).slice(2, 8);
+        });
         const u = (ed.m.url || "").trim(),
           ok = /^https?:\/\//.test(u);
         await api(`/api/bots/${botId}/commands/${name}`, {
           method: "PUT",
           body: {
             response: ed.response.trim(),
-            buttons: b.length ? b : null,
+            buttons: rows.length ? rows.map((r) => r.map(({ r: _r, o, ...x }) => x)) : null,
             photo: ok && ed.m.type === "photo" ? u : null,
             media: ok ? { type: ed.m.type, url: u } : null,
           },
         });
+        ed.name = name;
+        await Promise.all(
+          rows.flat().map((x) => {
+            const v = (x.r || "").trim(),
+              old = ed.cb[x.id];
+            if (v && v !== old) return api(cbUrl(x.id), { method: "PUT", body: { response: v } });
+            if (!v && old !== undefined) return api(cbUrl(x.id), { method: "DELETE" });
+          }),
+        );
         toast("ذخیره شد");
         closeSheet();
         tCmds();
@@ -1079,34 +1235,11 @@
           }),
         );
       }
-      const cbSave = guard(async (id) => {
-        const r = $("cb_" + id).value.trim();
-        if (!r) return toast("پاسخ خالی است", 1);
-        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, {
-          method: "PUT",
-          body: { response: r },
-        });
-        ed.cb[id] = r;
-        toast("ذخیره شد");
-      });
       const cbDel = guard(async (id) => {
-        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, { method: "DELETE" });
+        await api(cbUrl(id), { method: "DELETE" });
         delete ed.cb[id];
         drawCmd();
         toast("حذف شد");
-        tCmds();
-      });
-      const cbAdd = guard(async () => {
-        const id = $("cbn").value.trim(),
-          r = $("cbt").value.trim();
-        if (!id || !r) return toast("شناسه و پاسخ لازم است", 1);
-        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, {
-          method: "PUT",
-          body: { response: r },
-        });
-        ed.cb[id] = r;
-        drawCmd();
-        toast("افزوده شد");
         tCmds();
       });
 
@@ -1115,63 +1248,66 @@
         const nm = user.full_name || user.username || String(user.uid);
         $("view").innerHTML =
           head("پروفایل", "") +
-          `<div class="card" style="display:flex;align-items:center;gap:14px"><div class="logo" style="margin:0;border-radius:50%;font-weight:800;font-size:20px">${esc(nm.charAt(0))}</div><div><b>${esc(nm)}</b><div class="sub" dir="ltr">#${user.uid}</div></div></div><div id="rf"></div>
- ${user.is_admin ? `<div class="row" style="margin-top:12px" onclick="go('admin')"><span style="color:var(--ac)">${ic("shield")}</span><div class="g"><b>آمار کل سیستم</b><small>مخصوص مدیر</small></div></div>` : ""}
- <button class="btn d" style="margin-top:16px" onclick="logout()">خروج از حساب</button>`;
+          `<div class="card" style="display:flex;align-items:center;gap:12px"><div class="av" style="width:44px;height:44px;border-radius:50%">${esc(nm.charAt(0))}</div><div><b>${esc(nm)}</b><div class="sub num" dir="ltr">#${user.uid}</div></div></div><div id="rf"></div>
+ ${user.is_admin ? `<div class="row" style="margin-top:10px" onclick="go('admin')"><span style="color:var(--ac)">${ic("shield")}</span><div class="g"><b>آمار کل سیستم</b><small>مخصوص مدیر</small></div></div>` : ""}
+ <button class="btn d" style="margin-top:14px" onclick="logout()">خروج از حساب</button>`;
         try {
           const r = await api("/api/coins/referral"),
             link = `${WEBAPP}?ref=${r.referral_code || ""}`;
           $("rf").innerHTML =
-            `<div class="grid" style="margin-top:12px"><div class="stat hi"><b>${n(r.coins)}</b><span>سکه</span></div><div class="stat"><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
- <h2>لینک دعوت · هر دعوت ۱۰۰ سکه</h2><div class="bb"><input class="in" id="rl" dir="ltr" readonly value="${esc(link)}" style="margin:0"><div class="ib" style="height:auto" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
+            '<div style="height:10px"></div>' +
+            kpis(
+              [
+                [r.coins, "سکه", 1],
+                [r.referral_count, "دعوت موفق"],
+              ],
+              2,
+            ) +
+            `<h2>لینک دعوت · هر دعوت ۱۰۰ سکه</h2><div class="bc"><input class="in" id="rl" dir="ltr" readonly value="${esc(link)}"><div class="ib" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
         } catch (e) {}
       });
       const vAdmin = guard(async () => {
-        $("view").innerHTML = head("آمار سیستم", "");
+        $("view").innerHTML = skel;
         const d = await api("/api/admin/full-stats"),
           o = d.overview || {};
         const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : empty("—"));
+        const g = (d.daily_growth || []).slice(-7),
+          m = Math.max(...g.map((x) => x.new_users), 1);
         $("view").innerHTML =
           head("آمار سیستم", "") +
-          `<div class="grid">${[
-            ["total_users", "کاربران"],
-            ["total_registered", "ثبت‌نام کامل"],
-            ["total_bots", "ربات‌ها"],
-            ["total_active_bots", "ربات فعال"],
-            ["total_messages_received", "پیام دریافتی"],
-            ["total_messages_sent", "پیام ارسالی"],
-            ["total_coins", "سکه‌ها"],
-            ["total_referrals", "رفرال"],
-          ]
-            .map(
-              ([k, t], i) =>
-                `<div class="stat ${i === 0 ? "hi" : ""}"><b>${n(o[k])}</b><span>${t}</span></div>`,
-            )
-            .join("")}</div>` +
-          (() => {
-            const g = (d.daily_growth || []).slice(-7),
-              m = Math.max(...g.map((x) => x.new_users), 1);
-            return g.length
-              ? `<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map((x) => `<div style="display:flex;justify-content:space-between;font-size:12px"><span dir="ltr">${esc(x.date)}</span><b>${n(x.new_users)}</b></div><div class="bar"><i style="width:${(x.new_users / m) * 100}%"></i></div>`).join('<div style="height:8px"></div>')}</div>`
-              : "";
-          })() +
+          kpis([
+            [o.total_users, "کاربر", 1],
+            [o.total_registered, "ثبت‌نام"],
+            [o.total_bots, "ربات"],
+            [o.total_active_bots, "فعال"],
+          ]) +
+          '<div style="height:8px"></div>' +
+          kpis([
+            [o.total_messages_received, "دریافتی"],
+            [o.total_messages_sent, "ارسالی"],
+            [o.total_coins, "سکه"],
+            [o.total_referrals, "رفرال"],
+          ]) +
+          (g.length
+            ? `<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map((x) => `<div style="display:flex;justify-content:space-between;font-size:12px"><span class="num" dir="ltr">${esc(x.date)}</span><b class="num">${n(x.new_users)}</b></div><div class="bar"><i style="width:${(x.new_users / m) * 100}%"></i></div>`).join('<div style="height:8px"></div>')}</div>`
+            : "") +
           list(
             "برترین ربات‌ها",
             d.top_bots,
             (b) =>
-              `<div class="row" style="cursor:default"><span class="dot ${b.is_active ? "on" : ""}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`,
+              `<div class="row" style="cursor:default"><span class="dot ${b.is_active ? "on" : ""}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · <span class="num">${n(b.users)}</span> کاربر · <span class="num">${n(b.messages)}</span> پیام</small></div></div>`,
           ) +
           list(
             "برترین کاربران",
             d.top_users,
             (u) =>
-              `<div class="row" style="cursor:default"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || u.telegram_username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} رفرال</small></div><span class="tag">${n(u.coins)} سکه</span></div>`,
+              `<div class="row" style="cursor:default"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || u.telegram_username || "—")}</b><small><span class="num">${n(u.bots_count)}</span> ربات · <span class="num">${n(u.referrals)}</span> رفرال</small></div><span class="tag">${n(u.coins)} 🪙</span></div>`,
           ) +
           list(
             "برترین دعوت‌کننده‌ها",
             d.top_referrers,
             (r) =>
-              `<div class="row" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small dir="ltr" style="display:block;text-align:right">@${esc(r.username || "—")}</small></div><span class="tag">${n(r.referral_count)}</span></div>`,
+              `<div class="row" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small dir="ltr" style="text-align:right">@${esc(r.username || "—")}</small></div><span class="tag">${n(r.referral_count)}</span></div>`,
           );
       });
 
