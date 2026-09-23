@@ -2,2511 +2,304 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0a0a0c">
-<title>GramSaz — پنل مدیریت</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d0e10">
+<title>GramSaz</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#0a0a0c;
-  --bg-1:#101014;
-  --bg-2:#17171c;
-  --bg-3:#1f1f26;
-  --bg-4:#26262f;
-  --border:#232329;
-  --border-2:#33333d;
-  --text:#f4f4f5;
-  --text-2:#a1a1aa;
-  --text-3:#71717a;
-  --text-4:#52525b;
-  --accent:#10b981;
-  --accent-2:#34d399;
-  --accent-dim:rgba(16,185,129,0.12);
-  --danger:#ef4444;
-  --danger-dim:rgba(239,68,68,0.12);
-  --warning:#f59e0b;
-  --warning-dim:rgba(245,158,11,0.12);
-  --info:#3b82f6;
-  --info-dim:rgba(59,130,246,0.12);
-  --radius:12px;
-  --radius-sm:8px;
-  --radius-lg:16px;
-  --radius-full:999px;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{
-  font-family:'Vazirmatn',system-ui,sans-serif;
-  background:var(--bg);color:var(--text);
-  font-size:14px;line-height:1.55;
-  -webkit-font-smoothing:antialiased;
-  min-height:100vh;overflow-x:hidden;
-}
-body::before{
-  content:'';position:fixed;top:0;left:0;right:0;height:400px;
-  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(16,185,129,0.06),transparent);
-  pointer-events:none;z-index:0;
-}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--bg-4);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--border-2)}
-
-/* Layout */
-.app{display:flex;min-height:100vh;position:relative;z-index:1}
-.sidebar{
-  width:250px;min-width:250px;
-  background:var(--bg-1);
-  border-left:1px solid var(--border);
-  display:flex;flex-direction:column;
-  position:fixed;top:0;right:0;height:100vh;
-  overflow-y:auto;z-index:100;
-  transition:transform .25s cubic-bezier(.4,0,.2,1);
-}
-.sidebar.hidden{transform:translateX(250px)}
-.main{
-  flex:1;margin-right:250px;
-  display:flex;flex-direction:column;
-  min-height:100vh;
-}
-
-/* Brand */
-.brand{
-  padding:22px 20px 18px;
-  display:flex;align-items:center;gap:12px;
-  border-bottom:1px solid var(--border);
-}
-.brand-logo{
-  width:40px;height:40px;border-radius:12px;
-  background:linear-gradient(135deg,#10b981,#059669);
-  display:flex;align-items:center;justify-content:center;
-  color:#fff;flex-shrink:0;
-  box-shadow:0 4px 16px rgba(16,185,129,0.25);
-}
-.brand-logo svg{width:22px;height:22px}
-.brand-name{font-size:16px;font-weight:700;letter-spacing:-.3px}
-.brand-tag{font-size:11px;color:var(--text-3);margin-top:1px}
-
-/* Nav */
-.nav{padding:12px 10px;flex:1;display:flex;flex-direction:column;gap:2px}
-.nav-label{
-  font-size:10px;font-weight:600;color:var(--text-4);
-  padding:12px 12px 6px;letter-spacing:1px;text-transform:uppercase;
-}
-.nav-item{
-  display:flex;align-items:center;gap:11px;
-  padding:10px 12px;border-radius:var(--radius-sm);
-  color:var(--text-2);font-size:13.5px;font-weight:500;
-  cursor:pointer;border:none;background:none;
-  width:100%;text-align:right;font-family:inherit;
-  transition:all .15s ease;
-}
-.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.8}
-.nav-item:hover{background:var(--bg-2);color:var(--text)}
-.nav-item.active{background:var(--accent-dim);color:var(--accent-2);font-weight:600}
-.nav-item.active svg{opacity:1}
-
-/* User card */
-.user-card{
-  margin:12px;padding:12px;
-  background:var(--bg-2);border:1px solid var(--border);
-  border-radius:var(--radius);
-  display:flex;align-items:center;gap:10px;
-}
-.user-av{
-  width:36px;height:36px;border-radius:10px;
-  background:linear-gradient(135deg,#8b5cf6,#6366f1);
-  display:flex;align-items:center;justify-content:center;
-  color:#fff;font-weight:700;font-size:14px;flex-shrink:0;
-}
-.user-info{flex:1;min-width:0}
-.user-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.user-uid{font-size:11px;color:var(--text-3);margin-top:1px}
-
-/* Topbar */
-.topbar{
-  padding:18px 28px;
-  border-bottom:1px solid var(--border);
-  background:rgba(10,10,12,0.85);
-  backdrop-filter:blur(12px);
-  -webkit-backdrop-filter:blur(12px);
-  position:sticky;top:0;z-index:50;
-  display:flex;align-items:center;gap:14px;
-}
-.topbar-main{flex:1;min-width:0}
-.topbar h1{
-  font-size:19px;font-weight:700;letter-spacing:-.3px;
-  display:flex;align-items:center;gap:10px;
-}
-.topbar h1 svg{width:20px;height:20px;color:var(--accent-2)}
-.topbar .sub{font-size:12.5px;color:var(--text-3);font-weight:400}
-
-.content{flex:1;padding:24px 28px 40px;max-width:1200px;width:100%}
-.screen{display:none;animation:fadeIn .25s ease}
-.screen.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-
-/* Cards */
-.card{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);padding:20px;margin-bottom:16px;
-}
-.card-hd{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:16px;gap:12px;
-}
-.card-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px}
-.card-title svg{width:17px;height:17px;color:var(--accent-2)}
-.card-sub{font-size:12px;color:var(--text-3);margin-top:3px}
-
-/* Buttons */
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  padding:9px 16px;border-radius:var(--radius-sm);
-  font-family:inherit;font-size:13px;font-weight:600;
-  cursor:pointer;border:1px solid transparent;
-  transition:all .15s ease;white-space:nowrap;text-decoration:none;
-}
-.btn svg{width:15px;height:15px}
-.btn-primary{background:var(--accent);color:#04140d}
-.btn-primary:hover{background:var(--accent-2)}
-.btn-ghost{background:var(--bg-2);color:var(--text-2);border-color:var(--border)}
-.btn-ghost:hover{background:var(--bg-3);color:var(--text);border-color:var(--border-2)}
-.btn-danger{background:var(--danger-dim);color:var(--danger);border-color:rgba(239,68,68,0.2)}
-.btn-danger:hover{background:rgba(239,68,68,0.2)}
-.btn-sm{padding:6px 12px;font-size:12px}
-.btn-sm svg{width:13px;height:13px}
-.btn-full{width:100%}
-.btn-icon{padding:8px;width:34px;height:34px}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-
-/* Form */
-.field{margin-bottom:16px}
-.field-label{
-  display:block;font-size:12.5px;font-weight:600;
-  color:var(--text-2);margin-bottom:7px;
-}
-.input,.textarea,.select{
-  width:100%;background:var(--bg);
-  border:1px solid var(--border-2);border-radius:var(--radius-sm);
-  padding:11px 14px;color:var(--text);font-family:inherit;
-  font-size:13.5px;outline:none;transition:all .15s ease;
-}
-.input:focus,.textarea:focus,.select:focus{
-  border-color:var(--accent);
-  box-shadow:0 0 0 3px var(--accent-dim);
-}
-.input::placeholder,.textarea::placeholder{color:var(--text-4)}
-.textarea{resize:vertical;min-height:90px;line-height:1.6}
-.select{cursor:pointer}
-.hint{
-  font-size:11.5px;color:var(--text-3);margin-top:6px;
-  display:flex;align-items:flex-start;gap:5px;line-height:1.5;
-}
-.hint svg{width:13px;height:13px;flex-shrink:0;margin-top:2px;opacity:.7}
-
-/* Stats */
-.stats-grid{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:12px;margin-bottom:20px;
-}
-.stat{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius);padding:16px;
-  transition:border-color .15s;
-}
-.stat:hover{border-color:var(--border-2)}
-.stat-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.stat-ic{
-  width:30px;height:30px;border-radius:8px;
-  display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
-.stat-ic svg{width:15px;height:15px}
-.stat-lb{font-size:11.5px;color:var(--text-3);font-weight:500}
-.stat-val{font-size:24px;font-weight:700;letter-spacing:-.5px;font-feature-settings:'tnum'}
-.ic-green{background:var(--accent-dim);color:var(--accent-2)}
-.ic-blue{background:var(--info-dim);color:#60a5fa}
-.ic-orange{background:var(--warning-dim);color:#fbbf24}
-.ic-purple{background:rgba(139,92,246,0.12);color:#a78bfa}
-.ic-red{background:var(--danger-dim);color:#f87171}
-
-/* Profile */
-.profile{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);padding:22px;margin-bottom:16px;
-  display:flex;align-items:center;gap:20px;flex-wrap:wrap;
-}
-.profile-av{
-  width:64px;height:64px;border-radius:18px;
-  background:linear-gradient(135deg,#8b5cf6,#6366f1);
-  display:flex;align-items:center;justify-content:center;
-  color:#fff;font-size:24px;font-weight:700;flex-shrink:0;
-}
-.profile-info{flex:1;min-width:180px}
-.profile-name{font-size:18px;font-weight:700;margin-bottom:3px}
-.profile-sub{font-size:12.5px;color:var(--text-3);font-family:monospace;direction:ltr;text-align:right}
-.profile-badges{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-.badge{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:4px 10px;border-radius:var(--radius-full);
-  font-size:11px;font-weight:600;
-  background:var(--bg-2);border:1px solid var(--border);color:var(--text-2);
-}
-.badge.green{background:var(--accent-dim);color:var(--accent-2);border-color:rgba(16,185,129,0.25)}
-.badge.warn{background:var(--warning-dim);color:#fbbf24;border-color:rgba(245,158,11,0.25)}
-.profile-stats{display:flex;gap:22px;flex-shrink:0}
-.pstat{text-align:center}
-.pstat-v{font-size:20px;font-weight:700;font-feature-settings:'tnum'}
-.pstat-l{font-size:10.5px;color:var(--text-3);margin-top:2px}
-
-/* Bot cards */
-.bot-card{
-  display:flex;align-items:center;gap:14px;
-  padding:14px 16px;background:var(--bg-1);
-  border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:10px;transition:all .15s;
-}
-.bot-card:hover{border-color:var(--border-2);background:var(--bg-2)}
-.bot-av{
-  width:42px;height:42px;border-radius:11px;
-  background:linear-gradient(135deg,#10b981,#059669);
-  display:flex;align-items:center;justify-content:center;
-  color:#fff;flex-shrink:0;
-}
-.bot-av svg{width:20px;height:20px}
-.bot-info{flex:1;min-width:0}
-.bot-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px;margin-bottom:4px}
-.bot-meta{font-size:11.5px;color:var(--text-3);display:flex;gap:12px;flex-wrap:wrap}
-.bot-meta span{display:inline-flex;align-items:center;gap:4px}
-.bot-meta svg{width:12px;height:12px;opacity:.7}
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
-.dot-on{background:var(--accent)}
-.dot-off{background:var(--text-4)}
-
-/* Plugins */
-.plugin{
-  display:flex;align-items:center;gap:14px;
-  padding:16px;background:var(--bg-1);
-  border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:10px;transition:all .15s;
-}
-.plugin:hover{border-color:var(--border-2)}
-.plugin.on{border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.03)}
-.plugin-ic{
-  width:40px;height:40px;border-radius:11px;
-  background:var(--bg-2);display:flex;align-items:center;
-  justify-content:center;color:var(--text-2);flex-shrink:0;
-  transition:all .15s;
-}
-.plugin.on .plugin-ic{background:var(--accent-dim);color:var(--accent-2)}
-.plugin-ic svg{width:19px;height:19px}
-.plugin-info{flex:1;min-width:0}
-.plugin-name{font-size:13.5px;font-weight:600;margin-bottom:3px}
-.plugin-desc{font-size:11.5px;color:var(--text-3);line-height:1.5}
-.plugin-body{
-  margin-top:14px;padding-top:14px;border-top:1px solid var(--border);
-  width:100%;
-}
-.plugin-wrap{background:var(--bg-1);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;padding:16px}
-.plugin-wrap.on{border-color:rgba(16,185,129,0.35)}
-
-/* Toggle */
-.toggle{position:relative;display:inline-block;width:44px;height:26px;flex-shrink:0}
-.toggle input{opacity:0;width:0;height:0}
-.toggle-sl{
-  position:absolute;inset:0;background:var(--bg-3);
-  border:1px solid var(--border-2);border-radius:var(--radius-full);
-  cursor:pointer;transition:.2s;
-}
-.toggle-sl:before{
-  content:"";position:absolute;width:18px;height:18px;border-radius:50%;
-  background:#fff;bottom:3px;right:3px;transition:.2s;
-}
-input:checked+.toggle-sl{background:var(--accent);border-color:var(--accent)}
-input:checked+.toggle-sl:before{transform:translateX(-18px)}
-
-/* Tabs */
-.tabs{
-  display:flex;gap:4px;background:var(--bg-1);
-  border:1px solid var(--border);padding:4px;
-  border-radius:var(--radius);margin-bottom:20px;
-}
-.tab{
-  flex:1;padding:9px 12px;background:transparent;border:none;
-  color:var(--text-3);font-family:inherit;font-size:12.5px;font-weight:600;
-  border-radius:calc(var(--radius) - 4px);cursor:pointer;
-  transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;
-}
-.tab:hover{color:var(--text)}
-.tab.active{background:var(--bg-3);color:var(--text)}
-.tab svg{width:14px;height:14px}
-
-/* Command row */
-.cmd-row{
-  display:flex;align-items:center;gap:12px;
-  padding:12px 14px;background:var(--bg);
-  border:1px solid var(--border);border-radius:var(--radius-sm);
-  margin-bottom:6px;
-}
-.cmd-info{flex:1;min-width:0}
-.cmd-name{
-  font-size:13px;font-weight:700;color:var(--accent-2);
-  font-family:monospace;direction:ltr;text-align:right;
-  display:flex;align-items:center;gap:6px;margin-bottom:3px;
-}
-.cmd-preview{font-size:11.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-/* Empty */
-.empty{text-align:center;padding:40px 20px;color:var(--text-3)}
-.empty-ic{
-  width:56px;height:56px;margin:0 auto 14px;border-radius:16px;
-  background:var(--bg-2);border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;
-}
-.empty-ic svg{width:24px;height:24px;color:var(--text-4)}
-.empty p{font-size:13px;margin-bottom:16px}
-
-/* Loader */
-.loader{display:flex;align-items:center;justify-content:center;padding:32px;color:var(--text-3);gap:10px;font-size:12.5px}
-.spinner{width:16px;height:16px;border:2px solid var(--bg-3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* Modal */
-.modal-bd{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  z-index:500;align-items:center;justify-content:center;padding:20px;
-  animation:fadeIn .2s ease;
-}
-.modal-bd.open{display:flex}
-.modal{
-  background:var(--bg-1);border:1px solid var(--border-2);
-  border-radius:var(--radius-lg);padding:24px;width:100%;
-  max-width:480px;max-height:92vh;overflow-y:auto;
-  animation:modalIn .25s cubic-bezier(.4,0,.2,1);
-}
-@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
-.modal-title{
-  font-size:16px;font-weight:700;margin-bottom:18px;
-  display:flex;align-items:center;gap:9px;
-}
-.modal-title svg{width:18px;height:18px;color:var(--accent-2)}
-.modal-footer{
-  display:flex;gap:8px;margin-top:20px;padding-top:16px;
-  border-top:1px solid var(--border);justify-content:flex-end;
-}
-
-/* Login */
-.login{
-  position:fixed;inset:0;z-index:2000;
-  display:none;align-items:center;justify-content:center;
-  padding:20px;overflow-y:auto;background:var(--bg);
-}
-.login.open{display:flex}
-.login::before{
-  content:'';position:absolute;top:0;left:0;right:0;height:60%;
-  background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(16,185,129,0.1),transparent);
-  pointer-events:none;
-}
-.login-box{
-  position:relative;width:100%;max-width:420px;
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:20px;padding:32px 28px;
-  animation:modalIn .4s cubic-bezier(.4,0,.2,1);
-}
-.login-logo{
-  width:64px;height:64px;margin:0 auto 18px;border-radius:18px;
-  background:linear-gradient(135deg,#10b981,#059669);
-  display:flex;align-items:center;justify-content:center;
-  color:#fff;box-shadow:0 8px 32px rgba(16,185,129,0.3);
-}
-.login-logo svg{width:32px;height:32px}
-.login-title{font-size:26px;font-weight:700;text-align:center;margin-bottom:6px;letter-spacing:-.5px}
-.login-sub{font-size:13px;color:var(--text-3);text-align:center;margin-bottom:26px;line-height:1.6}
-.login-tabs{
-  display:flex;gap:4px;background:var(--bg-2);
-  border:1px solid var(--border);padding:4px;
-  border-radius:var(--radius);margin-bottom:22px;
-}
-.login-tab{
-  flex:1;padding:10px;background:transparent;border:none;
-  color:var(--text-3);font-family:inherit;font-size:13px;font-weight:600;
-  border-radius:calc(var(--radius) - 4px);cursor:pointer;transition:all .15s;
-}
-.login-tab.active{background:var(--bg-4);color:var(--text)}
-
-/* Steps */
-.steps{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:22px}
-.step{
-  width:30px;height:30px;border-radius:50%;
-  background:var(--bg-2);border:1.5px solid var(--border-2);
-  color:var(--text-3);font-size:12px;font-weight:700;
-  display:flex;align-items:center;justify-content:center;
-  transition:all .2s;
-}
-.step.active{background:var(--accent);border-color:var(--accent);color:#04140d}
-.step.done{background:var(--accent-dim);border-color:var(--accent);color:var(--accent-2)}
-.step-line{width:32px;height:1.5px;background:var(--border-2)}
-.step-line.active{background:var(--accent)}
-
-/* Verification */
-.verify-box{
-  background:var(--bg-2);border:1px solid var(--border-2);
-  border-radius:var(--radius);padding:22px;text-align:center;margin-bottom:18px;
-}
-.verify-ic{
-  width:56px;height:56px;margin:0 auto 14px;border-radius:50%;
-  background:var(--accent-dim);display:flex;align-items:center;justify-content:center;
-  color:var(--accent-2);
-}
-.verify-ic svg{width:26px;height:26px}
-.verify-text{font-size:13px;color:var(--text-2);line-height:1.7;margin-bottom:10px}
-.verify-timer{
-  display:inline-flex;align-items:center;gap:5px;
-  background:var(--bg-3);padding:5px 12px;border-radius:var(--radius-full);
-  font-size:11.5px;color:var(--text-2);font-family:monospace;
-}
-
-/* Toast */
-#toast{
-  position:fixed;bottom:24px;left:50%;
-  transform:translateX(-50%) translateY(100px);
-  background:var(--bg-3);border:1px solid var(--border-2);
-  padding:12px 18px;border-radius:var(--radius);
-  font-size:13px;font-weight:500;z-index:3000;
-  transition:transform .3s cubic-bezier(.4,0,.2,1);
-  pointer-events:none;box-shadow:0 12px 40px rgba(0,0,0,0.6);
-  display:flex;align-items:center;gap:9px;max-width:calc(100vw - 40px);
-}
-#toast svg{width:16px;height:16px;flex-shrink:0}
-#toast.show{transform:translateX(-50%) translateY(0)}
-#toast.t-ok{border-color:rgba(16,185,129,0.4)}
-#toast.t-ok svg{color:var(--accent-2)}
-#toast.t-err{border-color:rgba(239,68,68,0.4)}
-#toast.t-err svg{color:var(--danger)}
-
-/* Media upload */
-.upload{
-  background:var(--bg);border:1.5px dashed var(--border-2);
-  border-radius:var(--radius);padding:32px 20px;text-align:center;
-  cursor:pointer;transition:all .2s;min-height:160px;
-  display:flex;align-items:center;justify-content:center;
-}
-.upload:hover{border-color:var(--accent);background:rgba(16,185,129,0.03)}
-.upload.drag{border-color:var(--accent);background:var(--accent-dim)}
-.upload-ic{
-  width:56px;height:56px;margin:0 auto 12px;border-radius:50%;
-  background:var(--accent-dim);color:var(--accent-2);
-  display:flex;align-items:center;justify-content:center;
-}
-.upload-ic svg{width:26px;height:26px}
-.upload-t{font-size:14px;font-weight:600;margin-bottom:4px}
-.upload-s{font-size:12px;color:var(--text-3);margin-bottom:6px}
-.upload-h{font-size:11px;color:var(--text-4)}
-
-/* Media preview */
-#upload-preview img,#upload-preview video{max-width:100%;max-height:200px;border-radius:8px;margin-bottom:10px}
-#upload-preview audio{width:100%;margin-bottom:10px}
-.file-info{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:9px 12px;background:var(--bg-2);border-radius:8px;
-  font-size:11.5px;color:var(--text-2);
-}
-.file-info span:first-child{font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
-
-/* Buttons builder */
-.btn-row-editor{
-  background:var(--bg);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:12px;margin-bottom:10px;
-}
-.btn-row-hd{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);
-}
-.btn-row-title{font-size:12px;font-weight:600;color:var(--text-2)}
-.btn-item{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center}
-.btn-item .input{padding:8px 11px !important;font-size:12px !important}
-.preview-btns{
-  display:flex;gap:5px;flex-wrap:wrap;padding:10px;
-  background:var(--bg-2);border-radius:8px;margin-top:8px;
-}
-.preview-btn{
-  flex:1;min-width:70px;padding:6px 10px;
-  background:var(--accent-dim);color:var(--accent-2);
-  border:1px solid rgba(16,185,129,0.25);border-radius:6px;
-  font-size:11px;font-weight:600;text-align:center;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-
-/* Create bot hero */
-.hero{
-  text-align:center;padding:36px 20px;
-  background:linear-gradient(135deg,rgba(16,185,129,0.06),transparent);
-  border:1px solid var(--border);border-radius:var(--radius-lg);
-  margin-bottom:20px;
-}
-.hero-ic{
-  width:72px;height:72px;margin:0 auto 16px;border-radius:20px;
-  background:linear-gradient(135deg,#10b981,#059669);
-  display:flex;align-items:center;justify-content:center;color:#fff;
-  box-shadow:0 12px 36px rgba(16,185,129,0.3);
-}
-.hero-ic svg{width:36px;height:36px}
-.hero-t{font-size:22px;font-weight:700;margin-bottom:8px;letter-spacing:-.3px}
-.hero-s{font-size:13px;color:var(--text-3);line-height:1.6;max-width:420px;margin:0 auto}
-
-.guide{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);padding:20px;margin-bottom:20px;
-}
-.guide-step{
-  display:flex;gap:14px;padding:12px 0;
-  border-bottom:1px solid var(--border);align-items:flex-start;
-}
-.guide-step:last-child{border-bottom:none;padding-bottom:0}
-.guide-step:first-child{padding-top:0}
-.guide-num{
-  width:28px;height:28px;border-radius:8px;
-  background:var(--bg-2);border:1px solid var(--border-2);
-  color:var(--text-2);font-size:12px;font-weight:700;
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;
-}
-.guide-step.active .guide-num{background:var(--accent);border-color:var(--accent);color:#04140d}
-.guide-t{font-size:13px;font-weight:600;margin-bottom:3px}
-.guide-d{font-size:11.5px;color:var(--text-3);line-height:1.55}
-.guide-d code{
-  background:var(--bg-3);color:var(--accent-2);
-  padding:1px 6px;border-radius:4px;
-  font-family:monospace;font-size:11px;direction:ltr;display:inline-block;
-}
-
-/* Success */
-.success{
-  text-align:center;padding:40px 24px;
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);
-}
-.success-ic{
-  width:80px;height:80px;margin:0 auto 18px;border-radius:50%;
-  background:var(--accent-dim);color:var(--accent-2);
-  display:flex;align-items:center;justify-content:center;
-}
-.success-ic svg{width:40px;height:40px}
-.success-t{font-size:19px;font-weight:700;margin-bottom:8px}
-.success-s{font-size:13px;color:var(--text-3);margin-bottom:22px;line-height:1.6}
-
-/* Admin */
-.admin-banner{
-  display:flex;align-items:center;gap:14px;
-  padding:18px 20px;background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(16,185,129,0.06));
-  border:1px solid rgba(139,92,246,0.2);
-  border-radius:var(--radius-lg);margin-bottom:24px;
-}
-.admin-banner-ic{
-  width:44px;height:44px;border-radius:12px;
-  background:linear-gradient(135deg,#8b5cf6,#6366f1);
-  display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;
-}
-.admin-banner-ic svg{width:22px;height:22px}
-.admin-banner-t{font-size:14px;font-weight:700;margin-bottom:2px}
-.admin-banner-d{font-size:11.5px;color:var(--text-3)}
-
-.section-title{
-  display:flex;align-items:center;gap:8px;
-  font-size:13px;font-weight:700;color:var(--text-2);
-  margin:24px 0 12px;text-transform:uppercase;letter-spacing:.5px;
-}
-.section-title svg{width:15px;height:15px;color:var(--accent-2)}
-.section-title:first-of-type{margin-top:0}
-
-.chart{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);padding:22px;margin-bottom:20px;
-}
-.chart-bars{display:flex;align-items:flex-end;justify-content:space-between;gap:8px;height:150px}
-.chart-bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:24px}
-.chart-fill{
-  width:100%;max-width:36px;
-  background:linear-gradient(180deg,var(--accent),#059669);
-  border-radius:5px 5px 2px 2px;min-height:4px;
-  transition:height .6s cubic-bezier(.4,0,.2,1);
-}
-.chart-v{font-size:10.5px;font-weight:700;color:var(--accent-2);font-feature-settings:'tnum'}
-.chart-l{font-size:9.5px;color:var(--text-3)}
-
-.table-wrap{
-  background:var(--bg-1);border:1px solid var(--border);
-  border-radius:var(--radius-lg);overflow:hidden;margin-bottom:20px;
-}
-.table-scroll{overflow-x:auto}
-table.data{width:100%;border-collapse:collapse;font-size:12.5px}
-table.data thead{background:var(--bg-2)}
-table.data th{
-  padding:11px 14px;text-align:right;font-size:10.5px;
-  font-weight:700;color:var(--text-3);text-transform:uppercase;
-  letter-spacing:.5px;white-space:nowrap;
-}
-table.data td{padding:11px 14px;border-top:1px solid var(--border);vertical-align:middle}
-table.data tr:hover td{background:var(--bg-2)}
-.rank{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:24px;height:24px;border-radius:50%;
-  background:var(--bg-3);color:var(--text-3);
-  font-size:11px;font-weight:700;
-}
-.rank.gold{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff}
-.rank.silver{background:linear-gradient(135deg,#94a3b8,#64748b);color:#fff}
-.rank.bronze{background:linear-gradient(135deg,#d97706,#92400e);color:#fff}
-
-/* Referral card */
-.referral{
-  background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(139,92,246,0.05));
-  border:1px solid rgba(16,185,129,0.2);
-  border-radius:var(--radius-lg);padding:22px;margin-bottom:16px;
-}
-.referral-hd{display:flex;align-items:center;gap:14px;margin-bottom:18px}
-.referral-ic{
-  width:48px;height:48px;border-radius:14px;
-  background:linear-gradient(135deg,#10b981,#059669);
-  display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;
-  box-shadow:0 6px 20px rgba(16,185,129,0.3);
-}
-.referral-ic svg{width:24px;height:24px}
-.referral-t{font-size:16px;font-weight:700;margin-bottom:3px}
-.referral-s{font-size:12px;color:var(--text-3)}
-.referral-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-.rs{background:var(--bg-1);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center}
-.rs-v{font-size:22px;font-weight:700;color:var(--accent-2);margin-bottom:2px;font-feature-settings:'tnum'}
-.rs-l{font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
-.ref-input{
-  display:flex;gap:6px;background:var(--bg);border:1px solid var(--border-2);
-  border-radius:var(--radius-sm);padding:4px 4px 4px 12px;align-items:center;margin-bottom:12px;
-}
-.ref-input input{
-  flex:1;background:transparent;border:none;outline:none;
-  color:var(--text);font-family:monospace;font-size:12px;
-  direction:ltr;text-align:left;min-width:0;
-}
-.ref-copy{
-  background:var(--accent);border:none;border-radius:6px;
-  padding:8px 12px;cursor:pointer;color:#04140d;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-}
-.ref-copy svg{width:15px;height:15px}
-.ref-code-box{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 14px;background:var(--bg-1);
-  border:1px solid var(--border);border-radius:var(--radius-sm);
-}
-.ref-code-lb{font-size:11.5px;color:var(--text-3)}
-.ref-code{
-  font-family:monospace;font-size:13px;font-weight:700;
-  color:var(--warning);letter-spacing:1px;
-  background:var(--warning-dim);padding:3px 10px;border-radius:5px;
-  border:1px solid rgba(245,158,11,0.25);margin-right:auto;
-}
-
-/* Quick actions */
-.quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
-.quick{
-  display:flex;flex-direction:column;align-items:center;gap:10px;
-  padding:18px 14px;background:var(--bg);
-  border:1px solid var(--border);border-radius:var(--radius);
-  cursor:pointer;transition:all .15s;font-family:inherit;color:var(--text);
-}
-.quick:hover{background:var(--bg-2);border-color:var(--border-2);transform:translateY(-2px)}
-.quick-ic{
-  width:42px;height:42px;border-radius:12px;
-  display:flex;align-items:center;justify-content:center;
-}
-.quick-ic svg{width:20px;height:20px}
-.quick-t{font-size:12.5px;font-weight:500;color:var(--text-2);text-align:center}
-
-/* Status pill */
-.status-pill{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:5px 12px;border-radius:var(--radius-full);
-  font-size:11.5px;font-weight:600;
-  background:var(--bg-2);border:1px solid var(--border);color:var(--text-3);
-}
-.status-pill.on{background:var(--accent-dim);color:var(--accent-2);border-color:rgba(16,185,129,0.25)}
-
-/* Menu toggle */
-.menu-toggle{
-  display:none;position:fixed;top:14px;right:14px;z-index:200;
-  background:var(--bg-2);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:8px;cursor:pointer;
-  color:var(--text);
-}
-.menu-toggle svg{width:20px;height:20px;display:block}
-
-/* Tab bar mobile */
-.tabbar{display:none}
-
-/* Responsive */
-@media (max-width:900px){
-  .sidebar{transform:translateX(250px)}
-  .sidebar.open{transform:translateX(0)}
-  .main{margin-right:0}
-  .menu-toggle{display:flex}
-  .topbar{padding:60px 16px 14px}
-  .content{padding:16px 16px 90px}
-  .stats-grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .stat-val{font-size:20px}
-  .profile{padding:18px;gap:14px}
-  .profile-stats{width:100%;justify-content:space-around;gap:12px;padding-top:8px;border-top:1px solid var(--border)}
-  .quick-grid{grid-template-columns:repeat(2,1fr)}
-  .tabs{overflow-x:auto;padding:4px}
-  .tab{font-size:12px;padding:9px 10px;white-space:nowrap;flex:0 0 auto}
-  .btn-item{grid-template-columns:1fr 1fr}
-  .btn-item .btn-icon{grid-column:span 2;justify-self:end}
-  .chart-bars{height:120px}
-  .tabbar{
-    display:grid;position:fixed;bottom:0;right:0;left:0;z-index:90;
-    grid-template-columns:repeat(5,1fr);
-    background:rgba(16,16,20,0.95);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    border-top:1px solid var(--border);
-    padding-bottom:env(safe-area-inset-bottom,0px);
-  }
-  .tabbar button{
-    display:flex;flex-direction:column;align-items:center;gap:4px;
-    background:none;border:0;color:var(--text-3);font-family:inherit;
-    font-size:10.5px;font-weight:500;padding:10px 0 9px;cursor:pointer;
-    transition:color .15s;
-  }
-  .tabbar button svg{width:20px;height:20px}
-  .tabbar button.on{color:var(--accent-2)}
-}
-@media (max-width:480px){
-  .hero{padding:28px 16px}
-  .hero-ic{width:60px;height:60px}
-  .hero-t{font-size:19px}
-  .login-box{padding:26px 22px}
-  .login-title{font-size:22px}
-  .profile-av{width:56px;height:56px;font-size:20px}
-}
+:root{--bg:#0d0e10;--card:#16181b;--card2:#1d2024;--line:#26292e;--tx:#eceae4;--mu:#878a91;--ac:#d4ff3f;--acx:#12140a;--red:#ff5d5d;--ok:#3ddc97;--r:16px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--tx);font:14px/1.6 Vazirmatn,system-ui,sans-serif;min-height:100vh}
+button,input,textarea,select{font:inherit;color:inherit;border:0;outline:0;background:none}
+svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#view{max-width:560px;margin:0 auto;padding:20px 16px 110px}
+h1{font-size:24px;font-weight:800;letter-spacing:-.5px}
+h2{font-size:12px;color:var(--mu);font-weight:500;margin:24px 4px 10px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px}
+.sub{color:var(--mu);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.row{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px;cursor:pointer;transition:.15s}
+.row:active{transform:scale(.985);background:var(--card2)}
+.row .g{flex:1;min-width:0}.row b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row small{color:var(--mu);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mu);flex:none}.dot.on{background:var(--ok);box-shadow:0 0 0 4px #3ddc9722}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1.2}.stat span{font-size:12px;color:var(--mu)}
+.stat.hi{background:var(--ac);color:var(--acx);border:0}.stat.hi span{color:#12140aa8}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 20px;border-radius:14px;background:var(--ac);color:var(--acx);font-weight:700;cursor:pointer;width:100%;transition:.15s}
+.btn:active{transform:scale(.97)}.btn:disabled{opacity:.5}
+.btn.s{background:var(--card2);color:var(--tx);border:1px solid var(--line)}.btn.d{background:#ff5d5d1f;color:var(--red)}
+.btn.sm{height:36px;width:auto;padding:0 14px;font-size:13px;border-radius:11px}
+.ib{width:40px;height:40px;border-radius:12px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;flex:none}
+.in{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;transition:.15s}
+.in:focus{border-color:var(--ac)}textarea.in{min-height:110px;resize:vertical}
+.in[dir=ltr]{text-align:left}
+label{display:block;font-size:12px;color:var(--mu);margin:0 4px 6px}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:16px 0}
+.seg button{flex:1;height:38px;border-radius:10px;color:var(--mu);font-weight:500;cursor:pointer}
+.seg button.on{background:var(--ac);color:var(--acx);font-weight:700}
+.sw{position:relative;width:48px;height:28px;border-radius:14px;background:var(--line);cursor:pointer;flex:none;transition:.2s}
+.sw::after{content:"";position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--ac)}.sw.on::after{right:23px;background:var(--acx)}
+.plug{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:10px}
+.plug .h{display:flex;align-items:center;gap:12px}.plug .h .g{flex:1}.plug .h b{display:block}
+.plug .ic{width:42px;height:42px;border-radius:13px;background:var(--card2);display:grid;place-items:center;color:var(--ac)}
+.plug .bd{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+.tag{font-size:11px;padding:2px 8px;border-radius:8px;background:var(--card2);color:var(--mu);margin-inline-start:4px}
+.tabbar{position:fixed;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:4px;background:#1a1c20ee;backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:22px;padding:6px;z-index:20}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:2px;width:68px;padding:8px 0;border-radius:16px;color:var(--mu);font-size:11px;cursor:pointer}
+.tabbar button.on{background:var(--ac);color:var(--acx);font-weight:700}
+.sheet-bg{position:fixed;inset:0;background:#000a;z-index:40;display:none;align-items:flex-end}.sheet-bg.on{display:flex}
+.sheet{width:100%;max-width:560px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:24px 24px 0 0;padding:18px 16px 28px;max-height:92vh;overflow:auto;animation:up .25s ease}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 16px}
+.bb{display:flex;gap:6px;margin-bottom:6px}.bb .in{margin:0}
+.empty{text-align:center;color:var(--mu);padding:40px 20px}
+#toast{position:fixed;top:16px;left:50%;transform:translate(-50%,-90px);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:14px;font-weight:500;z-index:99;transition:.3s;max-width:90%}
+#toast.on{transform:translate(-50%,0)}#toast.err{background:var(--red);color:#fff}
+#auth{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;overflow:auto;padding:60px 20px}
+#auth.on{display:block}#auth>div{max-width:400px;margin:0 auto}
+.logo{width:56px;height:56px;border-radius:18px;background:var(--ac);color:var(--acx);display:grid;place-items:center;margin-bottom:22px}.logo svg{width:28px;height:28px}
+.bar{height:6px;border-radius:3px;background:var(--card2);margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+.spin{display:none}
 </style>
 </head>
 <body>
-
-<svg width="0" height="0" style="position:absolute">
-<defs>
-<symbol id="i-robot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><circle cx="8" cy="16" r=".5" fill="currentColor"/><circle cx="16" cy="16" r=".5" fill="currentColor"/></symbol>
-<symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
-<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
-<symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
-<symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
-<symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></symbol>
-<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
-<symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
-<symbol id="i-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
-<symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
-<symbol id="i-cmd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
-<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
-<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
-<symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
-<symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
-<symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
-<symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
-<symbol id="i-star" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
-<symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
-<symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
-<symbol id="i-broadcast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
-<symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
-<symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
-<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
-<symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></symbol>
-<symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
-<symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
-</defs>
-</svg>
-
-<!-- Login Screen -->
-<div class="login" id="login-screen">
-  <div class="login-box">
-    <div class="login-logo"><svg><use href="#i-robot"/></svg></div>
-    <h1 class="login-title">GramSaz</h1>
-    <p class="login-sub">پلتفرم حرفه‌ای ساخت و مدیریت ربات تلگرام</p>
-    
-    <div class="login-tabs">
-      <button class="login-tab active" onclick="switchLoginTab('login')">ورود</button>
-      <button class="login-tab" onclick="switchLoginTab('register')">ثبت‌نام</button>
-    </div>
-    
-    <!-- Login -->
-    <form id="login-form" onsubmit="handleLogin(event)">
-      <div class="field">
-        <label class="field-label">نام کاربری</label>
-        <input type="text" class="input" id="login-username" placeholder="username" required style="direction:ltr;text-align:left">
-      </div>
-      <div class="field">
-        <label class="field-label">رمز عبور</label>
-        <input type="password" class="input" id="login-password" placeholder="••••••••" required style="direction:ltr;text-align:left">
-      </div>
-      <button type="submit" class="btn btn-primary btn-full" id="login-submit">
-        <svg><use href="#i-check"/></svg> ورود به حساب
-      </button>
-    </form>
-    
-    <!-- Register -->
-    <form id="register-form" style="display:none" onsubmit="handleRegister(event)">
-      <!-- Step 1 -->
-      <div id="reg-step-1">
-        <div class="steps">
-          <span class="step active">۱</span><span class="step-line"></span>
-          <span class="step">۲</span><span class="step-line"></span>
-          <span class="step">۳</span>
-        </div>
-        <div class="verify-box">
-          <div class="verify-ic"><svg><use href="#i-robot"/></svg></div>
-          <p class="verify-text">ابتدا ربات ما را در تلگرام استارت کنید</p>
-          <button type="button" class="btn btn-primary btn-full" onclick="openTelegramBot()">
-            <svg><use href="#i-send"/></svg> باز کردن ربات
-          </button>
-        </div>
-        <button type="button" class="btn btn-ghost btn-full" onclick="goToStep2()">ربات را استارت کردم</button>
-      </div>
-      
-      <!-- Step 2 -->
-      <div id="reg-step-2" style="display:none">
-        <div class="steps">
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step active">۲</span><span class="step-line"></span>
-          <span class="step">۳</span>
-        </div>
-        <div class="field">
-          <label class="field-label">Username تلگرام (بدون @)</label>
-          <input type="text" class="input" id="reg-telegram-username" placeholder="username" required style="direction:ltr;text-align:left">
-        </div>
-        <div class="field" id="referral-info" style="display:none">
-          <label class="field-label">کد دعوت</label>
-          <input type="text" class="input" id="referral-code-input" readonly style="background:var(--warning-dim);color:var(--warning);border-color:rgba(245,158,11,0.3)">
-        </div>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="btn btn-ghost" onclick="goBackToStep1()" style="flex:1">بازگشت</button>
-          <button type="button" class="btn btn-primary" onclick="sendVerificationCode(event)" style="flex:2">
-            <svg><use href="#i-send"/></svg> ارسال کد
-          </button>
-        </div>
-      </div>
-      
-      <!-- Step 3 -->
-      <div id="reg-step-3" style="display:none">
-        <div class="steps">
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step">۳</span>
-        </div>
-        <div class="verify-box">
-          <div class="verify-ic"><svg><use href="#i-send"/></svg></div>
-          <p class="verify-text">کد تایید ۶ رقمی به تلگرام شما ارسال شد</p>
-          <div class="verify-timer">
-            <svg style="width:12px;height:12px"><use href="#i-activity"/></svg>
-            <span id="verification-timer">۱۰:۰۰</span>
-          </div>
-        </div>
-        <div class="field">
-          <label class="field-label">کد تایید</label>
-          <input type="text" class="input" id="reg-code" placeholder="۰۰۰۰۰۰" maxlength="6" required style="text-align:center;letter-spacing:8px;font-size:20px;font-weight:700">
-        </div>
-        <div style="text-align:center;margin-bottom:10px">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="resendCode(event)">ارسال مجدد</button>
-        </div>
-        <button type="button" class="btn btn-primary btn-full" onclick="verifyCode()">
-          <svg><use href="#i-check"/></svg> تایید کد
-        </button>
-      </div>
-      
-      <!-- Step 4 -->
-      <div id="reg-step-4" style="display:none">
-        <div class="steps">
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step done">✓</span><span class="step-line active"></span>
-          <span class="step active">۴</span>
-        </div>
-        <div class="field">
-          <label class="field-label">نام کاربری (برای ورود)</label>
-          <input type="text" class="input" id="reg-username" placeholder="username" required style="direction:ltr;text-align:left">
-        </div>
-        <div class="field">
-          <label class="field-label">رمز عبور</label>
-          <input type="password" class="input" id="reg-password" placeholder="حداقل ۶ کاراکتر" required style="direction:ltr;text-align:left">
-        </div>
-        <button type="submit" class="btn btn-primary btn-full" id="register-submit">
-          <svg><use href="#i-plus"/></svg> ایجاد حساب
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- App -->
-<div class="app">
-  
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="brand">
-      <div class="brand-logo"><svg><use href="#i-robot"/></svg></div>
-      <div>
-        <div class="brand-name">GramSaz</div>
-        <div class="brand-tag">پنل مدیریت</div>
-      </div>
-    </div>
-    
-    <nav class="nav">
-      <div class="nav-label">منوی اصلی</div>
-      <button class="nav-item active" data-screen="dashboard" onclick="nav('dashboard')">
-        <svg><use href="#i-home"/></svg><span>داشبورد</span>
-      </button>
-      <button class="nav-item" data-screen="stats" onclick="nav('stats')">
-        <svg><use href="#i-activity"/></svg><span>آمار و گزارش</span>
-      </button>
-      <button class="nav-item" data-screen="bots" onclick="nav('bots')">
-        <svg><use href="#i-robot"/></svg><span>ربات‌های من</span>
-      </button>
-      <button class="nav-item" data-screen="create-bot" onclick="nav('create-bot')">
-        <svg><use href="#i-plus"/></svg><span>ساخت ربات</span>
-      </button>
-      <button class="nav-item" id="nav-bot-detail" style="display:none" data-screen="bot-detail" onclick="nav('bot-detail')">
-        <svg><use href="#i-settings"/></svg><span>مدیریت ربات</span>
-      </button>
-      <button class="nav-item" id="nav-admin" style="display:none" data-screen="admin-stats" onclick="nav('admin-stats')">
-        <svg><use href="#i-star"/></svg><span>پنل ادمین</span>
-      </button>
-    </nav>
-    
-    <div class="user-card">
-      <div class="user-av" id="user-av">?</div>
-      <div class="user-info">
-        <div class="user-name" id="user-name">...</div>
-        <div class="user-uid" id="user-uid"></div>
-      </div>
-      <button class="btn btn-ghost btn-icon" onclick="logout()" title="خروج" style="color:var(--danger);width:32px;height:32px;padding:0">
-        <svg style="width:15px;height:15px"><use href="#i-x"/></svg>
-      </button>
-    </div>
-  </aside>
-  
-  <!-- Main -->
-  <main class="main">
-    <button class="menu-toggle" onclick="toggleSidebar()"><svg><use href="#i-menu"/></svg></button>
-    
-    <!-- Dashboard -->
-    <div class="screen active" id="screen-dashboard">
-      <div class="topbar">
-        <div class="topbar-main">
-          <h1><svg><use href="#i-home"/></svg> داشبورد <span class="sub">· خلاصه وضعیت</span></h1>
-        </div>
-      </div>
-      <div class="content">
-        <div class="profile" id="profile-card">
-          <div class="profile-av" id="profile-av">?</div>
-          <div class="profile-info">
-            <div class="profile-name" id="profile-name">...</div>
-            <div class="profile-sub" id="profile-sub">@username</div>
-            <div class="profile-badges">
-              <span class="badge green"><svg style="width:12px;height:12px"><use href="#i-star"/></svg> پلن رایگان</span>
-              <span class="badge"><span class="dot dot-on"></span> فعال</span>
-            </div>
-          </div>
-          <div class="profile-stats">
-            <div class="pstat"><div class="pstat-v" id="p-coins">0</div><div class="pstat-l">کوین</div></div>
-            <div class="pstat"><div class="pstat-v" id="p-bots">0</div><div class="pstat-l">ربات</div></div>
-            <div class="pstat"><div class="pstat-v" id="p-users">0</div><div class="pstat-l">کاربر</div></div>
-            <div class="pstat"><div class="pstat-v" id="p-msgs">0</div><div class="pstat-l">پیام</div></div>
-          </div>
-        </div>
-        
-        <div class="referral" id="referral-card">
-          <div class="referral-hd">
-            <div class="referral-ic"><svg><use href="#i-zap"/></svg></div>
-            <div>
-              <div class="referral-t">دعوت دوستان</div>
-              <div class="referral-s">با معرفی دوستانت کوین رایگان بگیر</div>
-            </div>
-          </div>
-          <div class="referral-stats">
-            <div class="rs"><div class="rs-v" id="ref-count">0</div><div class="rs-l">زیرمجموعه</div></div>
-            <div class="rs"><div class="rs-v" id="ref-coins">0</div><div class="rs-l">کوین کسب شده</div></div>
-          </div>
-          <div class="ref-input">
-            <input type="text" id="ref-link" readonly value="...">
-            <button class="ref-copy" onclick="copyRefLink()" title="کپی"><svg><use href="#i-check"/></svg></button>
-          </div>
-          <div class="ref-code-box">
-            <span class="ref-code-lb">کد رفرال:</span>
-            <span class="ref-code" id="ref-code">—</span>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-hd">
-            <div>
-              <div class="card-title"><svg><use href="#i-robot"/></svg> ربات‌های اخیر</div>
-              <div class="card-sub">آخرین ربات‌های ساخته شده</div>
-            </div>
-            <button class="btn btn-ghost btn-sm" onclick="nav('bots')">
-              همه <svg><use href="#i-eye"/></svg>
-            </button>
-          </div>
-          <div id="recent-bots"><div class="loader"><div class="spinner"></div></div></div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Stats -->
-    <div class="screen" id="screen-stats">
-      <div class="topbar">
-        <div class="topbar-main">
-          <h1><svg><use href="#i-activity"/></svg> آمار و گزارش <span class="sub">· تحلیل عملکرد</span></h1>
-        </div>
-      </div>
-      <div class="content">
-        <div class="stats-grid" id="stats-grid"><div class="loader"><div class="spinner"></div></div></div>
-        
-        <div class="card">
-          <div class="card-hd">
-            <div>
-              <div class="card-title"><svg><use href="#i-zap"/></svg> دسترسی سریع</div>
-              <div class="card-sub">عملیات پرکاربرد</div>
-            </div>
-          </div>
-          <div class="quick-grid">
-            <button class="quick" onclick="nav('create-bot')">
-              <div class="quick-ic" style="background:var(--accent-dim);color:var(--accent-2)"><svg><use href="#i-plus"/></svg></div>
-              <div class="quick-t">ساخت ربات جدید</div>
-            </button>
-            <button class="quick" onclick="nav('bots')">
-              <div class="quick-ic" style="background:var(--info-dim);color:#60a5fa"><svg><use href="#i-robot"/></svg></div>
-              <div class="quick-t">مدیریت ربات‌ها</div>
-            </button>
-            <button class="quick" onclick="toast('به زودی...')">
-              <div class="quick-ic" style="background:var(--warning-dim);color:#fbbf24"><svg><use href="#i-star"/></svg></div>
-              <div class="quick-t">ارتقا پلن</div>
-            </button>
-            <button class="quick" onclick="toast('به زودی...')">
-              <div class="quick-ic" style="background:rgba(139,92,246,0.12);color:#a78bfa"><svg><use href="#i-settings"/></svg></div>
-              <div class="quick-t">تنظیمات حساب</div>
-            </button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-hd">
-            <div>
-              <div class="card-title"><svg><use href="#i-star"/></svg> ربات‌های برتر</div>
-              <div class="card-sub">پرفعالیت‌ترین ربات‌های شما</div>
-            </div>
-          </div>
-          <div id="top-bots-list"><div class="loader"><div class="spinner"></div></div></div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Bots list -->
-    <div class="screen" id="screen-bots">
-      <div class="topbar">
-        <div class="topbar-main">
-          <h1><svg><use href="#i-robot"/></svg> ربات‌های من <span class="sub" id="bots-count"></span></h1>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="nav('create-bot')">
-          <svg><use href="#i-plus"/></svg> ربات جدید
-        </button>
-      </div>
-      <div class="content">
-        <div id="bots-list"><div class="loader"><div class="spinner"></div></div></div>
-      </div>
-    </div>
-    
-    <!-- Create bot -->
-    <div class="screen" id="screen-create-bot">
-      <div class="topbar">
-        <div class="topbar-main">
-          <h1><svg><use href="#i-plus"/></svg> ساخت ربات جدید <span class="sub">· راه‌اندازی ربات</span></h1>
-        </div>
-      </div>
-      <div class="content">
-        <div class="hero">
-          <div class="hero-ic"><svg><use href="#i-robot"/></svg></div>
-          <h2 class="hero-t">ربات خود را بسازید</h2>
-          <p class="hero-s">تنها با چند کلیک، ربات تلگرام اختصاصی خود را ایجاد کنید</p>
-        </div>
-        
-        <div class="guide">
-          <div class="guide-step">
-            <div class="guide-num">۱</div>
-            <div>
-              <div class="guide-t">مراجعه به BotFather</div>
-              <div class="guide-d">در تلگرام به @BotFather پیام دهید</div>
-            </div>
-          </div>
-          <div class="guide-step">
-            <div class="guide-num">۲</div>
-            <div>
-              <div class="guide-t">ایجاد ربات جدید</div>
-              <div class="guide-d">دستور <code>/newbot</code> را ارسال کنید</div>
-            </div>
-          </div>
-          <div class="guide-step">
-            <div class="guide-num">۳</div>
-            <div>
-              <div class="guide-t">دریافت توکن</div>
-              <div class="guide-d">توکن را کپی کنید (شبیه: <code>123456:ABC...</code>)</div>
-            </div>
-          </div>
-          <div class="guide-step active">
-            <div class="guide-num">۴</div>
-            <div>
-              <div class="guide-t">فعال‌سازی در GramSaz</div>
-              <div class="guide-d">توکن را در کادر زیر وارد کنید</div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="card" id="create-form-card">
-          <div class="card-hd">
-            <div class="card-title"><svg><use href="#i-link"/></svg> وارد کردن توکن ربات</div>
-          </div>
-          <div class="field">
-            <label class="field-label">توکن BotFather</label>
-            <input type="text" class="input" id="create-bot-token" placeholder="1234567890:AAE..." style="direction:ltr;text-align:left;font-family:monospace">
-            <div class="hint"><svg><use href="#i-alert"/></svg> توکن را دقیقاً همانطور که BotFather ارسال کرده وارد کنید</div>
-          </div>
-          <button class="btn btn-primary btn-full" onclick="startBotCreation()">
-            <svg><use href="#i-zap"/></svg> فعال‌سازی ربات
-          </button>
-        </div>
-        
-        <div id="create-loading" style="display:none;text-align:center;padding:40px 20px">
-          <div class="spinner" style="width:36px;height:36px;border-width:3px;margin:0 auto 20px"></div>
-          <div style="font-size:15px;font-weight:600;margin-bottom:8px" id="create-step-text">در حال اتصال به تلگرام...</div>
-          <div style="font-size:12px;color:var(--text-3)" id="create-progress-text">0%</div>
-        </div>
-        
-        <div class="success" id="create-success" style="display:none">
-          <div class="success-ic"><svg><use href="#i-check"/></svg></div>
-          <h3 class="success-t">ربات با موفقیت فعال شد!</h3>
-          <p class="success-s">اکنون می‌توانید ربات خود را مدیریت کنید</p>
-          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-            <button class="btn btn-primary" onclick="goToBotManagement()">
-              <svg><use href="#i-settings"/></svg> مدیریت ربات
-            </button>
-            <button class="btn btn-ghost" onclick="resetCreateBot()">
-              <svg><use href="#i-plus"/></svg> ساخت ربات دیگر
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Bot detail -->
-    <div class="screen" id="screen-bot-detail">
-      <div class="topbar">
-        <div class="topbar-main">
-          <div style="font-size:11.5px;color:var(--text-3);margin-bottom:4px">
-            <a onclick="nav('bots')" style="cursor:pointer;color:var(--text-2)">ربات‌های من</a> › <span id="detail-username">—</span>
-          </div>
-          <h1 id="detail-title">مدیریت ربات</h1>
-        </div>
-        <div class="btn-row">
-          <span class="status-pill" id="bot-status-pill"><span class="dot dot-off"></span><span id="bot-status-text">خاموش</span></span>
-          <label class="toggle"><input type="checkbox" id="bot-toggle" onchange="toggleBot()"><span class="toggle-sl"></span></label>
-          <button class="btn btn-ghost btn-icon" onclick="confirmDeleteBot()" title="حذف" style="color:var(--danger)"><svg><use href="#i-trash"/></svg></button>
-        </div>
-      </div>
-      <div class="content">
-        <div class="stats-grid" id="bot-stats-grid"></div>
-        
-        <div class="tabs">
-          <button class="tab active" id="tab-cmds" onclick="showTab('cmds')"><svg><use href="#i-cmd"/></svg> دستورها</button>
-          <button class="tab" id="tab-plugins" onclick="showTab('plugins')"><svg><use href="#i-zap"/></svg> پلاگین‌ها</button>
-          <button class="tab" id="tab-broadcast" onclick="showTab('broadcast')"><svg><use href="#i-broadcast"/></svg> پیام همگانی</button>
-          <button class="tab" id="tab-settings" onclick="showTab('settings')"><svg><use href="#i-settings"/></svg> تنظیمات</button>
-        </div>
-        
-        <!-- Commands tab -->
-        <div id="tab-content-cmds">
-          <div class="card">
-            <div class="card-hd">
-              <div>
-                <div class="card-title"><svg><use href="#i-cmd"/></svg> دستورها</div>
-                <div class="card-sub">مدیریت command های ربات</div>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="openAddCmd()"><svg><use href="#i-plus"/></svg> دستور جدید</button>
-            </div>
-            <div id="cmds-list"><div class="loader"><div class="spinner"></div></div></div>
-          </div>
-        </div>
-        
-        <!-- Plugins tab -->
-        <div id="tab-content-plugins" style="display:none">
-          <div id="plugins-list"></div>
-        </div>
-        
-        <!-- Broadcast tab -->
-        <div id="tab-content-broadcast" style="display:none">
-          <div class="card">
-            <div class="card-hd">
-              <div>
-                <div class="card-title"><svg><use href="#i-broadcast"/></svg> ارسال پیام همگانی</div>
-                <div class="card-sub">ارسال پیام به همه کاربران ربات</div>
-              </div>
-            </div>
-            <div class="field">
-              <label class="field-label">متن پیام</label>
-              <textarea class="textarea" id="bc-text" placeholder="متن پیام خود را اینجا بنویسید..."></textarea>
-              <div class="hint"><svg><use href="#i-alert"/></svg> پیام به تمام کاربرانی که ربات را استارت کرده‌اند ارسال می‌شود</div>
-            </div>
-            <button class="btn btn-primary btn-full" onclick="sendBroadcast()">
-              <svg><use href="#i-send"/></svg> ارسال به همه
-            </button>
-          </div>
-        </div>
-        
-        <!-- Settings tab -->
-        <div id="tab-content-settings" style="display:none">
-          <div class="card" style="border-color:rgba(239,68,68,0.25)">
-            <div class="card-hd">
-              <div>
-                <div class="card-title" style="color:var(--danger)"><svg style="color:var(--danger)"><use href="#i-alert"/></svg> حذف ربات</div>
-                <div class="card-sub">این عملیات قابل بازگشت نیست</div>
-              </div>
-            </div>
-            <button class="btn btn-danger" onclick="confirmDeleteBot()">
-              <svg><use href="#i-trash"/></svg> حذف کامل ربات
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Admin stats -->
-    <div class="screen" id="screen-admin-stats">
-      <div class="topbar">
-        <div class="topbar-main">
-          <h1><svg><use href="#i-star"/></svg> پنل ادمین <span class="sub">· آمار کامل پلتفرم</span></h1>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="nav('dashboard')"><svg><use href="#i-home"/></svg> داشبورد</button>
-      </div>
-      <div class="content">
-        <div class="admin-banner">
-          <div class="admin-banner-ic"><svg><use href="#i-star"/></svg></div>
-          <div>
-            <div class="admin-banner-t">حالت ادمین</div>
-            <div class="admin-banner-d">شما به آمار کامل پلتفرم دسترسی دارید</div>
-          </div>
-        </div>
-        
-        <div class="section-title"><svg><use href="#i-home"/></svg> نمای کلی</div>
-        <div class="stats-grid" id="admin-overview"><div class="loader"><div class="spinner"></div></div></div>
-        
-        <div class="section-title"><svg><use href="#i-users"/></svg> کاربران</div>
-        <div class="stats-grid" id="admin-users"></div>
-        
-        <div class="section-title"><svg><use href="#i-robot"/></svg> ربات‌ها و پیام‌ها</div>
-        <div class="stats-grid" id="admin-bots"></div>
-        
-        <div class="section-title"><svg><use href="#i-activity"/></svg> رشد روزانه (۷ روز)</div>
-        <div class="chart" id="admin-growth"><div class="loader"><div class="spinner"></div></div></div>
-        
-        <div class="section-title"><svg><use href="#i-star"/></svg> Top 10 ربات‌ها</div>
-        <div class="table-wrap"><div class="table-scroll">
-          <table class="data" id="admin-top-bots">
-            <thead><tr><th>#</th><th>ربات</th><th>صاحب</th><th>پیام‌ها</th><th>کاربران</th><th>وضعیت</th></tr></thead>
-            <tbody><tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:20px">...</td></tr></tbody>
-          </table>
-        </div></div>
-        
-        <div class="section-title"><svg><use href="#i-star"/></svg> Top 10 کاربران</div>
-        <div class="table-wrap"><div class="table-scroll">
-          <table class="data" id="admin-top-users">
-            <thead><tr><th>#</th><th>کاربر</th><th>Username</th><th>ربات‌ها</th><th>کوین</th><th>رفرال</th></tr></thead>
-            <tbody><tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:20px">...</td></tr></tbody>
-          </table>
-        </div></div>
-      </div>
-    </div>
-    
-  </main>
-</div>
-
-<!-- Bottom tabbar (mobile) -->
-<nav class="tabbar" id="tabbar">
-  <button data-tab="dashboard" onclick="nav('dashboard')"><svg><use href="#i-home"/></svg><span>خانه</span></button>
-  <button data-tab="stats" onclick="nav('stats')"><svg><use href="#i-activity"/></svg><span>آمار</span></button>
-  <button data-tab="create-bot" onclick="nav('create-bot')"><svg><use href="#i-plus"/></svg><span>جدید</span></button>
-  <button data-tab="bots" onclick="nav('bots')"><svg><use href="#i-robot"/></svg><span>ربات‌ها</span></button>
-  <button data-tab="more" onclick="toggleSidebar()"><svg><use href="#i-menu"/></svg><span>بیشتر</span></button>
-</nav>
-
+<div id="auth"><div id="authbox"></div></div>
+<div id="view"></div>
+<nav class="tabbar" id="tabs"></nav>
+<div class="sheet-bg" id="sbg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
 <div id="toast"></div>
 
-<!-- Modals -->
-<div class="modal-bd" id="modal-cmd">
-  <div class="modal" style="max-width:600px">
-    <div class="modal-title" id="modal-cmd-title"><svg><use href="#i-cmd"/></svg> دستور جدید</div>
-    
-    <div class="tabs" style="margin-bottom:16px">
-      <button class="tab active" onclick="switchCmdTab('basic')"><svg><use href="#i-edit"/></svg> متن پایه</button>
-      <button class="tab" onclick="switchCmdTab('buttons')"><svg><use href="#i-plus"/></svg> دکمه‌ها</button>
-      <button class="tab" onclick="switchCmdTab('media')"><svg><use href="#i-image"/></svg> رسانه</button>
-    </div>
-    
-    <div id="cmd-tab-basic">
-      <div class="field">
-        <label class="field-label">نام دستور (بدون /)</label>
-        <input type="text" class="input" id="cmd-name-input" placeholder="مثلاً: help" style="direction:ltr;text-align:left">
-      </div>
-      <div class="field">
-        <label class="field-label">متن پاسخ</label>
-        <textarea class="textarea" id="cmd-response-input" rows="5" placeholder="پاسخ ربات به این دستور..."></textarea>
-        <div class="hint"><svg><use href="#i-alert"/></svg> پشتیبانی از HTML: &lt;b&gt;، &lt;i&gt;، &lt;code&gt;</div>
-      </div>
-    </div>
-    
-    <div id="cmd-tab-buttons" style="display:none">
-      <div id="buttons-rows"></div>
-      <button type="button" class="btn btn-ghost btn-full" onclick="addButtonRow()" style="margin-top:8px">
-        <svg><use href="#i-plus"/></svg> افزودن ردیف دکمه
-      </button>
-    </div>
-    
-    <div id="cmd-tab-media" style="display:none">
-      <div class="upload" id="upload-area" onclick="document.getElementById('media-file-input').click()">
-        <input type="file" id="media-file-input" accept="image/*,video/*,audio/*,.pdf,.zip,.doc,.docx,.txt,.gif" onchange="handleMediaSelect(event)" style="display:none">
-        <div id="upload-placeholder">
-          <div class="upload-ic"><svg><use href="#i-clip"/></svg></div>
-          <div class="upload-t">آپلود رسانه</div>
-          <div class="upload-s">برای انتخاب فایل کلیک کنید یا بکشید</div>
-          <div class="upload-h">عکس، ویدیو، صوت، PDF و... (حداکثر ۵۰MB)</div>
-        </div>
-        <div id="upload-preview" style="display:none;width:100%">
-          <img id="up-img" src="" style="display:none">
-          <video id="up-vid" src="" controls style="display:none"></video>
-          <audio id="up-aud" src="" controls style="display:none"></audio>
-          <div id="up-file" class="file-info" style="display:none"><span id="up-file-name">file</span><span id="up-file-size">0 KB</span></div>
-        </div>
-        <div id="upload-loading" style="display:none">
-          <div class="spinner" style="width:28px;height:28px;border-width:3px;margin:0 auto 10px"></div>
-          <div style="font-size:13px;color:var(--text-2)">در حال آپلود...</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px" id="upload-actions">
-        <button type="button" class="btn btn-ghost btn-sm" onclick="clearMedia()" style="color:var(--danger)"><svg><use href="#i-trash"/></svg> حذف</button>
-      </div>
-      <div style="text-align:center;color:var(--text-3);font-size:12px;margin:16px 0">— یا —</div>
-      <div class="field">
-        <label class="field-label">لینک مستقیم (URL)</label>
-        <input type="url" class="input" id="cmd-media-url" placeholder="https://..." oninput="handleMediaUrlInput()" style="direction:ltr;text-align:left">
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <select class="select" id="cmd-media-type-select" onchange="handleMediaUrlInput()" style="flex:1">
-            <option value="photo">🖼 تصویر</option>
-            <option value="video">🎬 ویدیو</option>
-            <option value="audio">🎵 صوت</option>
-            <option value="animation">🎞 انیمیشن</option>
-            <option value="document">📎 فایل</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-cmd')">لغو</button>
-      <button class="btn btn-primary" onclick="saveCommand()"><svg><use href="#i-check"/></svg> ذخیره</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bd" id="modal-cb">
-  <div class="modal">
-    <div class="modal-title"><svg><use href="#i-zap"/></svg> پاسخ دکمه: <span id="cb-id-label"></span></div>
-    <div class="field">
-      <label class="field-label">متن پاسخ</label>
-      <textarea class="textarea" id="cb-response-input" rows="4" placeholder="متن پاسخ..."></textarea>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-cb')">لغو</button>
-      <button class="btn btn-primary" onclick="saveCallback()"><svg><use href="#i-check"/></svg> ذخیره</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bd" id="modal-confirm">
-  <div class="modal">
-    <div class="modal-title" style="color:var(--danger)"><svg style="color:var(--danger)"><use href="#i-alert"/></svg> <span id="confirm-title">تأیید</span></div>
-    <div id="confirm-body" style="font-size:13px;color:var(--text-2);line-height:1.7"></div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-confirm')">انصراف</button>
-      <button class="btn btn-danger" id="confirm-ok"><svg><use href="#i-trash"/></svg> تأیید</button>
-    </div>
-  </div>
-</div>
-
 <script>
-// ══════════════════════════════════════════════════════════
-// CONFIG
-// ══════════════════════════════════════════════════════════
-const API_BASE = 'https://forextelbot-9jwt.onrender.com';
-const WEBAPP_URL = 'https://botsazgram.onrender.com';
-
-const tg = window.Telegram?.WebApp;
-let initData = '';
-let currentUser = null;
-let authToken = localStorage.getItem('authToken') || '';
-
-if (tg) {
-  tg.ready(); tg.expand();
-  tg.setHeaderColor('#0a0a0c'); tg.setBackgroundColor('#0a0a0c');
-}
-
-// Referral
-const urlParams = new URLSearchParams(window.location.search);
-const referralCode = urlParams.get('ref') || localStorage.getItem('pending_referral') || '';
-if (referralCode) localStorage.setItem('pending_referral', referralCode);
-
-function getDeviceId() {
-  let id = localStorage.getItem('device_id');
-  if (!id) { id = 'dev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9); localStorage.setItem('device_id', id); }
-  return id;
-}
-
-// ══════════════════════════════════════════════════════════
-// Auth
-// ══════════════════════════════════════════════════════════
-function switchLoginTab(tab) {
-  const lf = document.getElementById('login-form');
-  const rf = document.getElementById('register-form');
-  document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-  if (tab === 'login') { lf.style.display = 'block'; rf.style.display = 'none'; document.querySelectorAll('.login-tab')[0].classList.add('active'); }
-  else {
-    lf.style.display = 'none'; rf.style.display = 'block'; document.querySelectorAll('.login-tab')[1].classList.add('active');
-    const ri = document.getElementById('referral-info');
-    if (referralCode) { document.getElementById('referral-code-input').value = referralCode; ri.style.display = 'block'; }
-  }
-}
-
-async function handleLogin(e) {
-  e.preventDefault();
-  const btn = document.getElementById('login-submit');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px"></div> در حال ورود...';
-  try {
-    const res = await fetch(API_BASE + '/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: document.getElementById('login-username').value.trim(), password: document.getElementById('login-password').value })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'خطا در ورود');
-    authToken = data.token; localStorage.setItem('authToken', authToken);
-    toast('ورود موفقیت‌آمیز'); hideLogin(); init();
-  } catch (err) { toast(err.message, 'err'); }
-  finally { btn.disabled = false; btn.innerHTML = '<svg><use href="#i-check"/></svg> ورود به حساب'; }
-}
-
-let regTelegramUsername = '', regCodeVerified = false, verificationTimer = null;
-
-function openTelegramBot() { window.open('https://t.me/CratorRobot?start=register', '_blank'); }
-function goToStep2() {
-  document.getElementById('reg-step-1').style.display = 'none';
-  document.getElementById('reg-step-2').style.display = 'block';
-  if (referralCode) { document.getElementById('referral-code-input').value = referralCode; document.getElementById('referral-info').style.display = 'block'; }
-}
-function goBackToStep1() {
-  document.getElementById('reg-step-2').style.display = 'none';
-  document.getElementById('reg-step-1').style.display = 'block';
-  if (verificationTimer) clearInterval(verificationTimer);
-}
-
-async function sendVerificationCode(e) {
-  const u = document.getElementById('reg-telegram-username').value.trim().toLowerCase().replace('@','');
-  if (!u || u.length < 3) { toast('username معتبر وارد کنید', 'err'); return; }
-  regTelegramUsername = u;
-  const btn = e ? e.target : null;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px"></div> ارسال...'; }
-  try {
-    const res = await fetch(API_BASE + '/api/auth/send-code', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telegram_username: u, device_id: getDeviceId() })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'خطا');
-    document.getElementById('reg-step-2').style.display = 'none';
-    document.getElementById('reg-step-3').style.display = 'block';
-    startTimer(); toast('کد ارسال شد', 'ok');
-    document.getElementById('reg-code').focus();
-  } catch (err) { toast(err.message, 'err'); }
-  finally { if (btn) { btn.disabled = false; btn.innerHTML = '<svg><use href="#i-send"/></svg> ارسال کد'; } }
-}
-
-function startTimer() {
-  let s = 600;
-  const upd = () => {
-    const m = Math.floor(s/60), sec = s%60;
-    const disp = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`.replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
-    document.getElementById('verification-timer').textContent = disp;
-    if (s <= 0) { clearInterval(verificationTimer); toast('کد منقضی شد', 'err'); }
-    s--;
-  };
-  if (verificationTimer) clearInterval(verificationTimer);
-  upd(); verificationTimer = setInterval(upd, 1000);
-}
-
-function verifyCode() {
-  const c = document.getElementById('reg-code').value.trim();
-  if (c.length !== 6) { toast('کد باید ۶ رقم باشد', 'err'); return; }
-  regCodeVerified = c;
-  document.getElementById('reg-step-3').style.display = 'none';
-  document.getElementById('reg-step-4').style.display = 'block';
-  if (verificationTimer) clearInterval(verificationTimer);
-  toast('کد تایید شد', 'ok');
-}
-async function resendCode(e) { await sendVerificationCode(e); }
-
-async function handleRegister(e) {
-  e.preventDefault();
-  if (!regTelegramUsername || !regCodeVerified) { toast('مراحل قبلی را کامل کنید', 'err'); return; }
-  const btn = document.getElementById('register-submit');
-  btn.disabled = true;
-  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px"></div> در حال ثبت‌نام...';
-  try {
-    const res = await fetch(API_BASE + '/api/auth/register', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        telegram_username: regTelegramUsername,
-        username: document.getElementById('reg-username').value.trim().toLowerCase(),
-        password: document.getElementById('reg-password').value,
-        verification_code: regCodeVerified,
-        referral_code: referralCode || null,
-        device_id: getDeviceId()
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'خطا در ثبت‌نام');
-    authToken = data.token; localStorage.setItem('authToken', authToken);
-    localStorage.removeItem('pending_referral');
-    toast(data.message || 'ثبت‌نام موفق!', 'ok');
-    hideLogin(); init();
-  } catch (err) { toast(err.message, 'err'); }
-  finally { btn.disabled = false; btn.innerHTML = '<svg><use href="#i-plus"/></svg> ایجاد حساب'; }
-}
-
-function showLogin() { document.getElementById('login-screen').classList.add('open'); }
-function hideLogin() { document.getElementById('login-screen').classList.remove('open'); }
-function checkAuth() { return (tg?.initData?.length > 0) || (authToken?.length > 0); }
-
-function logout() {
-  showConfirm('خروج از حساب', 'آیا می‌خواهید خارج شوید؟', async () => {
-    try { if (authToken) await fetch(API_BASE + '/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` } }); } catch(e){}
-    authToken = ''; localStorage.removeItem('authToken'); initData = ''; currentUser = null;
-    showLogin(); toast('خارج شدید');
-  });
-}
-
-// ══════════════════════════════════════════════════════════
-// API
-// ══════════════════════════════════════════════════════════
-async function api(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-  if (initData) headers['X-Init-Data'] = initData;
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(API_BASE + path, {
-    ...opts, headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 401 && authToken) { authToken=''; localStorage.removeItem('authToken'); showLogin(); }
-    throw new Error(data.detail || data.error || `خطا ${res.status}`);
-  }
-  return data;
-}
-
-// ══════════════════════════════════════════════════════════
-// Toast
-// ══════════════════════════════════════════════════════════
-let toastTm;
-function toast(msg, type = 'ok') {
-  const el = document.getElementById('toast');
-  el.innerHTML = (type==='ok' ? '<svg><use href="#i-check"/></svg>' : '<svg><use href="#i-alert"/></svg>') + '<span>' + msg + '</span>';
-  el.className = `show t-${type}`;
-  clearTimeout(toastTm);
-  toastTm = setTimeout(() => el.className = '', 3000);
-}
-
-// ══════════════════════════════════════════════════════════
-// Navigation
-// ══════════════════════════════════════════════════════════
-function nav(screen) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.getElementById(`screen-${screen}`)?.classList.add('active');
-  document.querySelector(`[data-screen="${screen}"]`)?.classList.add('active');
-  
-  // Tabbar sync
-  const map = {'bot-detail':'bots','admin-stats':'more'};
-  const tt = map[screen] || screen;
-  document.querySelectorAll('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tt));
-  
-  if (screen === 'dashboard') loadDashboard();
-  if (screen === 'stats') loadStats();
-  if (screen === 'bots') loadBots();
-  if (screen === 'bot-detail') loadBotDetail();
-  if (screen === 'admin-stats') loadAdminStats();
-  if (screen === 'create-bot') resetCreateBot();
-  
-  document.getElementById('sidebar').classList.remove('open');
-}
-
-function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-
-// ══════════════════════════════════════════════════════════
-// State
-// ══════════════════════════════════════════════════════════
-let selectedBotId = null, selectedBot = null;
-let commands = {}, editingCmd = null, editingCbCmd = null, editingCbId = null;
-let lastCreatedBotId = null;
-let cmdButtons = [], cmdMedia = null, selectedMediaFile = null;
-
-const MEDIA_ICONS = { photo:'🖼', video:'🎬', audio:'🎵', animation:'🎞', document:'📎' };
-const EXT_TO_TYPE = {
-  jpg:'photo',jpeg:'photo',png:'photo',webp:'photo',
-  mp4:'video',webm:'video',mov:'video',avi:'video',
-  mp3:'audio',ogg:'audio',m4a:'audio',wav:'audio',flac:'audio',
-  gif:'animation',
-  pdf:'document',zip:'document',rar:'document',
-  doc:'document',docx:'document',xls:'document',xlsx:'document',
-  txt:'document',csv:'document'
+const API='https://forextelbot-9jwt.onrender.com', WEBAPP='https://botsazgram.onrender.com';
+const tg=window.Telegram?.WebApp; let initData='';
+if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('#0d0e10');tg.setBackgroundColor('#0d0e10')}catch(e){}}
+let token=localStorage.getItem('authToken')||'', user=null, bots=[], bot=null, cmds={}, ed=null, tab='cmds';
+const ref=new URLSearchParams(location.search).get('ref')||localStorage.getItem('pending_referral')||'';
+if(ref)localStorage.setItem('pending_referral',ref);
+const $=id=>document.getElementById(id), n=x=>(+x||0).toLocaleString('fa');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const I={
+ home:'<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',bot:'<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+ back:'<path d="M9 6l6 6-6 6"/>',trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+ plug:'<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>',send:'<path d="M21 3L3 10l7 3 3 7z"/>',
+ lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+ logo:'<path d="M4 12l16-8-4 16-4-6z"/>',shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'
 };
+const ic=k=>`<svg viewBox="0 0 24 24">${I[k]}</svg>`;
+let tt;const toast=(m,e)=>{const t=$('toast');t.textContent=m;t.className='on'+(e?' err':'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2600)};
+const sure=(m,f)=>tg?.showConfirm?tg.showConfirm(m,ok=>ok&&f()):confirm(m)&&f();
 
-// ══════════════════════════════════════════════════════════
-// Init
-// ══════════════════════════════════════════════════════════
-async function init() {
-  if (tg && !tg.initData) await new Promise(r => setTimeout(r, 200));
-  if (!checkAuth()) { showLogin(); return; }
-  hideLogin();
-  try {
-    const isTg = tg?.initData?.length > 0;
-    currentUser = await api(isTg ? '/api/me' : '/api/auth/me');
-    const name = currentUser.full_name || currentUser.username || String(currentUser.uid);
-    document.getElementById('user-av').textContent = name.charAt(0);
-    document.getElementById('user-name').textContent = name;
-    document.getElementById('user-uid').textContent = `#${currentUser.uid}`;
-    if (currentUser.is_admin) document.getElementById('nav-admin').style.display = 'flex';
-    loadDashboard();
-    renderProfile();
-  } catch (e) {
-    console.error(e);
-    if (e.message.includes('401') || e.message.includes('نامعتبر')) {
-      authToken=''; localStorage.removeItem('authToken'); showLogin();
-      toast('نشست منقضی شد', 'err');
-    } else toast('خطای اتصال: ' + e.message, 'err');
-  }
+async function api(p,o={}){
+ const h={'Content-Type':'application/json'};
+ if(initData)h['X-Init-Data']=initData; if(token)h.Authorization='Bearer '+token;
+ const r=await fetch(API+p,{...o,headers:h,body:o.body?JSON.stringify(o.body):undefined});
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok){if(r.status===401&&token){token='';localStorage.removeItem('authToken');showAuth()}throw new Error(d.detail||d.error||'خطای '+r.status)}
+ return d;
 }
+const guard=f=>async(...a)=>{try{return await f(...a)}catch(e){toast(e.message,1)}};
+const devId=()=>localStorage.device_id||(localStorage.device_id='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,11));
 
-// ══════════════════════════════════════════════════════════
-// Profile
-// ══════════════════════════════════════════════════════════
-async function renderProfile() {
-  if (!currentUser) return;
-  const name = currentUser.full_name || currentUser.username || String(currentUser.uid);
-  document.getElementById('profile-av').textContent = name.charAt(0);
-  document.getElementById('profile-name').textContent = name;
-  document.getElementById('profile-sub').textContent = '@' + (currentUser.username || 'user' + currentUser.uid);
-  
-  try {
-    const { bots } = await api('/api/bots');
-    const users = bots.reduce((s,b) => s + (b.stats?.unique_users || 0), 0);
-    const msgs = bots.reduce((s,b) => s + (b.stats?.messages_received || 0), 0);
-    document.getElementById('p-bots').textContent = bots.length.toLocaleString('fa');
-    document.getElementById('p-users').textContent = users.toLocaleString('fa');
-    document.getElementById('p-msgs').textContent = msgs.toLocaleString('fa');
-  } catch(e){}
-  
-  try {
-    const r = await api('/api/coins/referral');
-    document.getElementById('ref-count').textContent = (r.referral_count || 0).toLocaleString('fa');
-    document.getElementById('ref-coins').textContent = ((r.referral_count || 0) * 100).toLocaleString('fa');
-    document.getElementById('ref-code').textContent = r.referral_code || '—';
-    document.getElementById('ref-link').value = `${WEBAPP_URL}?ref=${r.referral_code || ''}`;
-    document.getElementById('p-coins').textContent = (r.coins || 0).toLocaleString('fa');
-  } catch(e){}
+/* ───────── Auth ───────── */
+let reg={};
+function showAuth(step='login'){
+ $('auth').classList.add('on');$('tabs').style.display='none';$('view').style.display='none';
+ const head=`<div class="logo">${ic('logo')}</div>`;
+ const B=$('authbox');
+ if(step==='login')B.innerHTML=head+`<h1>ورود به گرام‌ساز</h1><p class="sub" style="margin:6px 0 22px">ربات تلگرامی خودت را بدون کدنویسی بساز.</p>
+  <label>نام کاربری</label><input class="in" id="lu" dir="ltr" autocomplete="username">
+  <label>رمز عبور</label><input class="in" id="lp" type="password" dir="ltr" autocomplete="current-password">
+  <button class="btn" onclick="doLogin()">ورود</button>
+  <button class="btn s" style="margin-top:8px" onclick="showAuth('reg1')">حساب ندارم، ثبت‌نام</button>`;
+ if(step==='reg1')B.innerHTML=head+`<h1>ساخت حساب</h1><p class="sub" style="margin:6px 0 22px">ابتدا آیدی تلگرامت را وارد کن تا کد تأیید بفرستیم.</p>
+  <label>آیدی تلگرام</label><input class="in" id="tu" dir="ltr" placeholder="@username">
+  <button class="btn" onclick="sendCode()">ارسال کد تأیید</button>
+  <button class="btn s" style="margin-top:8px" onclick="showAuth()">بازگشت</button>`;
+ if(step==='reg2')B.innerHTML=head+`<h1>تأیید و تکمیل</h1><p class="sub" style="margin:6px 0 22px">کد ۶ رقمی از ربات تلگرام برایت ارسال شد.</p>
+  <label>کد تأیید</label><input class="in" id="rc" dir="ltr" inputmode="numeric" maxlength="6">
+  <label>نام کاربری</label><input class="in" id="ru" dir="ltr" autocomplete="username">
+  <label>رمز عبور</label><input class="in" id="rp" type="password" dir="ltr" autocomplete="new-password">
+  ${ref?`<p class="sub" style="margin-bottom:10px">کد دعوت: <b dir="ltr">${esc(ref)}</b></p>`:''}
+  <button class="btn" onclick="doReg()">ساخت حساب</button>
+  <button class="btn s" style="margin-top:8px" onclick="sendCode()">ارسال دوباره کد</button>`;
 }
+const doLogin=guard(async()=>{
+ const d=await api('/api/auth/login',{method:'POST',body:{username:$('lu').value.trim(),password:$('lp').value}});
+ token=d.token;localStorage.authToken=token;boot();
+});
+const sendCode=guard(async()=>{
+ const u=($('tu')?.value||reg.tu||'').trim();
+ if(u.length<3)return toast('آیدی تلگرام را درست وارد کن',1);
+ reg.tu=u;await api('/api/auth/send-code',{method:'POST',body:{telegram_username:u,device_id:devId()}});
+ toast('کد ارسال شد');showAuth('reg2');
+});
+const doReg=guard(async()=>{
+ const code=$('rc').value.trim();if(code.length!==6)return toast('کد باید ۶ رقم باشد',1);
+ const d=await api('/api/auth/register',{method:'POST',body:{telegram_username:reg.tu,username:$('ru').value.trim().toLowerCase(),password:$('rp').value,verification_code:code,referral_code:ref||null,device_id:devId()}});
+ token=d.token;localStorage.authToken=token;localStorage.removeItem('pending_referral');toast(d.message||'خوش آمدی');boot();
+});
+function logout(){sure('از حساب خارج می‌شوی؟',async()=>{try{token&&await fetch(API+'/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch(e){}token='';localStorage.removeItem('authToken');user=null;showAuth()})}
 
-function copyRefLink() {
-  const inp = document.getElementById('ref-link');
-  inp.select(); inp.setSelectionRange(0, 99999);
-  try { navigator.clipboard.writeText(inp.value); toast('لینک کپی شد', 'ok'); }
-  catch(e) { document.execCommand('copy'); toast('لینک کپی شد', 'ok'); }
+/* ───────── Shell / Router ───────── */
+const TABS=[['home','خانه','home'],['bots','ربات‌ها','bot'],['new','ساخت','plus'],['me','پروفایل','user']];
+function go(v,a){
+ $('auth').classList.remove('on');$('view').style.display='';$('tabs').style.display='flex';
+ $('tabs').innerHTML=TABS.map(([k,t,i])=>`<button class="${(v===k||(v==='bot'&&k==='bots')||(v==='admin'&&k==='me'))?'on':''}" onclick="go('${k}')">${ic(i)}${t}</button>`).join('');
+ scrollTo(0,0);({home:vHome,bots:vBots,new:vNew,bot:vBot,me:vMe,admin:vAdmin})[v](a);
 }
+const head=(t,s,r='')=>`<div class="top"><div><h1>${t}</h1>${s?`<div class="sub">${s}</div>`:''}</div>${r}</div>`;
+const botRow=b=>`<div class="row" onclick="go('bot','${b.bot_id}')"><span class="dot ${b.is_running?'on':''}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.bot_username||'—')}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div><span style="color:var(--mu);transform:scaleX(-1)">${ic('back')}</span></div>`;
+const empty=(t,b='')=>`<div class="empty">${t}${b?`<div style="margin-top:16px">${b}</div>`:''}</div>`;
 
-// ══════════════════════════════════════════════════════════
-// Dashboard
-// ══════════════════════════════════════════════════════════
-async function loadDashboard() {
-  try {
-    const { bots } = await api('/api/bots');
-    const el = document.getElementById('recent-bots');
-    if (!bots.length) {
-      el.innerHTML = `<div class="empty"><div class="empty-ic"><svg><use href="#i-robot"/></svg></div><p>هنوز رباتی نساخته‌اید</p><button class="btn btn-primary" onclick="nav('create-bot')"><svg><use href="#i-plus"/></svg> ساخت اولین ربات</button></div>`;
-    } else el.innerHTML = bots.slice(0, 3).map(b => renderBotCard(b)).join('');
-  } catch(e) { toast(e.message, 'err'); }
+const vHome=guard(async()=>{
+ $('view').innerHTML=head('سلام '+esc((user.full_name||user.username||'').split(' ')[0]),'خلاصه‌ی وضعیت ربات‌هایت');
+ ({bots}=await api('/api/bots'));
+ const S=k=>bots.reduce((s,b)=>s+(b.stats?.[k]||0),0);
+ $('view').innerHTML=head('سلام '+esc((user.full_name||user.username||'').split(' ')[0]),'خلاصه‌ی وضعیت ربات‌هایت')+
+ `<div class="grid"><div class="stat hi"><b>${n(S('unique_users'))}</b><span>کل کاربران</span></div><div class="stat"><b>${n(bots.length)}</b><span>ربات · ${n(bots.filter(b=>b.is_running).length)} فعال</span></div>
+ <div class="stat"><b>${n(S('messages_received'))}</b><span>پیام دریافتی</span></div><div class="stat"><b>${n(S('messages_sent'))}</b><span>پیام ارسالی</span></div></div>
+ <h2>ربات‌های اخیر</h2>`+(bots.length?bots.slice(0,4).map(botRow).join(''):empty('هنوز رباتی نساخته‌ای.',`<button class="btn sm" onclick="go('new')">ساخت اولین ربات</button>`));
+});
+const vBots=guard(async()=>{
+ $('view').innerHTML=head('ربات‌ها','','<div class="ib" onclick="go(\'new\')">'+ic('plus')+'</div>');
+ ({bots}=await api('/api/bots'));
+ $('view').innerHTML=head('ربات‌ها',n(bots.length)+' ربات','<div class="ib" onclick="go(\'new\')">'+ic('plus')+'</div>')+(bots.length?bots.map(botRow).join(''):empty('رباتی وجود ندارد.'));
+});
+function vNew(){
+ $('view').innerHTML=head('ربات جدید','در ۳ مرحله')+`<div class="card" style="margin-bottom:12px">
+ <p>۱. در تلگرام به <a href="https://t.me/BotFather" style="color:var(--ac)">@BotFather</a> برو.<br>۲. دستور <b dir="ltr">/newbot</b> را بزن و نام ربات را بده.<br>۳. توکن را اینجا بچسبان.</p></div>
+ <label>توکن ربات</label><input class="in" id="tk" dir="ltr" placeholder="123456789:AAH...">
+ <button class="btn" id="mk" onclick="mkBot()">ساخت ربات</button>`;
 }
-
-// ══════════════════════════════════════════════════════════
-// Stats
-// ══════════════════════════════════════════════════════════
-async function loadStats() {
-  try {
-    const { bots } = await api('/api/bots');
-    const totalBots = bots.length, active = bots.filter(b => b.is_running).length;
-    const users = bots.reduce((s,b) => s + (b.stats?.unique_users || 0), 0);
-    const msgs = bots.reduce((s,b) => s + (b.stats?.messages_received || 0), 0);
-    document.getElementById('stats-grid').innerHTML = `
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-blue"><svg><use href="#i-robot"/></svg></div><span class="stat-lb">کل ربات‌ها</span></div><div class="stat-val">${totalBots.toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-green"><svg><use href="#i-activity"/></svg></div><span class="stat-lb">فعال</span></div><div class="stat-val">${active.toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-purple"><svg><use href="#i-users"/></svg></div><span class="stat-lb">کاربران</span></div><div class="stat-val">${users.toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-orange"><svg><use href="#i-inbox"/></svg></div><span class="stat-lb">پیام‌ها</span></div><div class="stat-val">${msgs.toLocaleString('fa')}</div></div>`;
-    
-    const tEl = document.getElementById('top-bots-list');
-    if (!bots.length) tEl.innerHTML = `<div class="empty"><p>هنوز رباتی ندارید</p></div>`;
-    else {
-      const sorted = [...bots].sort((a,b) => (b.stats?.messages_received||0) - (a.stats?.messages_received||0));
-      tEl.innerHTML = sorted.slice(0, 5).map(b => renderBotCard(b, true)).join('');
-    }
-  } catch(e) { toast(e.message, 'err'); }
-}
-
-// ══════════════════════════════════════════════════════════
-// Bots
-// ══════════════════════════════════════════════════════════
-async function loadBots() {
-  const el = document.getElementById('bots-list');
-  el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
-  try {
-    const { bots } = await api('/api/bots');
-    document.getElementById('bots-count').textContent = `· ${bots.length} ربات`;
-    if (!bots.length) {
-      el.innerHTML = `<div class="empty"><div class="empty-ic"><svg><use href="#i-robot"/></svg></div><p>هنوز رباتی نساخته‌اید</p><button class="btn btn-primary" onclick="nav('create-bot')"><svg><use href="#i-plus"/></svg> ساخت اولین ربات</button></div>`;
-      return;
-    }
-    el.innerHTML = bots.map(b => renderBotCard(b, true)).join('');
-  } catch(e) { el.innerHTML = `<div class="empty">${e.message}</div>`; }
-}
-
-function renderBotCard(b, manage = false) {
-  return `<div class="bot-card">
-    <div class="bot-av"><svg><use href="#i-robot"/></svg></div>
-    <div class="bot-info">
-      <div class="bot-name"><span class="dot ${b.is_running ? 'dot-on' : 'dot-off'}"></span>@${b.bot_username || 'نامشخص'}</div>
-      <div class="bot-meta">
-        <span><svg><use href="#i-users"/></svg>${(b.stats?.unique_users||0).toLocaleString('fa')} کاربر</span>
-        <span><svg><use href="#i-msg"/></svg>${(b.stats?.messages_received||0).toLocaleString('fa')} پیام</span>
-      </div>
-    </div>
-    <button class="btn btn-primary btn-sm" onclick="openBot('${b.bot_id}')">
-      <svg><use href="#i-settings"/></svg> ${manage ? 'مدیریت' : 'باز کردن'}
-    </button>
-  </div>`;
-}
-
-function openBot(id) {
-  selectedBotId = id;
-  document.getElementById('nav-bot-detail').style.display = 'flex';
-  nav('bot-detail');
-}
-
-// ══════════════════════════════════════════════════════════
-// Bot Detail
-// ══════════════════════════════════════════════════════════
-async function loadBotDetail() {
-  if (!selectedBotId) return;
-  try {
-    const { bot } = await api(`/api/bots/${selectedBotId}`);
-    selectedBot = bot;
-    const un = bot.bot_username || '—';
-    document.getElementById('detail-username').textContent = '@' + un;
-    document.getElementById('detail-title').innerHTML = `<svg><use href="#i-robot"/></svg> @${un}`;
-    document.getElementById('bot-toggle').checked = bot.is_running;
-    updateBotStatus(bot.is_running);
-    
-    const s = bot.stats || {};
-    document.getElementById('bot-stats-grid').innerHTML = `
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-blue"><svg><use href="#i-users"/></svg></div><span class="stat-lb">کاربران یکتا</span></div><div class="stat-val">${(s.unique_users||0).toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-orange"><svg><use href="#i-inbox"/></svg></div><span class="stat-lb">دریافتی</span></div><div class="stat-val">${(s.messages_received||0).toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-green"><svg><use href="#i-send"/></svg></div><span class="stat-lb">ارسالی</span></div><div class="stat-val">${(s.messages_sent||0).toLocaleString('fa')}</div></div>
-      <div class="stat"><div class="stat-hd"><div class="stat-ic ic-purple"><svg><use href="#i-broadcast"/></svg></div><span class="stat-lb">همگانی</span></div><div class="stat-val">${(s.broadcasts_sent||0).toLocaleString('fa')}</div></div>`;
-    
-    await loadCommands();
-    renderPlugins();
-  } catch(e) { toast(e.message, 'err'); }
-}
-
-function updateBotStatus(on) {
-  const pill = document.getElementById('bot-status-pill');
-  const txt = document.getElementById('bot-status-text');
-  if (on) { pill.className = 'status-pill on'; txt.textContent = 'فعال'; pill.querySelector('.dot').className = 'dot dot-on'; }
-  else { pill.className = 'status-pill'; txt.textContent = 'خاموش'; pill.querySelector('.dot').className = 'dot dot-off'; }
-}
-
-// ══════════════════════════════════════════════════════════
-// PLUGINS
-// ══════════════════════════════════════════════════════════
-const PLUGINS = [
-  {
-    id: 'force_join',
-    name: 'عضویت اجباری',
-    desc: 'کاربران برای استفاده از ربات باید ابتدا در کانال/گروه شما عضو شوند',
-    icon: 'i-lock',
-    hasConfig: true,
-    configLabel: 'کانال یا گروه (username یا -100...)',
-    configPlaceholder: '@mychannel یا -1001234567890',
-    configValue: () => selectedBot?.force_join_channel || ''
-  },
-  {
-    id: 'welcome',
-    name: 'پیام خوش‌آمد',
-    desc: 'ارسال پیام خودکار به کاربران جدید هنگام استارت',
-    icon: 'i-hand',
-    hasConfig: true,
-    configLabel: 'متن پیام خوش‌آمد',
-    configPlaceholder: 'به ربات ما خوش آمدید! 👋',
-    configValue: () => selectedBot?.welcome_message || '',
-    isTextarea: true
-  },
-  {
-    id: 'antispam',
-    name: 'ضد اسپم',
-    desc: 'جلوگیری از ارسال پیام‌های تکراری و اسپم توسط کاربران',
-    icon: 'i-shield',
-    hasConfig: false
-  }
-];
-
-function renderPlugins() {
-  const el = document.getElementById('plugins-list');
-  el.innerHTML = PLUGINS.map(p => {
-    const enabled = isPluginEnabled(p.id);
-    const configVal = p.hasConfig ? (p.configValue() || '') : '';
-    
-    let configHTML = '';
-    if (p.hasConfig && enabled) {
-      configHTML = `
-        <div class="plugin-body">
-          <div class="field" style="margin-bottom:8px">
-            <label class="field-label">${p.configLabel}</label>
-            ${p.isTextarea
-              ? `<textarea class="textarea" id="plugin-cfg-${p.id}" rows="3" placeholder="${p.configPlaceholder}" style="min-height:70px">${escapeHtml(configVal)}</textarea>`
-              : `<input type="text" class="input" id="plugin-cfg-${p.id}" value="${escapeHtml(configVal)}" placeholder="${p.configPlaceholder}" style="direction:ltr;text-align:left">`}
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="savePluginConfig('${p.id}')">
-            <svg><use href="#i-check"/></svg> ذخیره
-          </button>
-        </div>`;
-    }
-    
-    return `
-      <div class="plugin-wrap ${enabled ? 'on' : ''}">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div class="plugin-ic"><svg><use href="#${p.icon}"/></svg></div>
-          <div class="plugin-info">
-            <div class="plugin-name">${p.name}</div>
-            <div class="plugin-desc">${p.desc}</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="togglePlugin('${p.id}', this.checked)">
-            <span class="toggle-sl"></span>
-          </label>
-        </div>
-        ${configHTML}
-      </div>`;
-  }).join('');
-}
-
-function isPluginEnabled(id) {
-  if (!selectedBot) return false;
-  if (id === 'force_join') return !!(selectedBot.force_join_channel && selectedBot.force_join_channel.length > 0);
-  if (id === 'welcome') return !!(selectedBot.welcome_message && selectedBot.welcome_message.length > 0);
-  if (id === 'antispam') return !!selectedBot.antispam_enabled;
-  return false;
-}
-
-async function togglePlugin(id, enabled) {
-  if (id === 'force_join') {
-    if (!enabled) {
-      // خاموش کردن: پاک کردن مقدار
-      try {
-        await api(`/api/bots/${selectedBotId}/force-join`, { method: 'PATCH', body: { channel: null } });
-        selectedBot.force_join_channel = '';
-        toast('عضویت اجباری غیرفعال شد');
-        renderPlugins();
-      } catch(e) { toast(e.message, 'err'); }
-    } else {
-      // روشن کردن: فقط UI را باز کن تا کاربر کانال وارد کند
-      selectedBot.force_join_channel = selectedBot.force_join_channel || '';
-      renderPlugins();
-      // Focus input
-      setTimeout(() => document.getElementById('plugin-cfg-force_join')?.focus(), 50);
-      toast('کانال یا گروه را وارد کنید', 'ok');
-    }
-    return;
-  }
-  
-  if (id === 'welcome') {
-    if (!enabled) {
-      try {
-        await api(`/api/bots/${selectedBotId}/welcome`, { method: 'PATCH', body: { message: null } }).catch(() => null);
-        selectedBot.welcome_message = '';
-      } catch(e){}
-      renderPlugins();
-      toast('پیام خوش‌آمد غیرفعال شد');
-    } else {
-      selectedBot.welcome_message = selectedBot.welcome_message || '';
-      renderPlugins();
-      setTimeout(() => document.getElementById('plugin-cfg-welcome')?.focus(), 50);
-    }
-    return;
-  }
-  
-  if (id === 'antispam') {
-    try {
-      await api(`/api/bots/${selectedBotId}/plugins/antispam`, { method: 'PATCH', body: { enabled } }).catch(() => {
-        throw new Error('این پلاگین هنوز توسط سرور پشتیبانی نمی‌شود');
-      });
-      selectedBot.antispam_enabled = enabled;
-      renderPlugins();
-      toast(enabled ? 'ضد اسپم فعال شد' : 'ضد اسپم غیرفعال شد');
-    } catch(e) {
-      toast(e.message, 'err');
-      renderPlugins();
-    }
-  }
-}
-
-async function savePluginConfig(id) {
-  const cfgEl = document.getElementById(`plugin-cfg-${id}`);
-  if (!cfgEl) return;
-  const val = cfgEl.value.trim();
-  
-  if (id === 'force_join') {
-    if (!val) { toast('کانال را وارد کنید', 'err'); return; }
-    try {
-      await api(`/api/bots/${selectedBotId}/force-join`, { method: 'PATCH', body: { channel: val } });
-      selectedBot.force_join_channel = val;
-      toast('عضویت اجباری ذخیره شد', 'ok');
-      renderPlugins();
-    } catch(e) { toast(e.message, 'err'); }
-    return;
-  }
-  
-  if (id === 'welcome') {
-    if (!val) { toast('متن پیام را وارد کنید', 'err'); return; }
-    try {
-      await api(`/api/bots/${selectedBotId}/welcome`, { method: 'PATCH', body: { message: val } });
-      selectedBot.welcome_message = val;
-      toast('پیام خوش‌آمد ذخیره شد', 'ok');
-    } catch(e) { toast(e.message, 'err'); }
-  }
-}
-
-// ══════════════════════════════════════════════════════════
-// Commands
-// ══════════════════════════════════════════════════════════
-async function loadCommands() {
-  const el = document.getElementById('cmds-list');
-  el.innerHTML = `<div class="loader"><div class="spinner"></div></div>`;
-  try {
-    const data = await api(`/api/bots/${selectedBotId}/commands`);
-    commands = data.commands || {};
-    renderCommands();
-  } catch(e) { el.innerHTML = `<div class="empty">${e.message}</div>`; }
-}
-
-function renderCommands() {
-  const el = document.getElementById('cmds-list');
-  const keys = Object.keys(commands);
-  if (!keys.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-ic"><svg><use href="#i-cmd"/></svg></div><p>هنوز دستوری تعریف نشده</p></div>`;
-    return;
-  }
-  el.innerHTML = keys.map(name => {
-    const cmd = commands[name];
-    const cbCount = Object.keys(cmd.callbacks || {}).length;
-    const hasBtns = cmd.buttons ? 'دکمه' : '';
-    const preview = (cmd.response || '').substring(0, 60).replace(/\n/g, ' ');
-    const isStart = name === 'start';
-    return `
-      <div class="cmd-row">
-        <div class="cmd-info">
-          <div class="cmd-name">/${name} ${isStart ? '⭐' : ''} ${hasBtns ? '· دکمه' : ''} ${cbCount ? `· ${cbCount} پاسخ` : ''}</div>
-          <div class="cmd-preview">${preview || '—'}</div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-ghost btn-icon" onclick="openEditCmd('${name}')" title="ویرایش"><svg><use href="#i-edit"/></svg></button>
-          ${!isStart ? `<button class="btn btn-ghost btn-icon" onclick="delCmd('${name}')" style="color:var(--danger)" title="حذف"><svg><use href="#i-trash"/></svg></button>` : ''}
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function showTab(t) {
-  ['cmds','plugins','broadcast','settings'].forEach(x => {
-    document.getElementById(`tab-content-${x}`).style.display = x === t ? '' : 'none';
-    document.getElementById(`tab-${x}`).classList.toggle('active', x === t);
-  });
-}
-
-async function toggleBot() {
-  const active = document.getElementById('bot-toggle').checked;
-  try {
-    await api(`/api/bots/${selectedBotId}/toggle`, { method: 'PATCH', body: { active } });
-    toast(active ? 'ربات روشن شد' : 'ربات خاموش شد', active ? 'ok' : 'err');
-    selectedBot.is_running = active;
-    updateBotStatus(active);
-  } catch(e) {
-    toast(e.message, 'err');
-    document.getElementById('bot-toggle').checked = !active;
-    updateBotStatus(!active);
-  }
-}
-
-async function sendBroadcast() {
-  const text = document.getElementById('bc-text').value.trim();
-  if (!text) { toast('متن خالی است', 'err'); return; }
-  try {
-    const r = await api(`/api/bots/${selectedBotId}/broadcast`, { method: 'POST', body: { text } });
-    toast(r.message || 'در صف ارسال قرار گرفت');
-    document.getElementById('bc-text').value = '';
-  } catch(e) { toast(e.message, 'err'); }
-}
-
-// ══════════════════════════════════════════════════════════
-// Create Bot
-// ══════════════════════════════════════════════════════════
-function resetCreateBot() {
-  lastCreatedBotId = null;
-  document.getElementById('create-success').style.display = 'none';
-  document.getElementById('create-form-card').style.display = 'block';
-  document.getElementById('create-loading').style.display = 'none';
-  document.querySelector('.hero').style.display = 'block';
-  document.querySelector('.guide').style.display = 'block';
-  document.getElementById('create-bot-token').value = '';
-}
-
-async function startBotCreation() {
-  const token = document.getElementById('create-bot-token').value.trim();
-  const pat = /^\d{8,12}:[A-Za-z0-9_-]{30,}$/;
-  if (!pat.test(token)) { toast('فرمت توکن نامعتبر است', 'err'); return; }
-  
-  document.querySelector('.hero').style.display = 'none';
-  document.querySelector('.guide').style.display = 'none';
-  document.getElementById('create-form-card').style.display = 'none';
-  document.getElementById('create-loading').style.display = 'block';
-  
-  const apiPromise = api('/api/bots', { method: 'POST', body: { token } });
-  
-  const steps = [
-    { text: 'در حال اتصال به تلگرام...', dur: 1500 },
-    { text: 'در حال تایید توکن...', dur: 2000 },
-    { text: 'ایجاد رکورد در سیستم...', dur: 1200 },
-    { text: 'راه‌اندازی handlers...', dur: 2000 },
-    { text: 'فعال‌سازی نهایی...', dur: 1200 },
-  ];
-  
-  for (let i = 0; i < steps.length; i++) {
-    document.getElementById('create-step-text').textContent = steps[i].text;
-    const start = Date.now();
-    await new Promise(r => {
-      const anim = () => {
-        const p = Math.min((Date.now()-start)/steps[i].dur, 1);
-        const pct = Math.round(((i + p) / steps.length) * 100);
-        document.getElementById('create-progress-text').textContent = pct + '%';
-        if (p < 1) requestAnimationFrame(anim); else r();
-      };
-      anim();
-    });
-  }
-  
-  try {
-    const result = await apiPromise;
-    document.getElementById('create-progress-text').textContent = '100%';
-    await new Promise(r => setTimeout(r, 400));
-    lastCreatedBotId = result.bot.bot_id;
-    document.getElementById('create-loading').style.display = 'none';
-    document.getElementById('create-success').style.display = 'block';
-    toast('🎉 ربات فعال شد!', 'ok');
-  } catch(e) {
-    document.getElementById('create-loading').style.display = 'none';
-    document.getElementById('create-form-card').style.display = 'block';
-    document.querySelector('.hero').style.display = 'block';
-    document.querySelector('.guide').style.display = 'block';
-    toast(e.message, 'err');
-  }
-}
-
-function goToBotManagement() {
-  if (lastCreatedBotId) openBot(lastCreatedBotId);
-  else nav('bots');
-}
-
-// ══════════════════════════════════════════════════════════
-// Command Editor
-// ══════════════════════════════════════════════════════════
-function openAddCmd() {
-  editingCmd = null; cmdButtons = []; cmdMedia = null; selectedMediaFile = null;
-  document.getElementById('modal-cmd-title').innerHTML = '<svg><use href="#i-plus"/></svg> دستور جدید';
-  document.getElementById('cmd-name-input').value = '';
-  document.getElementById('cmd-name-input').disabled = false;
-  document.getElementById('cmd-response-input').value = '';
-  document.getElementById('cmd-media-url').value = '';
-  document.getElementById('cmd-media-type-select').value = 'photo';
-  resetUpload();
-  switchCmdTab('basic');
-  renderButtons();
-  openModal('modal-cmd');
-}
-
-function openEditCmd(name) {
-  editingCmd = name;
-  const cmd = commands[name] || {};
-  selectedMediaFile = null;
-  document.getElementById('modal-cmd-title').innerHTML = `<svg><use href="#i-edit"/></svg> ویرایش /${name}`;
-  document.getElementById('cmd-name-input').value = name;
-  document.getElementById('cmd-name-input').disabled = true;
-  document.getElementById('cmd-response-input').value = cmd.response || '';
-  cmdButtons = Array.isArray(cmd.buttons) ? JSON.parse(JSON.stringify(cmd.buttons)) : [];
-  resetUpload();
-  document.getElementById('cmd-media-url').value = '';
-  
-  let loaded = null;
-  if (cmd.media && cmd.media.url) loaded = cmd.media;
-  else if (cmd.photo && typeof cmd.photo === 'string') loaded = { type: 'photo', url: cmd.photo };
-  
-  if (loaded) {
-    cmdMedia = loaded;
-    document.getElementById('cmd-media-url').value = loaded.url;
-    document.getElementById('cmd-media-type-select').value = loaded.type;
-    showSavedMedia(loaded);
-  } else cmdMedia = null;
-  
-  switchCmdTab('basic');
-  renderButtons();
-  openModal('modal-cmd');
-}
-
-function showSavedMedia(m) {
-  document.getElementById('upload-placeholder').style.display = 'none';
-  document.getElementById('upload-preview').style.display = 'block';
-  document.getElementById('up-img').style.display = 'none';
-  document.getElementById('up-vid').style.display = 'none';
-  document.getElementById('up-aud').style.display = 'none';
-  document.getElementById('up-file').style.display = 'none';
-  
-  if (m.type === 'photo' || m.type === 'animation') { document.getElementById('up-img').src = m.url; document.getElementById('up-img').style.display = 'block'; }
-  else if (m.type === 'video') { document.getElementById('up-vid').src = m.url; document.getElementById('up-vid').style.display = 'block'; }
-  else if (m.type === 'audio') { document.getElementById('up-aud').src = m.url; document.getElementById('up-aud').style.display = 'block'; }
-  else { document.getElementById('up-file').style.display = 'flex'; document.getElementById('up-file-name').textContent = m.url.split('/').pop(); document.getElementById('up-file-size').textContent = MEDIA_ICONS[m.type] || ''; }
-}
-
-function switchCmdTab(t) {
-  document.querySelectorAll('#modal-cmd .tab').forEach(x => x.classList.remove('active'));
-  document.querySelector(`#modal-cmd .tab[onclick*="'${t}'"]`)?.classList.add('active');
-  ['basic','buttons','media'].forEach(x => document.getElementById(`cmd-tab-${x}`).style.display = x === t ? '' : 'none');
-}
-
-// ══════════════════════════════════════════════════════════
-// Button Builder
-// ══════════════════════════════════════════════════════════
-function addButtonRow() { cmdButtons.push([{ text: '', id: '' }]); renderButtons(); }
-function removeButtonRow(i) { cmdButtons.splice(i, 1); renderButtons(); }
-function addBtnInRow(i) { cmdButtons[i].push({ text: '', id: '' }); renderButtons(); }
-function removeBtnInRow(i, j) { cmdButtons[i].splice(j, 1); if (!cmdButtons[i].length) cmdButtons.splice(i,1); renderButtons(); }
-function updateBtnText(i, j, v) { cmdButtons[i][j].text = v; updateMockup(i); }
-function updateBtnId(i, j, v) { cmdButtons[i][j].id = v; }
-function updateMockup(i) {
-  const el = document.getElementById(`mockup-${i}`);
-  if (!el) return;
-  el.innerHTML = cmdButtons[i].map(b => b.text ? `<div class="preview-btn">${escapeHtml(b.text)}</div>` : '').join('');
-}
-function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-
-function renderButtons() {
-  const c = document.getElementById('buttons-rows');
-  if (!cmdButtons.length) { c.innerHTML = `<div class="empty" style="padding:20px"><p style="font-size:12px">هنوز دکمه‌ای اضافه نشده</p></div>`; return; }
-  c.innerHTML = cmdButtons.map((row, i) => `
-    <div class="btn-row-editor">
-      <div class="btn-row-hd">
-        <span class="btn-row-title">ردیف ${i+1}</span>
-        <div class="btn-row">
-          <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="addBtnInRow(${i})" title="افزودن دکمه"><svg><use href="#i-plus"/></svg></button>
-          <button type="button" class="btn btn-ghost btn-sm btn-icon" onclick="removeButtonRow(${i})" style="color:var(--danger)" title="حذف ردیف"><svg><use href="#i-trash"/></svg></button>
-        </div>
-      </div>
-      ${row.map((b, j) => `
-        <div class="btn-item">
-          <input type="text" class="input" placeholder="متن دکمه" value="${escapeHtml(b.text || '')}" oninput="updateBtnText(${i},${j},this.value)">
-          <input type="text" class="input" placeholder="callback_id" value="${escapeHtml(b.id || '')}" oninput="updateBtnId(${i},${j},this.value)" style="direction:ltr;text-align:left;font-family:monospace;font-size:11px">
-          <button type="button" class="btn btn-ghost btn-icon" onclick="removeBtnInRow(${i},${j})" style="color:var(--danger)"><svg><use href="#i-trash"/></svg></button>
-        </div>
-      `).join('')}
-      <div class="preview-btns" id="mockup-${i}">
-        ${row.map(b => b.text ? `<div class="preview-btn">${escapeHtml(b.text)}</div>` : '').join('')}
-      </div>
-    </div>
-  `).join('');
-}
-
-// ══════════════════════════════════════════════════════════
-// Media Upload
-// ══════════════════════════════════════════════════════════
-function detectMediaType(file) {
-  const ext = (file.name || '').split('.').pop().toLowerCase();
-  const m = (file.type || '').toLowerCase();
-  if (m.startsWith('image/') && !m.includes('gif')) return 'photo';
-  if (m === 'image/gif') return 'animation';
-  if (m.startsWith('video/')) return 'video';
-  if (m.startsWith('audio/')) return 'audio';
-  return EXT_TO_TYPE[ext] || 'document';
-}
-
-function handleMediaSelect(e) {
-  const f = e.target.files[0]; if (!f) return;
-  const type = detectMediaType(f);
-  const maxSize = type === 'photo' ? 10*1024*1024 : 50*1024*1024;
-  if (f.size > maxSize) { toast(`حجم فایل بیش از حد مجاز`, 'err'); e.target.value = ''; return; }
-  selectedMediaFile = f;
-  showMediaPreview(f, type);
-  uploadMedia(f, type);
-}
-
-function showMediaPreview(f, type) {
-  document.getElementById('upload-placeholder').style.display = 'none';
-  document.getElementById('upload-preview').style.display = 'block';
-  document.getElementById('up-img').style.display = 'none';
-  document.getElementById('up-vid').style.display = 'none';
-  document.getElementById('up-aud').style.display = 'none';
-  document.getElementById('up-file').style.display = 'none';
-  
-  const r = new FileReader();
-  if (type === 'photo' || type === 'animation') { r.onload = ev => { document.getElementById('up-img').src = ev.target.result; document.getElementById('up-img').style.display = 'block'; }; r.readAsDataURL(f); }
-  else if (type === 'video') { r.onload = ev => { document.getElementById('up-vid').src = ev.target.result; document.getElementById('up-vid').style.display = 'block'; }; r.readAsDataURL(f); }
-  else if (type === 'audio') { r.onload = ev => { document.getElementById('up-aud').src = ev.target.result; document.getElementById('up-aud').style.display = 'block'; }; r.readAsDataURL(f); }
-  else { document.getElementById('up-file').style.display = 'flex'; document.getElementById('up-file-name').textContent = f.name; document.getElementById('up-file-size').textContent = (f.size/1024).toFixed(1) + ' KB'; }
-  
-  document.getElementById('upload-actions').style.display = 'flex';
-}
-
-async function uploadMedia(f, type) {
-  document.getElementById('upload-preview').style.display = 'none';
-  document.getElementById('upload-actions').style.display = 'none';
-  document.getElementById('upload-loading').style.display = 'block';
-  try {
-    const fd = new FormData();
-    fd.append('file', f);
-    const headers = {};
-    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    if (initData) headers['X-Init-Data'] = initData;
-    const res = await fetch(API_BASE + '/api/upload-media', { method: 'POST', headers, body: fd });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'خطا در آپلود');
-    cmdMedia = { type: data.type, url: data.url };
-    document.getElementById('cmd-media-url').value = data.url;
-    document.getElementById('cmd-media-type-select').value = data.type;
-    toast(`${data.icon || ''} با موفقیت آپلود شد`, 'ok');
-    document.getElementById('upload-loading').style.display = 'none';
-    document.getElementById('upload-preview').style.display = 'block';
-    document.getElementById('upload-actions').style.display = 'flex';
-  } catch(e) {
-    toast(e.message, 'err');
-    resetUpload();
-  }
-}
-
-function handleMediaUrlInput() {
-  const url = document.getElementById('cmd-media-url').value.trim();
-  const type = document.getElementById('cmd-media-type-select').value;
-  if (url && /^https?:\/\//.test(url)) cmdMedia = { type, url };
-  else cmdMedia = null;
-}
-
-function clearMedia() {
-  cmdMedia = null; selectedMediaFile = null;
-  document.getElementById('cmd-media-url').value = '';
-  document.getElementById('media-file-input').value = '';
-  resetUpload();
-}
-
-function resetUpload() {
-  document.getElementById('upload-placeholder').style.display = 'flex';
-  document.getElementById('upload-preview').style.display = 'none';
-  document.getElementById('upload-actions').style.display = 'none';
-  document.getElementById('upload-loading').style.display = 'none';
-}
-
-// Drag and drop
-document.addEventListener('DOMContentLoaded', () => {
-  const ua = document.getElementById('upload-area');
-  if (ua) {
-    ['dragenter','dragover'].forEach(ev => ua.addEventListener(ev, e => { e.preventDefault(); ua.classList.add('drag'); }));
-    ['dragleave','drop'].forEach(ev => ua.addEventListener(ev, e => { e.preventDefault(); ua.classList.remove('drag'); }));
-    ua.addEventListener('drop', e => {
-      const files = e.dataTransfer.files;
-      if (files.length) handleMediaSelect({ target: { files, value: '' } });
-    });
-  }
+const mkBot=guard(async()=>{
+ const t=$('tk').value.trim();
+ if(!/^\d{8,12}:[A-Za-z0-9_-]{30,}$/.test(t))return toast('فرمت توکن درست نیست',1);
+ $('mk').disabled=true;$('mk').textContent='در حال ساخت…';
+ try{const r=await api('/api/bots',{method:'POST',body:{token:t}});toast(r.message||'ربات ساخته شد');go('bot',r.bot.bot_id)}
+ finally{$('mk')&&($('mk').disabled=false,$('mk').textContent='ساخت ربات')}
 });
 
-// ══════════════════════════════════════════════════════════
-// Save Command
-// ══════════════════════════════════════════════════════════
-async function saveCommand() {
-  const nameRaw = document.getElementById('cmd-name-input').value.trim().toLowerCase().replace(/^\//, '');
-  const response = document.getElementById('cmd-response-input').value.trim();
-  const name = editingCmd || nameRaw;
-  if (!name) { toast('نام دستور خالی است', 'err'); return; }
-  if (!response) { toast('متن پاسخ خالی است', 'err'); return; }
-  
-  const clean = cmdButtons.map(r => r.filter(b => b.text && b.id)).filter(r => r.length);
-  const buttons = clean.length ? clean : null;
-  
-  let media = null, photo = null;
-  if (cmdMedia && cmdMedia.url) {
-    media = { type: cmdMedia.type, url: cmdMedia.url };
-    if (cmdMedia.type === 'photo') photo = cmdMedia.url;
-  }
-  
-  try {
-    await api(`/api/bots/${selectedBotId}/commands/${name}`, {
-      method: 'PUT', body: { response, buttons, photo, media }
-    });
-    toast(`دستور /${name} ذخیره شد`, 'ok');
-    closeModal('modal-cmd');
-    await loadCommands();
-  } catch(e) { toast(e.message, 'err'); }
+/* ───────── Bot detail ───────── */
+let botId=null;
+const vBot=guard(async(id)=>{
+ if(id)botId=id;
+ const d=await api('/api/bots/'+botId);bot=d.bot;const s=bot.stats||{};
+ $('view').innerHTML=`<div class="top"><div class="ib" onclick="go('bots')" style="transform:scaleX(-1)">${ic('back')}</div><div style="flex:1;min-width:0"><h1 dir="ltr" style="text-align:right;font-size:20px">@${esc(bot.bot_username||'—')}</h1><div class="sub" id="st">${bot.is_running?'فعال و در حال پاسخ‌گویی':'خاموش'}</div></div><div class="sw ${bot.is_running?'on':''}" id="pw" onclick="power()"></div></div>
+ <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:6px">${[['unique_users','کاربر'],['messages_received','دریافتی'],['messages_sent','ارسالی'],['broadcasts_sent','همگانی']].map(([k,t])=>`<div class="stat" style="padding:12px 8px;text-align:center"><b style="font-size:18px">${n(s[k])}</b><span style="font-size:11px">${t}</span></div>`).join('')}</div>
+ <div class="seg">${[['cmds','دستورها'],['plug','افزونه‌ها'],['set','تنظیمات']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';vBot()">${t}</button>`).join('')}</div><div id="tb"></div>`;
+ if(tab==='cmds')await tCmds();if(tab==='plug')tPlug();if(tab==='set')tSet();
+});
+const power=guard(async()=>{
+ const on=!$('pw').classList.contains('on');
+ await api(`/api/bots/${botId}/toggle`,{method:'PATCH',body:{active:on}});
+ bot.is_running=on;$('pw').classList.toggle('on',on);$('st').textContent=on?'فعال و در حال پاسخ‌گویی':'خاموش';toast(on?'ربات روشن شد':'ربات خاموش شد');
+});
+let ck=[];
+async function tCmds(){
+ cmds=(await api(`/api/bots/${botId}/commands`)).commands||{};ck=Object.keys(cmds);
+ $('tb').innerHTML=`<button class="btn s" style="margin-bottom:12px" onclick="openCmd(-1)">${ic('plus')} دستور جدید</button>`+(ck.length?ck.map((k,i)=>{const c=cmds[k],cb=Object.keys(c.callbacks||{}).length;
+ return `<div class="row" onclick="openCmd(${i})"><div class="g"><b dir="ltr" style="text-align:right">/${esc(k)}</b><small>${esc((c.response||'').slice(0,50).replace(/\n/g,' '))||'—'}</small></div>${c.buttons?'<span class="tag">دکمه</span>':''}${c.media?.url?'<span class="tag">رسانه</span>':''}${cb?`<span class="tag">⚡${n(cb)}</span>`:''}</div>`}).join(''):empty('هنوز دستوری نداری.'));
 }
-
-async function delCmd(name) {
-  showConfirm(`حذف /${name}`, `آیا مطمئن هستید؟ این عمل بازگشت‌پذیر نیست.`, async () => {
-    try { await api(`/api/bots/${selectedBotId}/commands/${name}`, { method: 'DELETE' }); toast('حذف شد'); await loadCommands(); }
-    catch(e) { toast(e.message, 'err'); }
-  });
+function tPlug(){
+ const on=!!bot.force_join_channel;
+ $('tb').innerHTML=`<div class="plug"><div class="h"><div class="ic">${ic('lock')}</div><div class="g"><b>عضویت اجباری</b><small class="sub">کاربر باید اول عضو کانال شود</small></div><div class="sw ${on?'on':''}" id="fjs" onclick="fjToggle()"></div></div>
+ <div class="bd" id="fjb" style="display:${on?'block':'none'}"><label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in" id="fj" dir="ltr" placeholder="@channel" value="${esc(bot.force_join_channel||'')}"><button class="btn sm" onclick="fjSave()">ذخیره</button></div></div>
+ <div class="plug"><div class="h"><div class="ic">${ic('send')}</div><div class="g"><b>پیام همگانی</b><small class="sub">ارسال پیام به همه‌ی کاربران ربات</small></div></div>
+ <div class="bd"><textarea class="in" id="bc" placeholder="متن پیام…"></textarea><button class="btn sm" onclick="bcast()">ارسال به همه</button></div></div>`;
 }
-
-function confirmDeleteBot() {
-  const n = selectedBot?.bot_username || selectedBotId;
-  showConfirm(`حذف ربات @${n}`, `این ربات و تمام داده‌هایش برای همیشه پاک می‌شود. مطمئن هستید؟`, async () => {
-    try {
-      await api(`/api/bots/${selectedBotId}`, { method: 'DELETE' });
-      toast('ربات حذف شد');
-      selectedBotId = null; selectedBot = null;
-      document.getElementById('nav-bot-detail').style.display = 'none';
-      nav('bots');
-    } catch(e) { toast(e.message, 'err'); }
-  });
+const fjSave=guard(async()=>{
+ let c=$('fj').value.trim();if(!c)return toast('آیدی کانال را وارد کن',1);if(!c.startsWith('@')&&!c.startsWith('-'))c='@'+c;
+ await api(`/api/bots/${botId}/force-join`,{method:'PATCH',body:{channel:c}});bot.force_join_channel=c;$('fj').value=c;toast('عضویت اجباری فعال شد');
+});
+const fjToggle=guard(async()=>{
+ const s=$('fjs'),on=!s.classList.contains('on');s.classList.toggle('on',on);$('fjb').style.display=on?'block':'none';
+ if(!on){await api(`/api/bots/${botId}/force-join`,{method:'PATCH',body:{channel:''}});bot.force_join_channel='';$('fj').value='';toast('عضویت اجباری غیرفعال شد')}
+});
+const bcast=guard(async()=>{
+ const t=$('bc').value.trim();if(!t)return toast('متن خالی است',1);
+ sure('پیام برای همه‌ی کاربران ارسال شود؟',guard(async()=>{const r=await api(`/api/bots/${botId}/broadcast`,{method:'POST',body:{text:t}});toast(r.message||'در صف ارسال قرار گرفت');$('bc').value=''}));
+});
+function tSet(){
+ $('tb').innerHTML=`<div class="card"><b>حذف ربات</b><p class="sub" style="margin:4px 0 14px">با حذف ربات، همه‌ی دستورها و آمار آن پاک می‌شود. این کار برگشت‌پذیر نیست.</p><button class="btn d" onclick="delBot()">${ic('trash')} حذف ربات</button></div>`;
 }
+function delBot(){sure('ربات برای همیشه حذف شود؟',guard(async()=>{await api('/api/bots/'+botId,{method:'DELETE'});toast('ربات حذف شد');go('bots')}))}
 
-// ══════════════════════════════════════════════════════════
-// Modal helpers
-// ══════════════════════════════════════════════════════════
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-let _confirmCb = null;
-function showConfirm(title, body, cb) {
-  document.getElementById('confirm-title').textContent = title;
-  document.getElementById('confirm-body').textContent = body;
-  _confirmCb = cb;
-  document.getElementById('confirm-ok').onclick = () => { closeModal('modal-confirm'); _confirmCb?.(); };
-  openModal('modal-confirm');
+/* ───────── Command editor ───────── */
+const MT={photo:'تصویر',video:'ویدیو',audio:'صوت',animation:'انیمیشن',document:'فایل'};
+function openCmd(i){
+ const k=i<0?'':ck[i],c=i<0?{}:cmds[k];
+ ed={name:k,isNew:i<0,response:c.response||'',b:JSON.parse(JSON.stringify(c.buttons||[])),m:c.media?.url?{...c.media}:(c.photo?{type:'photo',url:c.photo}:{type:'photo',url:''}),cb:c.callbacks||{}};
+ drawCmd();$('sbg').classList.add('on');
 }
+const closeSheet=()=>$('sbg').classList.remove('on');
+function drawCmd(){
+ $('sheet').innerHTML=`<div class="grab"></div><h1 style="font-size:18px;margin-bottom:16px">${ed.isNew?'دستور جدید':'/'+esc(ed.name)}</h1>
+ ${ed.isNew?`<label>نام دستور</label><input class="in" dir="ltr" placeholder="help" oninput="ed.name=this.value">`:''}
+ <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value">${esc(ed.response)}</textarea>
+ <label>دکمه‌های شیشه‌ای</label>
+ ${ed.b.map((r,ri)=>`<div class="bb">${r.map((b,bi)=>`<div style="flex:1;min-width:0"><input class="in" style="margin-bottom:4px" placeholder="متن" value="${esc(b.text)}" oninput="ed.b[${ri}][${bi}].text=this.value"><input class="in" dir="ltr" style="margin:0;font-size:12px" placeholder="شناسه" value="${esc(b.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"></div>`).join('')}
+ <div class="ib" style="align-self:center" onclick="ed.b[${ri}].push({text:'',id:''});drawCmd()">${ic('plus')}</div><div class="ib" style="align-self:center;color:var(--red)" onclick="ed.b.splice(${ri},1);drawCmd()">${ic('trash')}</div></div>`).join('')}
+ <button class="btn s sm" style="margin:4px 0 14px" onclick="ed.b.push([{text:'',id:''}]);drawCmd()">${ic('plus')} ردیف دکمه</button>
+ <label>رسانه (اختیاری)</label>
+ <div class="bb"><select class="in" style="width:110px;margin:0" onchange="ed.m.type=this.value">${Object.entries(MT).map(([k,t])=>`<option value="${k}" ${ed.m.type===k?'selected':''}>${t}</option>`).join('')}</select><input class="in" dir="ltr" style="margin:0" placeholder="https://… یا آپلود" id="mu" value="${esc(ed.m.url)}" oninput="ed.m.url=this.value"></div>
+ <input type="file" id="mf" hidden onchange="upload(this.files[0])"><button class="btn s sm" style="margin:6px 0 16px" onclick="$('mf').click()">آپلود فایل</button>
+ ${ed.isNew?'':`<label>پاسخ دکمه‌ها (callback)</label>${Object.entries(ed.cb).map(([id,r])=>`<div class="card" style="padding:10px;margin-bottom:8px"><small class="sub" dir="ltr">${esc(id)}</small><textarea class="in" style="min-height:64px;margin:6px 0" id="cb_${esc(id)}">${esc(r)}</textarea><div class="bb"><button class="btn sm" onclick="cbSave('${esc(id)}')">ذخیره</button><button class="btn d sm" onclick="cbDel('${esc(id)}')">حذف</button></div></div>`).join('')}
+ <div class="card" style="padding:10px;margin-bottom:16px"><input class="in" dir="ltr" placeholder="شناسه‌ی دکمه‌ی جدید" id="cbn"><textarea class="in" style="min-height:64px" placeholder="پاسخ" id="cbt"></textarea><button class="btn s sm" onclick="cbAdd()">افزودن پاسخ</button></div>`}
+ <button class="btn" onclick="saveCmd()">ذخیره دستور</button>
+ ${ed.isNew||ed.name==='start'?'':`<button class="btn d" style="margin-top:8px" onclick="delCmd()">حذف دستور</button>`}`;
+}
+const upload=guard(async f=>{
+ if(!f)return;const fd=new FormData();fd.append('file',f);const h={};if(token)h.Authorization='Bearer '+token;if(initData)h['X-Init-Data']=initData;
+ toast('در حال آپلود…');const r=await fetch(API+'/api/upload-media',{method:'POST',headers:h,body:fd});const d=await r.json();
+ if(!r.ok)throw new Error(d.error||'خطا در آپلود');ed.m={type:d.type,url:d.url};drawCmd();toast('آپلود شد');
+});
+const saveCmd=guard(async()=>{
+ const name=ed.name.trim().toLowerCase().replace(/^\//,'');
+ if(!name)return toast('نام دستور خالی است',1);if(!ed.response.trim())return toast('متن پاسخ خالی است',1);
+ const b=ed.b.map(r=>r.filter(x=>x.text&&x.id)).filter(r=>r.length);
+ const u=(ed.m.url||'').trim(),ok=/^https?:\/\//.test(u);
+ await api(`/api/bots/${botId}/commands/${name}`,{method:'PUT',body:{response:ed.response.trim(),buttons:b.length?b:null,photo:ok&&ed.m.type==='photo'?u:null,media:ok?{type:ed.m.type,url:u}:null}});
+ toast('ذخیره شد');closeSheet();tCmds();
+});
+function delCmd(){sure('این دستور حذف شود؟',guard(async()=>{await api(`/api/bots/${botId}/commands/${ed.name}`,{method:'DELETE'});toast('حذف شد');closeSheet();tCmds()}))}
+const cbSave=guard(async id=>{const r=$('cb_'+id).value.trim();if(!r)return toast('پاسخ خالی است',1);await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'PUT',body:{response:r}});ed.cb[id]=r;toast('ذخیره شد')});
+const cbDel=guard(async id=>{await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'DELETE'});delete ed.cb[id];drawCmd();toast('حذف شد');tCmds()});
+const cbAdd=guard(async()=>{const id=$('cbn').value.trim(),r=$('cbt').value.trim();if(!id||!r)return toast('شناسه و پاسخ لازم است',1);await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'PUT',body:{response:r}});ed.cb[id]=r;drawCmd();toast('افزوده شد');tCmds()});
 
-document.querySelectorAll('.modal-bd').forEach(el => {
-  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+/* ───────── Profile / Referral / Admin ───────── */
+const vMe=guard(async()=>{
+ const nm=user.full_name||user.username||String(user.uid);
+ $('view').innerHTML=head('پروفایل','')+`<div class="card" style="display:flex;align-items:center;gap:14px"><div class="logo" style="margin:0;border-radius:50%;font-weight:800;font-size:20px">${esc(nm.charAt(0))}</div><div><b>${esc(nm)}</b><div class="sub" dir="ltr">#${user.uid}</div></div></div><div id="rf"></div>
+ ${user.is_admin?`<div class="row" style="margin-top:12px" onclick="go('admin')"><span style="color:var(--ac)">${ic('shield')}</span><div class="g"><b>آمار کل سیستم</b><small>مخصوص مدیر</small></div></div>`:''}
+ <button class="btn d" style="margin-top:16px" onclick="logout()">خروج از حساب</button>`;
+ try{const r=await api('/api/coins/referral'),link=`${WEBAPP}?ref=${r.referral_code||''}`;
+ $('rf').innerHTML=`<div class="grid" style="margin-top:12px"><div class="stat hi"><b>${n(r.coins)}</b><span>سکه</span></div><div class="stat"><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
+ <h2>لینک دعوت · هر دعوت ۱۰۰ سکه</h2><div class="bb"><input class="in" id="rl" dir="ltr" readonly value="${esc(link)}" style="margin:0"><div class="ib" style="height:auto" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic('copy')}</div></div>`}catch(e){}
+});
+const vAdmin=guard(async()=>{
+ $('view').innerHTML=head('آمار سیستم','');
+ const d=await api('/api/admin/full-stats'),o=d.overview||{};
+ const list=(t,a,f)=>`<h2>${t}</h2>`+((a||[]).length?a.map(f).join(''):empty('—'));
+ $('view').innerHTML=head('آمار سیستم','')+`<div class="grid">${[['total_users','کاربران'],['total_registered','ثبت‌نام کامل'],['total_bots','ربات‌ها'],['total_active_bots','ربات فعال'],['total_messages_received','پیام دریافتی'],['total_messages_sent','پیام ارسالی'],['total_coins','سکه‌ها'],['total_referrals','رفرال']].map(([k,t],i)=>`<div class="stat ${i===0?'hi':''}"><b>${n(o[k])}</b><span>${t}</span></div>`).join('')}</div>`+
+ (()=>{const g=(d.daily_growth||[]).slice(-7),m=Math.max(...g.map(x=>x.new_users),1);return g.length?`<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map(x=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span dir="ltr">${esc(x.date)}</span><b>${n(x.new_users)}</b></div><div class="bar"><i style="width:${x.new_users/m*100}%"></i></div>`).join('<div style="height:8px"></div>')}</div>`:''})()+
+ list('برترین ربات‌ها',d.top_bots,b=>`<div class="row" style="cursor:default"><span class="dot ${b.is_active?'on':''}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.username||'—')}</b><small>${esc(b.owner_name||'')} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`)+
+ list('برترین کاربران',d.top_users,u=>`<div class="row" style="cursor:default"><div class="g"><b>${esc(u.name!=='—'?u.name:(u.username||u.telegram_username||'—'))}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} رفرال</small></div><span class="tag">${n(u.coins)} سکه</span></div>`)+
+ list('برترین دعوت‌کننده‌ها',d.top_referrers,r=>`<div class="row" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small dir="ltr" style="display:block;text-align:right">@${esc(r.username||'—')}</small></div><span class="tag">${n(r.referral_count)}</span></div>`);
 });
 
-// ══════════════════════════════════════════════════════════
-// Admin Stats
-// ══════════════════════════════════════════════════════════
-async function loadAdminStats() {
-  if (!currentUser?.is_admin) { toast('دسترسی ندارید', 'err'); nav('dashboard'); return; }
-  try {
-    const d = await api('/api/admin/full-stats');
-    renderAdminOverview(d.overview);
-    renderAdminUsers(d.overview);
-    renderAdminBots(d.overview);
-    renderAdminGrowth(d.daily_growth);
-    renderAdminTopBots(d.top_bots);
-    renderAdminTopUsers(d.top_users);
-  } catch(e) { toast('خطا: ' + e.message, 'err'); }
+/* ───────── Boot ───────── */
+async function boot(){
+ if(tg?.initData)initData=tg.initData;
+ if(!initData&&!token)return showAuth();
+ try{user=await api(initData?'/api/me':'/api/auth/me');go('home')}
+ catch(e){if(!token&&!initData)return;toast('خطا در اتصال: '+e.message,1);if(/401|نامعتبر/.test(e.message))showAuth()}
 }
-
-function renderAdminOverview(s) {
-  document.getElementById('admin-overview').innerHTML = `
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-blue"><svg><use href="#i-users"/></svg></div><span class="stat-lb">کل کاربران</span></div><div class="stat-val">${s.total_users.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-green"><svg><use href="#i-robot"/></svg></div><span class="stat-lb">کل ربات‌ها</span></div><div class="stat-val">${s.total_bots.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-purple"><svg><use href="#i-msg"/></svg></div><span class="stat-lb">کل پیام‌ها</span></div><div class="stat-val">${s.total_messages_received.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-orange"><svg><use href="#i-star"/></svg></div><span class="stat-lb">کوین‌ها</span></div><div class="stat-val">${s.total_coins.toLocaleString('fa')}</div></div>`;
-}
-function renderAdminUsers(s) {
-  document.getElementById('admin-users').innerHTML = `
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-blue"><svg><use href="#i-users"/></svg></div><span class="stat-lb">کل</span></div><div class="stat-val">${s.total_users.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-green"><svg><use href="#i-check"/></svg></div><span class="stat-lb">ثبت‌نام</span></div><div class="stat-val">${s.total_registered.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-purple"><svg><use href="#i-activity"/></svg></div><span class="stat-lb">فعال</span></div><div class="stat-val">${s.total_active.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-red"><svg><use href="#i-x"/></svg></div><span class="stat-lb">مسدود</span></div><div class="stat-val">${s.total_banned.toLocaleString('fa')}</div></div>`;
-}
-function renderAdminBots(s) {
-  document.getElementById('admin-bots').innerHTML = `
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-green"><svg><use href="#i-robot"/></svg></div><span class="stat-lb">فعال</span></div><div class="stat-val">${s.total_active_bots.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-blue"><svg><use href="#i-inbox"/></svg></div><span class="stat-lb">دریافتی</span></div><div class="stat-val">${s.total_messages_received.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-orange"><svg><use href="#i-send"/></svg></div><span class="stat-lb">ارسالی</span></div><div class="stat-val">${s.total_messages_sent.toLocaleString('fa')}</div></div>
-    <div class="stat"><div class="stat-hd"><div class="stat-ic ic-purple"><svg><use href="#i-broadcast"/></svg></div><span class="stat-lb">همگانی</span></div><div class="stat-val">${s.total_broadcasts.toLocaleString('fa')}</div></div>`;
-}
-function renderAdminGrowth(g) {
-  const el = document.getElementById('admin-growth');
-  if (!g?.length) { el.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-3);font-size:12px">داده‌ای موجود نیست</div>`; return; }
-  const sorted = [...g].reverse();
-  const max = Math.max(...sorted.map(x => x.new_users), 1);
-  el.innerHTML = `<div class="chart-bars">${sorted.map(x => {
-    const h = Math.max((x.new_users / max) * 100, 5);
-    const d = new Date(x.date);
-    return `<div class="chart-bar"><div class="chart-v">${x.new_users.toLocaleString('fa')}</div><div class="chart-fill" style="height:${h}%"></div><div class="chart-l">${d.getDate()}/${d.getMonth()+1}</div></div>`;
-  }).join('')}</div>`;
-}
-function renderAdminTopBots(bots) {
-  const tb = document.querySelector('#admin-top-bots tbody');
-  if (!bots?.length) { tb.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:20px">یافت نشد</td></tr>`; return; }
-  tb.innerHTML = bots.map((b, i) => {
-    const rk = i===0?'gold':i===1?'silver':i===2?'bronze':'';
-    return `<tr><td><span class="rank ${rk}">${(i+1).toLocaleString('fa')}</span></td>
-      <td><div style="font-weight:600">@${b.username||'—'}</div><div style="font-size:10.5px;color:var(--text-3)">${b.bot_id}</div></td>
-      <td><div style="font-weight:600">${b.owner_name}</div><div style="font-size:10.5px;color:var(--text-3)">@${b.owner_username}</div></td>
-      <td><b>${b.messages.toLocaleString('fa')}</b></td><td><b>${b.users.toLocaleString('fa')}</b></td>
-      <td>${b.is_active ? '<span style="color:var(--accent-2)">فعال</span>' : '<span style="color:var(--text-3)">غیرفعال</span>'}</td></tr>`;
-  }).join('');
-}
-function renderAdminTopUsers(users) {
-  const tb = document.querySelector('#admin-top-users tbody');
-  if (!users?.length) { tb.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:20px">یافت نشد</td></tr>`; return; }
-  tb.innerHTML = users.map((u, i) => {
-    const rk = i===0?'gold':i===1?'silver':i===2?'bronze':'';
-    const un = u.username || u.telegram_username || '—';
-    return `<tr><td><span class="rank ${rk}">${(i+1).toLocaleString('fa')}</span></td>
-      <td><b>${u.name !== '—' ? u.name : un}</b></td>
-      <td style="font-family:monospace;font-size:11px;color:var(--text-2)">@${un}</td>
-      <td>${u.bots_count.toLocaleString('fa')}</td>
-      <td>${u.coins.toLocaleString('fa')} 🪙</td>
-      <td>${u.referrals.toLocaleString('fa')}</td></tr>`;
-  }).join('');
-}
-
-// Start
-init();
+boot();
 </script>
 </body>
 </html>
