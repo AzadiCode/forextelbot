@@ -1,305 +1,1194 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fa" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0d0e10">
-<title>GramSaz</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#0d0e10;--card:#16181b;--card2:#1d2024;--line:#26292e;--tx:#eceae4;--mu:#878a91;--ac:#d4ff3f;--acx:#12140a;--red:#ff5d5d;--ok:#3ddc97;--r:16px}
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{background:var(--bg);color:var(--tx);font:14px/1.6 Vazirmatn,system-ui,sans-serif;min-height:100vh}
-button,input,textarea,select{font:inherit;color:inherit;border:0;outline:0;background:none}
-svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
-#view{max-width:560px;margin:0 auto;padding:20px 16px 110px}
-h1{font-size:24px;font-weight:800;letter-spacing:-.5px}
-h2{font-size:12px;color:var(--mu);font-weight:500;margin:24px 4px 10px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:18px}
-.sub{color:var(--mu);font-size:13px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
-.row{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px;cursor:pointer;transition:.15s}
-.row:active{transform:scale(.985);background:var(--card2)}
-.row .g{flex:1;min-width:0}.row b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row small{color:var(--mu);font-size:12px}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--mu);flex:none}.dot.on{background:var(--ok);box-shadow:0 0 0 4px #3ddc9722}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.stat{padding:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
-.stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1.2}.stat span{font-size:12px;color:var(--mu)}
-.stat.hi{background:var(--ac);color:var(--acx);border:0}.stat.hi span{color:#12140aa8}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 20px;border-radius:14px;background:var(--ac);color:var(--acx);font-weight:700;cursor:pointer;width:100%;transition:.15s}
-.btn:active{transform:scale(.97)}.btn:disabled{opacity:.5}
-.btn.s{background:var(--card2);color:var(--tx);border:1px solid var(--line)}.btn.d{background:#ff5d5d1f;color:var(--red)}
-.btn.sm{height:36px;width:auto;padding:0 14px;font-size:13px;border-radius:11px}
-.ib{width:40px;height:40px;border-radius:12px;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;flex:none}
-.in{width:100%;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;transition:.15s}
-.in:focus{border-color:var(--ac)}textarea.in{min-height:110px;resize:vertical}
-.in[dir=ltr]{text-align:left}
-label{display:block;font-size:12px;color:var(--mu);margin:0 4px 6px}
-.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px;margin:16px 0}
-.seg button{flex:1;height:38px;border-radius:10px;color:var(--mu);font-weight:500;cursor:pointer}
-.seg button.on{background:var(--ac);color:var(--acx);font-weight:700}
-.sw{position:relative;width:48px;height:28px;border-radius:14px;background:var(--line);cursor:pointer;flex:none;transition:.2s}
-.sw::after{content:"";position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
-.sw.on{background:var(--ac)}.sw.on::after{right:23px;background:var(--acx)}
-.plug{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:10px}
-.plug .h{display:flex;align-items:center;gap:12px}.plug .h .g{flex:1}.plug .h b{display:block}
-.plug .ic{width:42px;height:42px;border-radius:13px;background:var(--card2);display:grid;place-items:center;color:var(--ac)}
-.plug .bd{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
-.tag{font-size:11px;padding:2px 8px;border-radius:8px;background:var(--card2);color:var(--mu);margin-inline-start:4px}
-.tabbar{position:fixed;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);display:flex;gap:4px;background:#1a1c20ee;backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:22px;padding:6px;z-index:20}
-.tabbar button{display:flex;flex-direction:column;align-items:center;gap:2px;width:68px;padding:8px 0;border-radius:16px;color:var(--mu);font-size:11px;cursor:pointer}
-.tabbar button.on{background:var(--ac);color:var(--acx);font-weight:700}
-.sheet-bg{position:fixed;inset:0;background:#000a;z-index:40;display:none;align-items:flex-end}.sheet-bg.on{display:flex}
-.sheet{width:100%;max-width:560px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:24px 24px 0 0;padding:18px 16px 28px;max-height:92vh;overflow:auto;animation:up .25s ease}
-@keyframes up{from{transform:translateY(40px);opacity:0}}
-.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 16px}
-.bb{display:flex;gap:6px;margin-bottom:6px}.bb .in{margin:0}
-.empty{text-align:center;color:var(--mu);padding:40px 20px}
-#toast{position:fixed;top:16px;left:50%;transform:translate(-50%,-90px);background:var(--tx);color:var(--bg);padding:10px 18px;border-radius:14px;font-weight:500;z-index:99;transition:.3s;max-width:90%}
-#toast.on{transform:translate(-50%,0)}#toast.err{background:var(--red);color:#fff}
-#auth{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;overflow:auto;padding:60px 20px}
-#auth.on{display:block}#auth>div{max-width:400px;margin:0 auto}
-.logo{width:56px;height:56px;border-radius:18px;background:var(--ac);color:var(--acx);display:grid;place-items:center;margin-bottom:22px}.logo svg{width:28px;height:28px}
-.bar{height:6px;border-radius:3px;background:var(--card2);margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
-.spin{display:none}
-</style>
-</head>
-<body>
-<div id="auth"><div id="authbox"></div></div>
-<div id="view"></div>
-<nav class="tabbar" id="tabs"></nav>
-<div class="sheet-bg" id="sbg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
-<div id="toast"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0d0e10" />
+    <title>GramSaz</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0d0e10;
+        --card: #16181b;
+        --card2: #1d2024;
+        --line: #26292e;
+        --tx: #eceae4;
+        --mu: #878a91;
+        --ac: #d4ff3f;
+        --acx: #12140a;
+        --red: #ff5d5d;
+        --ok: #3ddc97;
+        --r: 16px;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--tx);
+        font:
+          14px/1.6 Vazirmatn,
+          system-ui,
+          sans-serif;
+        min-height: 100vh;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+        color: inherit;
+        border: 0;
+        outline: 0;
+        background: none;
+      }
+      svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
+      #view {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 20px 16px 110px;
+      }
+      h1 {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+      }
+      h2 {
+        font-size: 12px;
+        color: var(--mu);
+        font-weight: 500;
+        margin: 24px 4px 10px;
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .sub {
+        color: var(--mu);
+        font-size: 13px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 16px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .row:active {
+        transform: scale(0.985);
+        background: var(--card2);
+      }
+      .row .g {
+        flex: 1;
+        min-width: 0;
+      }
+      .row b {
+        display: block;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row small {
+        color: var(--mu);
+        font-size: 12px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--mu);
+        flex: none;
+      }
+      .dot.on {
+        background: var(--ok);
+        box-shadow: 0 0 0 4px #3ddc9722;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .stat {
+        padding: 16px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+      }
+      .stat b {
+        display: block;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        line-height: 1.2;
+      }
+      .stat span {
+        font-size: 12px;
+        color: var(--mu);
+      }
+      .stat.hi {
+        background: var(--ac);
+        color: var(--acx);
+        border: 0;
+      }
+      .stat.hi span {
+        color: #12140aa8;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 20px;
+        border-radius: 14px;
+        background: var(--ac);
+        color: var(--acx);
+        font-weight: 700;
+        cursor: pointer;
+        width: 100%;
+        transition: 0.15s;
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+      }
+      .btn.s {
+        background: var(--card2);
+        color: var(--tx);
+        border: 1px solid var(--line);
+      }
+      .btn.d {
+        background: #ff5d5d1f;
+        color: var(--red);
+      }
+      .btn.sm {
+        height: 36px;
+        width: auto;
+        padding: 0 14px;
+        font-size: 13px;
+        border-radius: 11px;
+      }
+      .ib {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex: none;
+      }
+      .in {
+        width: 100%;
+        background: var(--card2);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        transition: 0.15s;
+      }
+      .in:focus {
+        border-color: var(--ac);
+      }
+      textarea.in {
+        min-height: 110px;
+        resize: vertical;
+      }
+      .in[dir="ltr"] {
+        text-align: left;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--mu);
+        margin: 0 4px 6px;
+      }
+      .seg {
+        display: flex;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 4px;
+        margin: 16px 0;
+      }
+      .seg button {
+        flex: 1;
+        height: 38px;
+        border-radius: 10px;
+        color: var(--mu);
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .seg button.on {
+        background: var(--ac);
+        color: var(--acx);
+        font-weight: 700;
+      }
+      .sw {
+        position: relative;
+        width: 48px;
+        height: 28px;
+        border-radius: 14px;
+        background: var(--line);
+        cursor: pointer;
+        flex: none;
+        transition: 0.2s;
+      }
+      .sw::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #fff;
+        transition: 0.2s;
+      }
+      .sw.on {
+        background: var(--ac);
+      }
+      .sw.on::after {
+        right: 23px;
+        background: var(--acx);
+      }
+      .plug {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 16px;
+        margin-bottom: 10px;
+      }
+      .plug .h {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .plug .h .g {
+        flex: 1;
+      }
+      .plug .h b {
+        display: block;
+      }
+      .plug .ic {
+        width: 42px;
+        height: 42px;
+        border-radius: 13px;
+        background: var(--card2);
+        display: grid;
+        place-items: center;
+        color: var(--ac);
+      }
+      .plug .bd {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px dashed var(--line);
+      }
+      .tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 8px;
+        background: var(--card2);
+        color: var(--mu);
+        margin-inline-start: 4px;
+      }
+      .tabbar {
+        position: fixed;
+        bottom: max(14px, env(safe-area-inset-bottom));
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 4px;
+        background: #1a1c20ee;
+        backdrop-filter: blur(16px);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 6px;
+        z-index: 20;
+      }
+      .tabbar button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        width: 68px;
+        padding: 8px 0;
+        border-radius: 16px;
+        color: var(--mu);
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .tabbar button.on {
+        background: var(--ac);
+        color: var(--acx);
+        font-weight: 700;
+      }
+      .sheet-bg {
+        position: fixed;
+        inset: 0;
+        background: #000a;
+        z-index: 40;
+        display: none;
+        align-items: flex-end;
+      }
+      .sheet-bg.on {
+        display: flex;
+      }
+      .sheet {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 24px 24px 0 0;
+        padding: 18px 16px 28px;
+        max-height: 92vh;
+        overflow: auto;
+        animation: up 0.25s ease;
+      }
+      @keyframes up {
+        from {
+          transform: translateY(40px);
+          opacity: 0;
+        }
+      }
+      .sheet .grab {
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line);
+        margin: 0 auto 16px;
+      }
+      .bb {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .bb .in {
+        margin: 0;
+      }
+      .empty {
+        text-align: center;
+        color: var(--mu);
+        padding: 40px 20px;
+      }
+      #toast {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translate(-50%, -90px);
+        background: var(--tx);
+        color: var(--bg);
+        padding: 10px 18px;
+        border-radius: 14px;
+        font-weight: 500;
+        z-index: 99;
+        transition: 0.3s;
+        max-width: 90%;
+      }
+      #toast.on {
+        transform: translate(-50%, 0);
+      }
+      #toast.err {
+        background: var(--red);
+        color: #fff;
+      }
+      #auth {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        z-index: 60;
+        display: none;
+        overflow: auto;
+        padding: 60px 20px;
+      }
+      #auth.on {
+        display: block;
+      }
+      #auth > div {
+        max-width: 400px;
+        margin: 0 auto;
+      }
+      .logo {
+        width: 56px;
+        height: 56px;
+        border-radius: 18px;
+        background: var(--ac);
+        color: var(--acx);
+        display: grid;
+        place-items: center;
+        margin-bottom: 22px;
+      }
+      .logo svg {
+        width: 28px;
+        height: 28px;
+      }
+      .bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--card2);
+        margin-top: 6px;
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        background: var(--ac);
+      }
+      .spin {
+        display: none;
+      }
 
-<script>
-const API='https://forextelbot-9jwt.onrender.com', WEBAPP='https://botsazgram.onrender.com';
-const tg=window.Telegram?.WebApp; let initData='';
-if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('#0d0e10');tg.setBackgroundColor('#0d0e10')}catch(e){}}
-let token=localStorage.getItem('authToken')||'', user=null, bots=[], bot=null, cmds={}, ed=null, tab='cmds';
-const ref=new URLSearchParams(location.search).get('ref')||localStorage.getItem('pending_referral')||'';
-if(ref)localStorage.setItem('pending_referral',ref);
-const $=id=>document.getElementById(id), n=x=>(+x||0).toLocaleString('fa');
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const I={
- home:'<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',bot:'<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
- plus:'<path d="M12 5v14M5 12h14"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
- back:'<path d="M9 6l6 6-6 6"/>',trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
- plug:'<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>',send:'<path d="M21 3L3 10l7 3 3 7z"/>',
- lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
- logo:'<path d="M4 12l16-8-4 16-4-6z"/>',shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'
-};
-const ic=k=>`<svg viewBox="0 0 24 24">${I[k]}</svg>`;
-let tt;const toast=(m,e)=>{const t=$('toast');t.textContent=m;t.className='on'+(e?' err':'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2600)};
-const sure=(m,f)=>tg?.showConfirm?tg.showConfirm(m,ok=>ok&&f()):confirm(m)&&f();
+      /* ── Polish layer ── */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0 0 auto 0;
+        height: 320px;
+        background: radial-gradient(60% 100% at 85% 0%, rgba(212, 255, 63, 0.09), transparent 70%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      #view,
+      .tabbar {
+        position: relative;
+        z-index: 1;
+      }
+      .tabbar {
+        position: fixed;
+      }
+      #view > * {
+        animation: rise 0.35s ease both;
+      }
+      #view > *:nth-child(2) { animation-delay: 0.04s; }
+      #view > *:nth-child(3) { animation-delay: 0.08s; }
+      #view > *:nth-child(4) { animation-delay: 0.12s; }
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(10px); }
+      }
+      .card,
+      .row,
+      .stat,
+      .plug {
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+      }
+      .stat {
+        background: linear-gradient(160deg, var(--card), #131518);
+      }
+      .stat.hi {
+        background: linear-gradient(160deg, #e2ff6b, var(--ac));
+        box-shadow: 0 14px 30px -14px rgba(212, 255, 63, 0.55);
+      }
+      .btn:not(.s):not(.d) {
+        box-shadow: 0 10px 24px -12px rgba(212, 255, 63, 0.6);
+      }
+      .in:focus {
+        border-color: var(--ac);
+        box-shadow: 0 0 0 3px rgba(212, 255, 63, 0.14);
+      }
+      .row:hover {
+        border-color: #33373d;
+      }
+      h2 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      h2::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .av {
+        position: relative;
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: var(--card2);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        color: var(--ac);
+        flex: none;
+      }
+      .av .dot {
+        position: absolute;
+        bottom: -3px;
+        left: -3px;
+        border: 2px solid var(--card);
+        box-sizing: content-box;
+      }
+      .av .dot.on {
+        box-shadow: none;
+      }
+      .tabbar button {
+        transition: 0.2s;
+      }
+      .tabbar button.on {
+        box-shadow: 0 6px 16px -6px rgba(212, 255, 63, 0.6);
+      }
+      .seg button {
+        transition: 0.2s;
+      }
+      .plug .ic {
+        border: 1px solid var(--line);
+      }
+      .empty-ic {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 14px;
+        border-radius: 18px;
+        background: var(--card);
+        border: 1px dashed var(--line);
+        display: grid;
+        place-items: center;
+        color: var(--mu);
+      }
+      .skel {
+        border-radius: var(--r);
+        background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.2s infinite linear;
+      }
+      @keyframes shimmer {
+        to { background-position: -200% 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; transition: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="auth"><div id="authbox"></div></div>
+    <div id="view"></div>
+    <nav class="tabbar" id="tabs"></nav>
+    <div class="sheet-bg" id="sbg" onclick="if (event.target === this) closeSheet();">
+      <div class="sheet" id="sheet"></div>
+    </div>
+    <div id="toast"></div>
 
-async function api(p,o={}){
- const h={'Content-Type':'application/json'};
- if(initData)h['X-Init-Data']=initData; if(token)h.Authorization='Bearer '+token;
- const r=await fetch(API+p,{...o,headers:h,body:o.body?JSON.stringify(o.body):undefined});
- const d=await r.json().catch(()=>({}));
- if(!r.ok){if(r.status===401&&token){token='';localStorage.removeItem('authToken');showAuth()}throw new Error(d.detail||d.error||'خطای '+r.status)}
- return d;
-}
-const guard=f=>async(...a)=>{try{return await f(...a)}catch(e){toast(e.message,1)}};
-const devId=()=>localStorage.device_id||(localStorage.device_id='dev_'+Date.now()+'_'+Math.random().toString(36).slice(2,11));
+    <script>
+      const API = "https://forextelbot-9jwt.onrender.com",
+        WEBAPP = "https://botsazgram.onrender.com";
+      const tg = window.Telegram?.WebApp;
+      let initData = "";
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        try {
+          tg.setHeaderColor("#0d0e10");
+          tg.setBackgroundColor("#0d0e10");
+        } catch (e) {}
+      }
+      let token = localStorage.getItem("authToken") || "",
+        user = null,
+        bots = [],
+        bot = null,
+        cmds = {},
+        ed = null,
+        tab = "cmds";
+      const ref =
+        new URLSearchParams(location.search).get("ref") || localStorage.getItem("pending_referral") || "";
+      if (ref) localStorage.setItem("pending_referral", ref);
+      const $ = (id) => document.getElementById(id),
+        n = (x) => (+x || 0).toLocaleString("fa");
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+      const I = {
+        home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',
+        bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>',
+        user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+        back: '<path d="M9 6l6 6-6 6"/>',
+        trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+        plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>',
+        send: '<path d="M21 3L3 10l7 3 3 7z"/>',
+        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+        logo: '<path d="M4 12l16-8-4 16-4-6z"/>',
+        shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+        copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>',
+      };
+      const ic = (k) => `<svg viewBox="0 0 24 24">${I[k]}</svg>`;
+      let tt;
+      const toast = (m, e) => {
+        const t = $("toast");
+        t.textContent = m;
+        t.className = "on" + (e ? " err" : "");
+        clearTimeout(tt);
+        tt = setTimeout(() => (t.className = ""), 2600);
+      };
+      const sure = (m, f) => (tg?.showConfirm ? tg.showConfirm(m, (ok) => ok && f()) : confirm(m) && f());
 
-/* ───────── Auth ───────── */
-let reg={};
-function showAuth(step='login'){
- $('auth').classList.add('on');$('tabs').style.display='none';$('view').style.display='none';
- const head=`<div class="logo">${ic('logo')}</div>`;
- const B=$('authbox');
- if(step==='login')B.innerHTML=head+`<h1>ورود به گرام‌ساز</h1><p class="sub" style="margin:6px 0 22px">ربات تلگرامی خودت را بدون کدنویسی بساز.</p>
+      async function api(p, o = {}) {
+        const h = { "Content-Type": "application/json" };
+        if (initData) h["X-Init-Data"] = initData;
+        if (token) h.Authorization = "Bearer " + token;
+        const r = await fetch(API + p, {
+          ...o,
+          headers: h,
+          body: o.body ? JSON.stringify(o.body) : undefined,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          if (r.status === 401 && token) {
+            token = "";
+            localStorage.removeItem("authToken");
+            showAuth();
+          }
+          throw new Error(d.detail || d.error || "خطای " + r.status);
+        }
+        return d;
+      }
+      const guard =
+        (f) =>
+        async (...a) => {
+          try {
+            return await f(...a);
+          } catch (e) {
+            toast(e.message, 1);
+          }
+        };
+      const devId = () =>
+        localStorage.device_id ||
+        (localStorage.device_id = "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 11));
+
+      /* ───────── Auth ───────── */
+      let reg = {};
+      function showAuth(step = "login") {
+        $("auth").classList.add("on");
+        $("tabs").style.display = "none";
+        $("view").style.display = "none";
+        const head = `<div class="logo">${ic("logo")}</div>`;
+        const B = $("authbox");
+        if (step === "login")
+          B.innerHTML =
+            head +
+            `<h1>ورود به گرام‌ساز</h1><p class="sub" style="margin:6px 0 22px">ربات تلگرامی خودت را بدون کدنویسی بساز.</p>
   <label>نام کاربری</label><input class="in" id="lu" dir="ltr" autocomplete="username">
   <label>رمز عبور</label><input class="in" id="lp" type="password" dir="ltr" autocomplete="current-password">
   <button class="btn" onclick="doLogin()">ورود</button>
   <button class="btn s" style="margin-top:8px" onclick="showAuth('reg1')">حساب ندارم، ثبت‌نام</button>`;
- if(step==='reg1')B.innerHTML=head+`<h1>ساخت حساب</h1><p class="sub" style="margin:6px 0 22px">ابتدا آیدی تلگرامت را وارد کن تا کد تأیید بفرستیم.</p>
+        if (step === "reg1")
+          B.innerHTML =
+            head +
+            `<h1>ساخت حساب</h1><p class="sub" style="margin:6px 0 22px">ابتدا آیدی تلگرامت را وارد کن تا کد تأیید بفرستیم.</p>
   <label>آیدی تلگرام</label><input class="in" id="tu" dir="ltr" placeholder="@username">
   <button class="btn" onclick="sendCode()">ارسال کد تأیید</button>
   <button class="btn s" style="margin-top:8px" onclick="showAuth()">بازگشت</button>`;
- if(step==='reg2')B.innerHTML=head+`<h1>تأیید و تکمیل</h1><p class="sub" style="margin:6px 0 22px">کد ۶ رقمی از ربات تلگرام برایت ارسال شد.</p>
+        if (step === "reg2")
+          B.innerHTML =
+            head +
+            `<h1>تأیید و تکمیل</h1><p class="sub" style="margin:6px 0 22px">کد ۶ رقمی از ربات تلگرام برایت ارسال شد.</p>
   <label>کد تأیید</label><input class="in" id="rc" dir="ltr" inputmode="numeric" maxlength="6">
   <label>نام کاربری</label><input class="in" id="ru" dir="ltr" autocomplete="username">
   <label>رمز عبور</label><input class="in" id="rp" type="password" dir="ltr" autocomplete="new-password">
-  ${ref?`<p class="sub" style="margin-bottom:10px">کد دعوت: <b dir="ltr">${esc(ref)}</b></p>`:''}
+  ${ref ? `<p class="sub" style="margin-bottom:10px">کد دعوت: <b dir="ltr">${esc(ref)}</b></p>` : ""}
   <button class="btn" onclick="doReg()">ساخت حساب</button>
   <button class="btn s" style="margin-top:8px" onclick="sendCode()">ارسال دوباره کد</button>`;
-}
-const doLogin=guard(async()=>{
- const d=await api('/api/auth/login',{method:'POST',body:{username:$('lu').value.trim(),password:$('lp').value}});
- token=d.token;localStorage.authToken=token;boot();
-});
-const sendCode=guard(async()=>{
- const u=($('tu')?.value||reg.tu||'').trim();
- if(u.length<3)return toast('آیدی تلگرام را درست وارد کن',1);
- reg.tu=u;await api('/api/auth/send-code',{method:'POST',body:{telegram_username:u,device_id:devId()}});
- toast('کد ارسال شد');showAuth('reg2');
-});
-const doReg=guard(async()=>{
- const code=$('rc').value.trim();if(code.length!==6)return toast('کد باید ۶ رقم باشد',1);
- const d=await api('/api/auth/register',{method:'POST',body:{telegram_username:reg.tu,username:$('ru').value.trim().toLowerCase(),password:$('rp').value,verification_code:code,referral_code:ref||null,device_id:devId()}});
- token=d.token;localStorage.authToken=token;localStorage.removeItem('pending_referral');toast(d.message||'خوش آمدی');boot();
-});
-function logout(){sure('از حساب خارج می‌شوی؟',async()=>{try{token&&await fetch(API+'/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+token}})}catch(e){}token='';localStorage.removeItem('authToken');user=null;showAuth()})}
+      }
+      const doLogin = guard(async () => {
+        const d = await api("/api/auth/login", {
+          method: "POST",
+          body: { username: $("lu").value.trim(), password: $("lp").value },
+        });
+        token = d.token;
+        localStorage.authToken = token;
+        boot();
+      });
+      const sendCode = guard(async () => {
+        const u = ($("tu")?.value || reg.tu || "").trim();
+        if (u.length < 3) return toast("آیدی تلگرام را درست وارد کن", 1);
+        reg.tu = u;
+        await api("/api/auth/send-code", {
+          method: "POST",
+          body: { telegram_username: u, device_id: devId() },
+        });
+        toast("کد ارسال شد");
+        showAuth("reg2");
+      });
+      const doReg = guard(async () => {
+        const code = $("rc").value.trim();
+        if (code.length !== 6) return toast("کد باید ۶ رقم باشد", 1);
+        const d = await api("/api/auth/register", {
+          method: "POST",
+          body: {
+            telegram_username: reg.tu,
+            username: $("ru").value.trim().toLowerCase(),
+            password: $("rp").value,
+            verification_code: code,
+            referral_code: ref || null,
+            device_id: devId(),
+          },
+        });
+        token = d.token;
+        localStorage.authToken = token;
+        localStorage.removeItem("pending_referral");
+        toast(d.message || "خوش آمدی");
+        boot();
+      });
+      function logout() {
+        sure("از حساب خارج می‌شوی؟", async () => {
+          try {
+            token &&
+              (await fetch(API + "/api/auth/logout", {
+                method: "POST",
+                headers: { Authorization: "Bearer " + token },
+              }));
+          } catch (e) {}
+          token = "";
+          localStorage.removeItem("authToken");
+          user = null;
+          showAuth();
+        });
+      }
 
-/* ───────── Shell / Router ───────── */
-const TABS=[['home','خانه','home'],['bots','ربات‌ها','bot'],['new','ساخت','plus'],['me','پروفایل','user']];
-function go(v,a){
- $('auth').classList.remove('on');$('view').style.display='';$('tabs').style.display='flex';
- $('tabs').innerHTML=TABS.map(([k,t,i])=>`<button class="${(v===k||(v==='bot'&&k==='bots')||(v==='admin'&&k==='me'))?'on':''}" onclick="go('${k}')">${ic(i)}${t}</button>`).join('');
- scrollTo(0,0);({home:vHome,bots:vBots,new:vNew,bot:vBot,me:vMe,admin:vAdmin})[v](a);
-}
-const head=(t,s,r='')=>`<div class="top"><div><h1>${t}</h1>${s?`<div class="sub">${s}</div>`:''}</div>${r}</div>`;
-const botRow=b=>`<div class="row" onclick="go('bot','${b.bot_id}')"><span class="dot ${b.is_running?'on':''}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.bot_username||'—')}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div><span style="color:var(--mu);transform:scaleX(-1)">${ic('back')}</span></div>`;
-const empty=(t,b='')=>`<div class="empty">${t}${b?`<div style="margin-top:16px">${b}</div>`:''}</div>`;
+      /* ───────── Shell / Router ───────── */
+      const TABS = [
+        ["home", "خانه", "home"],
+        ["bots", "ربات‌ها", "bot"],
+        ["new", "ساخت", "plus"],
+        ["me", "پروفایل", "user"],
+      ];
+      function go(v, a) {
+        $("auth").classList.remove("on");
+        $("view").style.display = "";
+        $("tabs").style.display = "flex";
+        $("tabs").innerHTML = TABS.map(
+          ([k, t, i]) =>
+            `<button class="${v === k || (v === "bot" && k === "bots") || (v === "admin" && k === "me") ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`,
+        ).join("");
+        scrollTo(0, 0);
+        ({ home: vHome, bots: vBots, new: vNew, bot: vBot, me: vMe, admin: vAdmin })[v](a);
+      }
+      const head = (t, s, r = "") =>
+        `<div class="top"><div><h1>${t}</h1>${s ? `<div class="sub">${s}</div>` : ""}</div>${r}</div>`;
+      const botRow = (b) =>
+        `<div class="row" onclick="go('bot','${b.bot_id}')"><span class="av">${esc((b.bot_username || "?").charAt(0).toUpperCase())}<i class="dot ${b.is_running ? "on" : ""}"></i></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div><span style="color:var(--mu);transform:scaleX(-1)">${ic("back")}</span></div>`;
+      const empty = (t, b = "") =>
+        `<div class="empty"><div class="empty-ic">${ic("bot")}</div>${t}${b ? `<div style="margin-top:16px">${b}</div>` : ""}</div>`;
 
-const vHome=guard(async()=>{
- $('view').innerHTML=head('سلام '+esc((user.full_name||user.username||'').split(' ')[0]),'خلاصه‌ی وضعیت ربات‌هایت');
- ({bots}=await api('/api/bots'));
- const S=k=>bots.reduce((s,b)=>s+(b.stats?.[k]||0),0);
- $('view').innerHTML=head('سلام '+esc((user.full_name||user.username||'').split(' ')[0]),'خلاصه‌ی وضعیت ربات‌هایت')+
- `<div class="grid"><div class="stat hi"><b>${n(S('unique_users'))}</b><span>کل کاربران</span></div><div class="stat"><b>${n(bots.length)}</b><span>ربات · ${n(bots.filter(b=>b.is_running).length)} فعال</span></div>
- <div class="stat"><b>${n(S('messages_received'))}</b><span>پیام دریافتی</span></div><div class="stat"><b>${n(S('messages_sent'))}</b><span>پیام ارسالی</span></div></div>
- <h2>ربات‌های اخیر</h2>`+(bots.length?bots.slice(0,4).map(botRow).join(''):empty('هنوز رباتی نساخته‌ای.',`<button class="btn sm" onclick="go('new')">ساخت اولین ربات</button>`));
-});
-const vBots=guard(async()=>{
- $('view').innerHTML=head('ربات‌ها','','<div class="ib" onclick="go(\'new\')">'+ic('plus')+'</div>');
- ({bots}=await api('/api/bots'));
- $('view').innerHTML=head('ربات‌ها',n(bots.length)+' ربات','<div class="ib" onclick="go(\'new\')">'+ic('plus')+'</div>')+(bots.length?bots.map(botRow).join(''):empty('رباتی وجود ندارد.'));
-});
-function vNew(){
- $('view').innerHTML=head('ربات جدید','در ۳ مرحله')+`<div class="card" style="margin-bottom:12px">
+      const skel = `<div class="skel" style="height:110px;margin-bottom:8px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div>`;
+      const vHome = guard(async () => {
+        $("view").innerHTML = skel;
+        ({ bots } = await api("/api/bots"));
+        const S = (k) => bots.reduce((s, b) => s + (b.stats?.[k] || 0), 0);
+        $("view").innerHTML =
+          head(
+            "سلام " + esc((user.full_name || user.username || "").split(" ")[0]),
+            "خلاصه‌ی وضعیت ربات‌هایت",
+          ) +
+          `<div class="grid"><div class="stat hi"><b>${n(S("unique_users"))}</b><span>کل کاربران</span></div><div class="stat"><b>${n(bots.length)}</b><span>ربات · ${n(bots.filter((b) => b.is_running).length)} فعال</span></div>
+ <div class="stat"><b>${n(S("messages_received"))}</b><span>پیام دریافتی</span></div><div class="stat"><b>${n(S("messages_sent"))}</b><span>پیام ارسالی</span></div></div>
+ <h2>ربات‌های اخیر</h2>` +
+          (bots.length
+            ? bots.slice(0, 4).map(botRow).join("")
+            : empty(
+                "هنوز رباتی نساخته‌ای.",
+                `<button class="btn sm" onclick="go('new')">ساخت اولین ربات</button>`,
+              ));
+      });
+      const vBots = guard(async () => {
+        $("view").innerHTML = skel;
+        ({ bots } = await api("/api/bots"));
+        $("view").innerHTML =
+          head(
+            "ربات‌ها",
+            n(bots.length) + " ربات",
+            '<div class="ib" onclick="go(\'new\')">' + ic("plus") + "</div>",
+          ) + (bots.length ? bots.map(botRow).join("") : empty("رباتی وجود ندارد."));
+      });
+      function vNew() {
+        $("view").innerHTML =
+          head("ربات جدید", "در ۳ مرحله") +
+          `<div class="card" style="margin-bottom:12px">
  <p>۱. در تلگرام به <a href="https://t.me/BotFather" style="color:var(--ac)">@BotFather</a> برو.<br>۲. دستور <b dir="ltr">/newbot</b> را بزن و نام ربات را بده.<br>۳. توکن را اینجا بچسبان.</p></div>
  <label>توکن ربات</label><input class="in" id="tk" dir="ltr" placeholder="123456789:AAH...">
  <button class="btn" id="mk" onclick="mkBot()">ساخت ربات</button>`;
-}
-const mkBot=guard(async()=>{
- const t=$('tk').value.trim();
- if(!/^\d{8,12}:[A-Za-z0-9_-]{30,}$/.test(t))return toast('فرمت توکن درست نیست',1);
- $('mk').disabled=true;$('mk').textContent='در حال ساخت…';
- try{const r=await api('/api/bots',{method:'POST',body:{token:t}});toast(r.message||'ربات ساخته شد');go('bot',r.bot.bot_id)}
- finally{$('mk')&&($('mk').disabled=false,$('mk').textContent='ساخت ربات')}
-});
+      }
+      const mkBot = guard(async () => {
+        const t = $("tk").value.trim();
+        if (!/^\d{8,12}:[A-Za-z0-9_-]{30,}$/.test(t)) return toast("فرمت توکن درست نیست", 1);
+        $("mk").disabled = true;
+        $("mk").textContent = "در حال ساخت…";
+        try {
+          const r = await api("/api/bots", { method: "POST", body: { token: t } });
+          toast(r.message || "ربات ساخته شد");
+          go("bot", r.bot.bot_id);
+        } finally {
+          $("mk") && (($("mk").disabled = false), ($("mk").textContent = "ساخت ربات"));
+        }
+      });
 
-/* ───────── Bot detail ───────── */
-let botId=null;
-const vBot=guard(async(id)=>{
- if(id)botId=id;
- const d=await api('/api/bots/'+botId);bot=d.bot;const s=bot.stats||{};
- $('view').innerHTML=`<div class="top"><div class="ib" onclick="go('bots')" style="transform:scaleX(-1)">${ic('back')}</div><div style="flex:1;min-width:0"><h1 dir="ltr" style="text-align:right;font-size:20px">@${esc(bot.bot_username||'—')}</h1><div class="sub" id="st">${bot.is_running?'فعال و در حال پاسخ‌گویی':'خاموش'}</div></div><div class="sw ${bot.is_running?'on':''}" id="pw" onclick="power()"></div></div>
- <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:6px">${[['unique_users','کاربر'],['messages_received','دریافتی'],['messages_sent','ارسالی'],['broadcasts_sent','همگانی']].map(([k,t])=>`<div class="stat" style="padding:12px 8px;text-align:center"><b style="font-size:18px">${n(s[k])}</b><span style="font-size:11px">${t}</span></div>`).join('')}</div>
- <div class="seg">${[['cmds','دستورها'],['plug','افزونه‌ها'],['set','تنظیمات']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';vBot()">${t}</button>`).join('')}</div><div id="tb"></div>`;
- if(tab==='cmds')await tCmds();if(tab==='plug')tPlug();if(tab==='set')tSet();
-});
-const power=guard(async()=>{
- const on=!$('pw').classList.contains('on');
- await api(`/api/bots/${botId}/toggle`,{method:'PATCH',body:{active:on}});
- bot.is_running=on;$('pw').classList.toggle('on',on);$('st').textContent=on?'فعال و در حال پاسخ‌گویی':'خاموش';toast(on?'ربات روشن شد':'ربات خاموش شد');
-});
-let ck=[];
-async function tCmds(){
- cmds=(await api(`/api/bots/${botId}/commands`)).commands||{};ck=Object.keys(cmds);
- $('tb').innerHTML=`<button class="btn s" style="margin-bottom:12px" onclick="openCmd(-1)">${ic('plus')} دستور جدید</button>`+(ck.length?ck.map((k,i)=>{const c=cmds[k],cb=Object.keys(c.callbacks||{}).length;
- return `<div class="row" onclick="openCmd(${i})"><div class="g"><b dir="ltr" style="text-align:right">/${esc(k)}</b><small>${esc((c.response||'').slice(0,50).replace(/\n/g,' '))||'—'}</small></div>${c.buttons?'<span class="tag">دکمه</span>':''}${c.media?.url?'<span class="tag">رسانه</span>':''}${cb?`<span class="tag">⚡${n(cb)}</span>`:''}</div>`}).join(''):empty('هنوز دستوری نداری.'));
-}
-function tPlug(){
- const on=!!bot.force_join_channel;
- $('tb').innerHTML=`<div class="plug"><div class="h"><div class="ic">${ic('lock')}</div><div class="g"><b>عضویت اجباری</b><small class="sub">کاربر باید اول عضو کانال شود</small></div><div class="sw ${on?'on':''}" id="fjs" onclick="fjToggle()"></div></div>
- <div class="bd" id="fjb" style="display:${on?'block':'none'}"><label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in" id="fj" dir="ltr" placeholder="@channel" value="${esc(bot.force_join_channel||'')}"><button class="btn sm" onclick="fjSave()">ذخیره</button></div></div>
- <div class="plug"><div class="h"><div class="ic">${ic('send')}</div><div class="g"><b>پیام همگانی</b><small class="sub">ارسال پیام به همه‌ی کاربران ربات</small></div></div>
+      /* ───────── Bot detail ───────── */
+      let botId = null;
+      const vBot = guard(async (id) => {
+        if (id) botId = id;
+        const d = await api("/api/bots/" + botId);
+        bot = d.bot;
+        const s = bot.stats || {};
+        $("view").innerHTML =
+          `<div class="top"><div class="ib" onclick="go('bots')" style="transform:scaleX(-1)">${ic("back")}</div><div style="flex:1;min-width:0"><h1 dir="ltr" style="text-align:right;font-size:20px">@${esc(bot.bot_username || "—")}</h1><div class="sub" id="st">${bot.is_running ? "فعال و در حال پاسخ‌گویی" : "خاموش"}</div></div><div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>
+ <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:6px">${[
+   ["unique_users", "کاربر"],
+   ["messages_received", "دریافتی"],
+   ["messages_sent", "ارسالی"],
+   ["broadcasts_sent", "همگانی"],
+ ]
+   .map(
+     ([k, t]) =>
+       `<div class="stat" style="padding:12px 8px;text-align:center"><b style="font-size:18px">${n(s[k])}</b><span style="font-size:11px">${t}</span></div>`,
+   )
+   .join("")}</div>
+ <div class="seg">${[
+   ["cmds", "دستورها"],
+   ["plug", "افزونه‌ها"],
+   ["set", "تنظیمات"],
+ ]
+   .map(([k, t]) => `<button class="${tab === k ? "on" : ""}" onclick="tab='${k}';vBot()">${t}</button>`)
+   .join("")}</div><div id="tb"></div>`;
+        if (tab === "cmds") await tCmds();
+        if (tab === "plug") tPlug();
+        if (tab === "set") tSet();
+      });
+      const power = guard(async () => {
+        const on = !$("pw").classList.contains("on");
+        await api(`/api/bots/${botId}/toggle`, { method: "PATCH", body: { active: on } });
+        bot.is_running = on;
+        $("pw").classList.toggle("on", on);
+        $("st").textContent = on ? "فعال و در حال پاسخ‌گویی" : "خاموش";
+        toast(on ? "ربات روشن شد" : "ربات خاموش شد");
+      });
+      let ck = [];
+      async function tCmds() {
+        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
+        ck = Object.keys(cmds);
+        $("tb").innerHTML =
+          `<button class="btn s" style="margin-bottom:12px" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button>` +
+          (ck.length
+            ? ck
+                .map((k, i) => {
+                  const c = cmds[k],
+                    cb = Object.keys(c.callbacks || {}).length;
+                  return `<div class="row" onclick="openCmd(${i})"><div class="g"><b dir="ltr" style="text-align:right">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 50).replace(/\n/g, " ")) || "—"}</small></div>${c.buttons ? '<span class="tag">دکمه</span>' : ""}${c.media?.url ? '<span class="tag">رسانه</span>' : ""}${cb ? `<span class="tag">⚡${n(cb)}</span>` : ""}</div>`;
+                })
+                .join("")
+            : empty("هنوز دستوری نداری."));
+      }
+      function tPlug() {
+        const on = !!bot.force_join_channel;
+        $("tb").innerHTML =
+          `<div class="plug"><div class="h"><div class="ic">${ic("lock")}</div><div class="g"><b>عضویت اجباری</b><small class="sub">کاربر باید اول عضو کانال شود</small></div><div class="sw ${on ? "on" : ""}" id="fjs" onclick="fjToggle()"></div></div>
+ <div class="bd" id="fjb" style="display:${on ? "block" : "none"}"><label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in" id="fj" dir="ltr" placeholder="@channel" value="${esc(bot.force_join_channel || "")}"><button class="btn sm" onclick="fjSave()">ذخیره</button></div></div>
+ <div class="plug"><div class="h"><div class="ic">${ic("send")}</div><div class="g"><b>پیام همگانی</b><small class="sub">ارسال پیام به همه‌ی کاربران ربات</small></div></div>
  <div class="bd"><textarea class="in" id="bc" placeholder="متن پیام…"></textarea><button class="btn sm" onclick="bcast()">ارسال به همه</button></div></div>`;
-}
-const fjSave=guard(async()=>{
- let c=$('fj').value.trim();if(!c)return toast('آیدی کانال را وارد کن',1);if(!c.startsWith('@')&&!c.startsWith('-'))c='@'+c;
- await api(`/api/bots/${botId}/force-join`,{method:'PATCH',body:{channel:c}});bot.force_join_channel=c;$('fj').value=c;toast('عضویت اجباری فعال شد');
-});
-const fjToggle=guard(async()=>{
- const s=$('fjs'),on=!s.classList.contains('on');s.classList.toggle('on',on);$('fjb').style.display=on?'block':'none';
- if(!on){await api(`/api/bots/${botId}/force-join`,{method:'PATCH',body:{channel:''}});bot.force_join_channel='';$('fj').value='';toast('عضویت اجباری غیرفعال شد')}
-});
-const bcast=guard(async()=>{
- const t=$('bc').value.trim();if(!t)return toast('متن خالی است',1);
- sure('پیام برای همه‌ی کاربران ارسال شود؟',guard(async()=>{const r=await api(`/api/bots/${botId}/broadcast`,{method:'POST',body:{text:t}});toast(r.message||'در صف ارسال قرار گرفت');$('bc').value=''}));
-});
-function tSet(){
- $('tb').innerHTML=`<div class="card"><b>حذف ربات</b><p class="sub" style="margin:4px 0 14px">با حذف ربات، همه‌ی دستورها و آمار آن پاک می‌شود. این کار برگشت‌پذیر نیست.</p><button class="btn d" onclick="delBot()">${ic('trash')} حذف ربات</button></div>`;
-}
-function delBot(){sure('ربات برای همیشه حذف شود؟',guard(async()=>{await api('/api/bots/'+botId,{method:'DELETE'});toast('ربات حذف شد');go('bots')}))}
+      }
+      const fjSave = guard(async () => {
+        let c = $("fj").value.trim();
+        if (!c) return toast("آیدی کانال را وارد کن", 1);
+        if (!c.startsWith("@") && !c.startsWith("-")) c = "@" + c;
+        await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } });
+        bot.force_join_channel = c;
+        $("fj").value = c;
+        toast("عضویت اجباری فعال شد");
+      });
+      const fjToggle = guard(async () => {
+        const s = $("fjs"),
+          on = !s.classList.contains("on");
+        s.classList.toggle("on", on);
+        $("fjb").style.display = on ? "block" : "none";
+        if (!on) {
+          await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } });
+          bot.force_join_channel = "";
+          $("fj").value = "";
+          toast("عضویت اجباری غیرفعال شد");
+        }
+      });
+      const bcast = guard(async () => {
+        const t = $("bc").value.trim();
+        if (!t) return toast("متن خالی است", 1);
+        sure(
+          "پیام برای همه‌ی کاربران ارسال شود؟",
+          guard(async () => {
+            const r = await api(`/api/bots/${botId}/broadcast`, { method: "POST", body: { text: t } });
+            toast(r.message || "در صف ارسال قرار گرفت");
+            $("bc").value = "";
+          }),
+        );
+      });
+      function tSet() {
+        $("tb").innerHTML =
+          `<div class="card"><b>حذف ربات</b><p class="sub" style="margin:4px 0 14px">با حذف ربات، همه‌ی دستورها و آمار آن پاک می‌شود. این کار برگشت‌پذیر نیست.</p><button class="btn d" onclick="delBot()">${ic("trash")} حذف ربات</button></div>`;
+      }
+      function delBot() {
+        sure(
+          "ربات برای همیشه حذف شود؟",
+          guard(async () => {
+            await api("/api/bots/" + botId, { method: "DELETE" });
+            toast("ربات حذف شد");
+            go("bots");
+          }),
+        );
+      }
 
-/* ───────── Command editor ───────── */
-const MT={photo:'تصویر',video:'ویدیو',audio:'صوت',animation:'انیمیشن',document:'فایل'};
-function openCmd(i){
- const k=i<0?'':ck[i],c=i<0?{}:cmds[k];
- ed={name:k,isNew:i<0,response:c.response||'',b:JSON.parse(JSON.stringify(c.buttons||[])),m:c.media?.url?{...c.media}:(c.photo?{type:'photo',url:c.photo}:{type:'photo',url:''}),cb:c.callbacks||{}};
- drawCmd();$('sbg').classList.add('on');
-}
-const closeSheet=()=>$('sbg').classList.remove('on');
-function drawCmd(){
- $('sheet').innerHTML=`<div class="grab"></div><h1 style="font-size:18px;margin-bottom:16px">${ed.isNew?'دستور جدید':'/'+esc(ed.name)}</h1>
- ${ed.isNew?`<label>نام دستور</label><input class="in" dir="ltr" placeholder="help" oninput="ed.name=this.value">`:''}
+      /* ───────── Command editor ───────── */
+      const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
+      function openCmd(i) {
+        const k = i < 0 ? "" : ck[i],
+          c = i < 0 ? {} : cmds[k];
+        ed = {
+          name: k,
+          isNew: i < 0,
+          response: c.response || "",
+          b: JSON.parse(JSON.stringify(c.buttons || [])),
+          m: c.media?.url
+            ? { ...c.media }
+            : c.photo
+              ? { type: "photo", url: c.photo }
+              : { type: "photo", url: "" },
+          cb: c.callbacks || {},
+        };
+        drawCmd();
+        $("sbg").classList.add("on");
+      }
+      const closeSheet = () => $("sbg").classList.remove("on");
+      function drawCmd() {
+        $("sheet").innerHTML =
+          `<div class="grab"></div><h1 style="font-size:18px;margin-bottom:16px">${ed.isNew ? "دستور جدید" : "/" + esc(ed.name)}</h1>
+ ${ed.isNew ? `<label>نام دستور</label><input class="in" dir="ltr" placeholder="help" oninput="ed.name=this.value">` : ""}
  <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value">${esc(ed.response)}</textarea>
  <label>دکمه‌های شیشه‌ای</label>
- ${ed.b.map((r,ri)=>`<div class="bb">${r.map((b,bi)=>`<div style="flex:1;min-width:0"><input class="in" style="margin-bottom:4px" placeholder="متن" value="${esc(b.text)}" oninput="ed.b[${ri}][${bi}].text=this.value"><input class="in" dir="ltr" style="margin:0;font-size:12px" placeholder="شناسه" value="${esc(b.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"></div>`).join('')}
- <div class="ib" style="align-self:center" onclick="ed.b[${ri}].push({text:'',id:''});drawCmd()">${ic('plus')}</div><div class="ib" style="align-self:center;color:var(--red)" onclick="ed.b.splice(${ri},1);drawCmd()">${ic('trash')}</div></div>`).join('')}
- <button class="btn s sm" style="margin:4px 0 14px" onclick="ed.b.push([{text:'',id:''}]);drawCmd()">${ic('plus')} ردیف دکمه</button>
+ ${ed.b
+   .map(
+     (
+       r,
+       ri,
+     ) => `<div class="bb">${r.map((b, bi) => `<div style="flex:1;min-width:0"><input class="in" style="margin-bottom:4px" placeholder="متن" value="${esc(b.text)}" oninput="ed.b[${ri}][${bi}].text=this.value"><input class="in" dir="ltr" style="margin:0;font-size:12px" placeholder="شناسه" value="${esc(b.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"></div>`).join("")}
+ <div class="ib" style="align-self:center" onclick="ed.b[${ri}].push({text:'',id:''});drawCmd()">${ic("plus")}</div><div class="ib" style="align-self:center;color:var(--red)" onclick="ed.b.splice(${ri},1);drawCmd()">${ic("trash")}</div></div>`,
+   )
+   .join("")}
+ <button class="btn s sm" style="margin:4px 0 14px" onclick="ed.b.push([{text:'',id:''}]);drawCmd()">${ic("plus")} ردیف دکمه</button>
  <label>رسانه (اختیاری)</label>
- <div class="bb"><select class="in" style="width:110px;margin:0" onchange="ed.m.type=this.value">${Object.entries(MT).map(([k,t])=>`<option value="${k}" ${ed.m.type===k?'selected':''}>${t}</option>`).join('')}</select><input class="in" dir="ltr" style="margin:0" placeholder="https://… یا آپلود" id="mu" value="${esc(ed.m.url)}" oninput="ed.m.url=this.value"></div>
+ <div class="bb"><select class="in" style="width:110px;margin:0" onchange="ed.m.type=this.value">${Object.entries(
+   MT,
+ )
+   .map(([k, t]) => `<option value="${k}" ${ed.m.type === k ? "selected" : ""}>${t}</option>`)
+   .join(
+     "",
+   )}</select><input class="in" dir="ltr" style="margin:0" placeholder="https://… یا آپلود" id="mu" value="${esc(ed.m.url)}" oninput="ed.m.url=this.value"></div>
  <input type="file" id="mf" hidden onchange="upload(this.files[0])"><button class="btn s sm" style="margin:6px 0 16px" onclick="$('mf').click()">آپلود فایل</button>
- ${ed.isNew?'':`<label>پاسخ دکمه‌ها (callback)</label>${Object.entries(ed.cb).map(([id,r])=>`<div class="card" style="padding:10px;margin-bottom:8px"><small class="sub" dir="ltr">${esc(id)}</small><textarea class="in" style="min-height:64px;margin:6px 0" id="cb_${esc(id)}">${esc(r)}</textarea><div class="bb"><button class="btn sm" onclick="cbSave('${esc(id)}')">ذخیره</button><button class="btn d sm" onclick="cbDel('${esc(id)}')">حذف</button></div></div>`).join('')}
- <div class="card" style="padding:10px;margin-bottom:16px"><input class="in" dir="ltr" placeholder="شناسه‌ی دکمه‌ی جدید" id="cbn"><textarea class="in" style="min-height:64px" placeholder="پاسخ" id="cbt"></textarea><button class="btn s sm" onclick="cbAdd()">افزودن پاسخ</button></div>`}
+ ${
+   ed.isNew
+     ? ""
+     : `<label>پاسخ دکمه‌ها (callback)</label>${Object.entries(ed.cb)
+         .map(
+           ([id, r]) =>
+             `<div class="card" style="padding:10px;margin-bottom:8px"><small class="sub" dir="ltr">${esc(id)}</small><textarea class="in" style="min-height:64px;margin:6px 0" id="cb_${esc(id)}">${esc(r)}</textarea><div class="bb"><button class="btn sm" onclick="cbSave('${esc(id)}')">ذخیره</button><button class="btn d sm" onclick="cbDel('${esc(id)}')">حذف</button></div></div>`,
+         )
+         .join("")}
+ <div class="card" style="padding:10px;margin-bottom:16px"><input class="in" dir="ltr" placeholder="شناسه‌ی دکمه‌ی جدید" id="cbn"><textarea class="in" style="min-height:64px" placeholder="پاسخ" id="cbt"></textarea><button class="btn s sm" onclick="cbAdd()">افزودن پاسخ</button></div>`
+ }
  <button class="btn" onclick="saveCmd()">ذخیره دستور</button>
- ${ed.isNew||ed.name==='start'?'':`<button class="btn d" style="margin-top:8px" onclick="delCmd()">حذف دستور</button>`}`;
-}
-const upload=guard(async f=>{
- if(!f)return;const fd=new FormData();fd.append('file',f);const h={};if(token)h.Authorization='Bearer '+token;if(initData)h['X-Init-Data']=initData;
- toast('در حال آپلود…');const r=await fetch(API+'/api/upload-media',{method:'POST',headers:h,body:fd});const d=await r.json();
- if(!r.ok)throw new Error(d.error||'خطا در آپلود');ed.m={type:d.type,url:d.url};drawCmd();toast('آپلود شد');
-});
-const saveCmd=guard(async()=>{
- const name=ed.name.trim().toLowerCase().replace(/^\//,'');
- if(!name)return toast('نام دستور خالی است',1);if(!ed.response.trim())return toast('متن پاسخ خالی است',1);
- const b=ed.b.map(r=>r.filter(x=>x.text&&x.id)).filter(r=>r.length);
- const u=(ed.m.url||'').trim(),ok=/^https?:\/\//.test(u);
- await api(`/api/bots/${botId}/commands/${name}`,{method:'PUT',body:{response:ed.response.trim(),buttons:b.length?b:null,photo:ok&&ed.m.type==='photo'?u:null,media:ok?{type:ed.m.type,url:u}:null}});
- toast('ذخیره شد');closeSheet();tCmds();
-});
-function delCmd(){sure('این دستور حذف شود؟',guard(async()=>{await api(`/api/bots/${botId}/commands/${ed.name}`,{method:'DELETE'});toast('حذف شد');closeSheet();tCmds()}))}
-const cbSave=guard(async id=>{const r=$('cb_'+id).value.trim();if(!r)return toast('پاسخ خالی است',1);await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'PUT',body:{response:r}});ed.cb[id]=r;toast('ذخیره شد')});
-const cbDel=guard(async id=>{await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'DELETE'});delete ed.cb[id];drawCmd();toast('حذف شد');tCmds()});
-const cbAdd=guard(async()=>{const id=$('cbn').value.trim(),r=$('cbt').value.trim();if(!id||!r)return toast('شناسه و پاسخ لازم است',1);await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`,{method:'PUT',body:{response:r}});ed.cb[id]=r;drawCmd();toast('افزوده شد');tCmds()});
+ ${ed.isNew || ed.name === "start" ? "" : `<button class="btn d" style="margin-top:8px" onclick="delCmd()">حذف دستور</button>`}`;
+      }
+      const upload = guard(async (f) => {
+        if (!f) return;
+        const fd = new FormData();
+        fd.append("file", f);
+        const h = {};
+        if (token) h.Authorization = "Bearer " + token;
+        if (initData) h["X-Init-Data"] = initData;
+        toast("در حال آپلود…");
+        const r = await fetch(API + "/api/upload-media", { method: "POST", headers: h, body: fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "خطا در آپلود");
+        ed.m = { type: d.type, url: d.url };
+        drawCmd();
+        toast("آپلود شد");
+      });
+      const saveCmd = guard(async () => {
+        const name = ed.name.trim().toLowerCase().replace(/^\//, "");
+        if (!name) return toast("نام دستور خالی است", 1);
+        if (!ed.response.trim()) return toast("متن پاسخ خالی است", 1);
+        const b = ed.b.map((r) => r.filter((x) => x.text && x.id)).filter((r) => r.length);
+        const u = (ed.m.url || "").trim(),
+          ok = /^https?:\/\//.test(u);
+        await api(`/api/bots/${botId}/commands/${name}`, {
+          method: "PUT",
+          body: {
+            response: ed.response.trim(),
+            buttons: b.length ? b : null,
+            photo: ok && ed.m.type === "photo" ? u : null,
+            media: ok ? { type: ed.m.type, url: u } : null,
+          },
+        });
+        toast("ذخیره شد");
+        closeSheet();
+        tCmds();
+      });
+      function delCmd() {
+        sure(
+          "این دستور حذف شود؟",
+          guard(async () => {
+            await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" });
+            toast("حذف شد");
+            closeSheet();
+            tCmds();
+          }),
+        );
+      }
+      const cbSave = guard(async (id) => {
+        const r = $("cb_" + id).value.trim();
+        if (!r) return toast("پاسخ خالی است", 1);
+        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, {
+          method: "PUT",
+          body: { response: r },
+        });
+        ed.cb[id] = r;
+        toast("ذخیره شد");
+      });
+      const cbDel = guard(async (id) => {
+        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, { method: "DELETE" });
+        delete ed.cb[id];
+        drawCmd();
+        toast("حذف شد");
+        tCmds();
+      });
+      const cbAdd = guard(async () => {
+        const id = $("cbn").value.trim(),
+          r = $("cbt").value.trim();
+        if (!id || !r) return toast("شناسه و پاسخ لازم است", 1);
+        await api(`/api/bots/${botId}/commands/${ed.name}/callbacks/${id}`, {
+          method: "PUT",
+          body: { response: r },
+        });
+        ed.cb[id] = r;
+        drawCmd();
+        toast("افزوده شد");
+        tCmds();
+      });
 
-/* ───────── Profile / Referral / Admin ───────── */
-const vMe=guard(async()=>{
- const nm=user.full_name||user.username||String(user.uid);
- $('view').innerHTML=head('پروفایل','')+`<div class="card" style="display:flex;align-items:center;gap:14px"><div class="logo" style="margin:0;border-radius:50%;font-weight:800;font-size:20px">${esc(nm.charAt(0))}</div><div><b>${esc(nm)}</b><div class="sub" dir="ltr">#${user.uid}</div></div></div><div id="rf"></div>
- ${user.is_admin?`<div class="row" style="margin-top:12px" onclick="go('admin')"><span style="color:var(--ac)">${ic('shield')}</span><div class="g"><b>آمار کل سیستم</b><small>مخصوص مدیر</small></div></div>`:''}
+      /* ───────── Profile / Referral / Admin ───────── */
+      const vMe = guard(async () => {
+        const nm = user.full_name || user.username || String(user.uid);
+        $("view").innerHTML =
+          head("پروفایل", "") +
+          `<div class="card" style="display:flex;align-items:center;gap:14px"><div class="logo" style="margin:0;border-radius:50%;font-weight:800;font-size:20px">${esc(nm.charAt(0))}</div><div><b>${esc(nm)}</b><div class="sub" dir="ltr">#${user.uid}</div></div></div><div id="rf"></div>
+ ${user.is_admin ? `<div class="row" style="margin-top:12px" onclick="go('admin')"><span style="color:var(--ac)">${ic("shield")}</span><div class="g"><b>آمار کل سیستم</b><small>مخصوص مدیر</small></div></div>` : ""}
  <button class="btn d" style="margin-top:16px" onclick="logout()">خروج از حساب</button>`;
- try{const r=await api('/api/coins/referral'),link=`${WEBAPP}?ref=${r.referral_code||''}`;
- $('rf').innerHTML=`<div class="grid" style="margin-top:12px"><div class="stat hi"><b>${n(r.coins)}</b><span>سکه</span></div><div class="stat"><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
- <h2>لینک دعوت · هر دعوت ۱۰۰ سکه</h2><div class="bb"><input class="in" id="rl" dir="ltr" readonly value="${esc(link)}" style="margin:0"><div class="ib" style="height:auto" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic('copy')}</div></div>`}catch(e){}
-});
-const vAdmin=guard(async()=>{
- $('view').innerHTML=head('آمار سیستم','');
- const d=await api('/api/admin/full-stats'),o=d.overview||{};
- const list=(t,a,f)=>`<h2>${t}</h2>`+((a||[]).length?a.map(f).join(''):empty('—'));
- $('view').innerHTML=head('آمار سیستم','')+`<div class="grid">${[['total_users','کاربران'],['total_registered','ثبت‌نام کامل'],['total_bots','ربات‌ها'],['total_active_bots','ربات فعال'],['total_messages_received','پیام دریافتی'],['total_messages_sent','پیام ارسالی'],['total_coins','سکه‌ها'],['total_referrals','رفرال']].map(([k,t],i)=>`<div class="stat ${i===0?'hi':''}"><b>${n(o[k])}</b><span>${t}</span></div>`).join('')}</div>`+
- (()=>{const g=(d.daily_growth||[]).slice(-7),m=Math.max(...g.map(x=>x.new_users),1);return g.length?`<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map(x=>`<div style="display:flex;justify-content:space-between;font-size:12px"><span dir="ltr">${esc(x.date)}</span><b>${n(x.new_users)}</b></div><div class="bar"><i style="width:${x.new_users/m*100}%"></i></div>`).join('<div style="height:8px"></div>')}</div>`:''})()+
- list('برترین ربات‌ها',d.top_bots,b=>`<div class="row" style="cursor:default"><span class="dot ${b.is_active?'on':''}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.username||'—')}</b><small>${esc(b.owner_name||'')} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`)+
- list('برترین کاربران',d.top_users,u=>`<div class="row" style="cursor:default"><div class="g"><b>${esc(u.name!=='—'?u.name:(u.username||u.telegram_username||'—'))}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} رفرال</small></div><span class="tag">${n(u.coins)} سکه</span></div>`)+
- list('برترین دعوت‌کننده‌ها',d.top_referrers,r=>`<div class="row" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small dir="ltr" style="display:block;text-align:right">@${esc(r.username||'—')}</small></div><span class="tag">${n(r.referral_count)}</span></div>`);
-});
+        try {
+          const r = await api("/api/coins/referral"),
+            link = `${WEBAPP}?ref=${r.referral_code || ""}`;
+          $("rf").innerHTML =
+            `<div class="grid" style="margin-top:12px"><div class="stat hi"><b>${n(r.coins)}</b><span>سکه</span></div><div class="stat"><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
+ <h2>لینک دعوت · هر دعوت ۱۰۰ سکه</h2><div class="bb"><input class="in" id="rl" dir="ltr" readonly value="${esc(link)}" style="margin:0"><div class="ib" style="height:auto" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
+        } catch (e) {}
+      });
+      const vAdmin = guard(async () => {
+        $("view").innerHTML = head("آمار سیستم", "");
+        const d = await api("/api/admin/full-stats"),
+          o = d.overview || {};
+        const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : empty("—"));
+        $("view").innerHTML =
+          head("آمار سیستم", "") +
+          `<div class="grid">${[
+            ["total_users", "کاربران"],
+            ["total_registered", "ثبت‌نام کامل"],
+            ["total_bots", "ربات‌ها"],
+            ["total_active_bots", "ربات فعال"],
+            ["total_messages_received", "پیام دریافتی"],
+            ["total_messages_sent", "پیام ارسالی"],
+            ["total_coins", "سکه‌ها"],
+            ["total_referrals", "رفرال"],
+          ]
+            .map(
+              ([k, t], i) =>
+                `<div class="stat ${i === 0 ? "hi" : ""}"><b>${n(o[k])}</b><span>${t}</span></div>`,
+            )
+            .join("")}</div>` +
+          (() => {
+            const g = (d.daily_growth || []).slice(-7),
+              m = Math.max(...g.map((x) => x.new_users), 1);
+            return g.length
+              ? `<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map((x) => `<div style="display:flex;justify-content:space-between;font-size:12px"><span dir="ltr">${esc(x.date)}</span><b>${n(x.new_users)}</b></div><div class="bar"><i style="width:${(x.new_users / m) * 100}%"></i></div>`).join('<div style="height:8px"></div>')}</div>`
+              : "";
+          })() +
+          list(
+            "برترین ربات‌ها",
+            d.top_bots,
+            (b) =>
+              `<div class="row" style="cursor:default"><span class="dot ${b.is_active ? "on" : ""}"></span><div class="g"><b dir="ltr" style="text-align:right">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`,
+          ) +
+          list(
+            "برترین کاربران",
+            d.top_users,
+            (u) =>
+              `<div class="row" style="cursor:default"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || u.telegram_username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} رفرال</small></div><span class="tag">${n(u.coins)} سکه</span></div>`,
+          ) +
+          list(
+            "برترین دعوت‌کننده‌ها",
+            d.top_referrers,
+            (r) =>
+              `<div class="row" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small dir="ltr" style="display:block;text-align:right">@${esc(r.username || "—")}</small></div><span class="tag">${n(r.referral_count)}</span></div>`,
+          );
+      });
 
-/* ───────── Boot ───────── */
-async function boot(){
- if(tg?.initData)initData=tg.initData;
- if(!initData&&!token)return showAuth();
- try{user=await api(initData?'/api/me':'/api/auth/me');go('home')}
- catch(e){if(!token&&!initData)return;toast('خطا در اتصال: '+e.message,1);if(/401|نامعتبر/.test(e.message))showAuth()}
-}
-boot();
-</script>
-</body>
+      /* ───────── Boot ───────── */
+      async function boot() {
+        if (tg?.initData) initData = tg.initData;
+        if (!initData && !token) return showAuth();
+        try {
+          user = await api(initData ? "/api/me" : "/api/auth/me");
+          go("home");
+        } catch (e) {
+          if (!token && !initData) return;
+          toast("خطا در اتصال: " + e.message, 1);
+          if (/401|نامعتبر/.test(e.message)) showAuth();
+        }
+      }
+      boot();
+    </script>
+  </body>
 </html>
