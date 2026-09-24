@@ -204,33 +204,76 @@
       .plug .p b { font-size: 13.5px; display: block; }
       .plug .p small { display: block; color: var(--mu); font-size: 11.5px; margin-top: 2px; line-height: 1.5; }
 
-      /* ══ نسخهٔ ۲ ══ */
-      .skl { height: 66px; border-radius: 14px; background: var(--panel); border: 1px solid var(--hair); margin-bottom: 9px; animation: pl .9s ease-in-out infinite alternate; }
-      @keyframes pl { from { opacity: .35; } }
-      .spo { background: var(--tx); color: transparent; border-radius: 4px; cursor: pointer; } .spo:active { color: var(--bg); }
-      .bub a { color: var(--ac); } .bub code { font-family: var(--mono); font-size: 12.5px; background: var(--hair); padding: 0 5px; border-radius: 5px; }
-      .fmt { display: flex; gap: 5px; overflow-x: auto; margin: 2px 0 8px; padding-bottom: 2px; }
-      .fmt button { flex: none; min-width: 34px; height: 32px; padding: 0 9px; border-radius: 9px; background: var(--panel); border: 1px solid var(--hair); color: var(--mu); font: 600 13px var(--mono); cursor: pointer; }
-      .fmt button:active { color: var(--ac); border-color: var(--ac); } .fmt .sep { flex: none; width: 1px; background: var(--hair); margin: 4px 2px; }
-      .hl { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 13px 14px; margin-bottom: 12px; min-height: 82px; box-shadow: var(--sh); }
-      .hl:empty { border-style: dashed; box-shadow: none; }
-      .hr { position: relative; width: 56px; height: 56px; flex: none; } .hr svg { width: 56px; height: 56px; transform: rotate(-90deg); stroke-width: 5; }
-      .hr .rb { stroke: var(--hair); } .hr .rf { stroke: var(--ac); stroke-linecap: round; transition: stroke-dasharray .8s cubic-bezier(.2,.8,.2,1); }
-      .hr b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 15px var(--mono); }
-      .hl .kw { cursor: pointer; }
-      .phone { background: var(--panel); border: 1px solid var(--hair); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; height: min(66vh, 580px); box-shadow: var(--sh); }
-      .ph-h { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid var(--hair); background: var(--panel2); }
-      .ph-b { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); background-image: var(--grid); }
-      .ph-b .m { display: flex; flex-direction: column; align-items: flex-start; animation: fade .25s; }
-      .ph-b .m.usr { align-items: flex-end; } .ph-b .m.usr .bub { background: var(--ac); color: #04121a; border-color: transparent; border-radius: 13px 13px 5px 13px; }
-      .ph-b .m.sys { align-items: center; align-self: center; color: var(--mu); font-size: 11.5px; text-align: center; background: var(--panel); border: 1px solid var(--hair); border-radius: 999px; padding: 3px 12px; }
-      .meta { color: var(--mu); font-size: 10px; margin: 3px 4px 0; }
-      .bubrow i { cursor: pointer; } .bubrow i:active { border-color: var(--ac); }
-      .ph-q { margin: 0; padding: 8px 12px; border-top: 1px solid var(--hair); background: var(--panel); } .ph-q .kw { cursor: pointer; flex: none; }
-      .ph-f { display: flex; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--hair); align-items: center; } .ph-f .in { padding: 10px 12px; }
-      .d { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mu); margin: 0 2px; animation: pl .5s infinite alternate; }
-      .d:nth-child(2) { animation-delay: .15s; } .d:nth-child(3) { animation-delay: .3s; }
-      .acc { display: flex; gap: 14px; } .accd { width: 34px; height: 34px; border-radius: 11px; background: var(--c); cursor: pointer; outline: 2px solid transparent; outline-offset: 3px; transition: outline-color .15s; } .accd.on { outline-color: var(--tx); }
+      /* ════ نقشهٔ جریان ربات (Flow Map) ════ */
+      .flow-toolbar { display: flex; align-items: center; gap: 6px; margin: 8px 2px 12px; }
+      .flow-toolbar .tb-title { font-size: 12.5px; color: var(--mu); flex: 1; min-width: 0; }
+      .flow-toolbar .tb-title b { color: var(--tx); font-family: var(--mono); }
+      .flow-canvas {
+        position: relative; overflow: hidden; height: calc(100vh - 250px); min-height: 420px; direction: ltr;
+        background:
+          radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ac) 5%, transparent) 0%, transparent 60%),
+          var(--bg);
+        border: 1px solid var(--hair); border-radius: var(--r); touch-action: none; user-select: none; -webkit-user-select: none;
+      }
+      .flow-canvas::before {
+        content: ""; position: absolute; inset: -200px; pointer-events: none; z-index: 0; opacity: .55;
+        background-image:
+          linear-gradient(90deg, transparent 23px, color-mix(in srgb, var(--hair) 55%, transparent) 23px 24px),
+          linear-gradient(0deg,  transparent 23px, color-mix(in srgb, var(--hair) 55%, transparent) 23px 24px);
+        background-size: 24px 24px;
+        transform: translate(var(--pdx, 0px), var(--pdy, 0px));
+      }
+      .flow-world {
+        position: absolute; inset: 0; transform: translate(var(--pdx,0), var(--pdy,0)) scale(var(--z, 1));
+        transform-origin: 0 0; will-change: transform;
+      }
+      .flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
+      .flow-svg path.wire { fill: none; stroke: var(--hair2); stroke-width: 2; }
+      .flow-svg path.wire.on { stroke: var(--ac); stroke-width: 2.4; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ac) 60%, transparent)); }
+      .flow-svg path.wire.draft { stroke: var(--ac); stroke-dasharray: 5 4; }
+      .node {
+        position: absolute; left: 0; top: 0; width: 200px; min-height: 74px; z-index: 2; direction: rtl;
+        background: var(--panel); border: 1px solid var(--hair2); border-radius: 14px; padding: 10px 11px 9px;
+        box-shadow: 0 10px 24px -18px color-mix(in srgb, #000 60%, transparent), 0 0 0 0 color-mix(in srgb, var(--ac) 60%, transparent);
+        transition: box-shadow .18s, border-color .18s, transform .18s;
+        cursor: grab; touch-action: none;
+      }
+      .node.on, .node:active { border-color: var(--ac); box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--ac) 60%, transparent), 0 0 0 3px color-mix(in srgb, var(--ac) 18%, transparent); }
+      .node.drop { border-color: var(--ac); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 45%, transparent); transform-origin: top left; }
+      .node.drop .port.in { border-color: var(--ac); background: var(--ac); }
+      .node:active { cursor: grabbing; }
+      .node .nh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .node .nh .badge { height: 22px; font-size: 10.5px; padding: 0 7px; }
+      .node .nh b { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .node .nt { color: var(--mu); font-size: 11.5px; line-height: 1.5; max-height: 48px; overflow: hidden; padding-inline-start: 30px; margin-bottom: 6px; }
+      .node .nb { display: flex; align-items: center; justify-content: space-between; padding-inline-start: 30px; }
+      .node .nb .acts { display: flex; gap: 4px; }
+      .node .nib { width: 26px; height: 26px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--hair); color: var(--mu); display: grid; place-items: center; cursor: pointer; }
+      .node .nib.on { color: var(--ac); border-color: var(--ac); background: color-mix(in srgb, var(--ac) 14%, transparent); }
+      .node .nib svg { width: 14px; height: 14px; }
+      .node .nib:active { transform: scale(.93); }
+      .node .nicon { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; }
+      .node.cmd .nicon { background: color-mix(in srgb, var(--ac) 18%, transparent); color: var(--ac); }
+      .node.img .nicon { background: color-mix(in srgb, #d97706 18%, transparent); color: #d97706; }
+      .node.ticket .nicon { background: color-mix(in srgb, #ef4444 18%, transparent); color: #ef4444; }
+      .node.url  .nicon { background: color-mix(in srgb, #10b981 18%, transparent); color: #10b981; }
+      .node .in, .node textarea.in { font-size: 12px; padding: 6px 8px; }
+      .node.wide { width: 260px; }
+      .port { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); border: 2.5px solid var(--hair2); top: 50%; margin-top: -8px; cursor: crosshair; z-index: 4; transition: border-color .15s, background .15s, box-shadow .15s; }
+      .port::after { content: ""; position: absolute; inset: -10px; }        /* enlarge touch target */
+      .port.out { right: -9px; }
+      .port.in  { left: -9px; }
+      .port:hover, .port.on { border-color: var(--ac); background: var(--ac); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ac) 25%, transparent); }
+      .port.src { border-color: var(--ac); background: var(--ac); }
+      .flow-empty { position: absolute; inset: 20% 10% auto; text-align: center; color: var(--mu); pointer-events: none; }
+      .flow-empty .big { font-size: 40px; color: var(--hair2); }
+      .flow-hint { position: absolute; inset: auto 8px 8px 8px; text-align: center; color: var(--mu); font-size: 11.5px; pointer-events: none; }
+      .flow-hint kbd { font-family: var(--mono); background: var(--panel2); border: 1px solid var(--hair); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; }
+      .flow-palette { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 10px; }
+      .flow-palette button { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--hair); color: var(--tx); font-size: 12px; font-weight: 600; cursor: pointer; transition: .15s; }
+      .flow-palette button:active { transform: scale(.95); background: var(--panel2); border-color: var(--ac); color: var(--ac); }
+      .flow-palette button svg { width: 14px; height: 14px; }
+
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     </style>
   </head>
@@ -282,8 +325,13 @@
         spark: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
         eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
         dev: '<path d="M12 2l3 3-3 3-3-3z"/><path d="M5 12l3 3-3 3M19 12l-3 3 3 3"/>', check: '<path d="M4 12l5 5 11-11"/>',
-        chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', download: '<path d="M12 3v12M7 11l5 4 5-4M5 21h14"/>', power: '<path d="M12 3v9M6.4 6.4a8 8 0 1011.2 0"/>'
+        chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', download: '<path d="M12 3v12M7 11l5 4 5-4M5 21h14"/>', power: '<path d="M12 3v9M6.4 6.4a8 8 0 1011.2 0"/>',
+        map: '<rect x="3" y="4" width="7" height="6" rx="1.6"/><rect x="14" y="4" width="7" height="6" rx="1.6"/><rect x="8.5" y="15" width="7" height="6" rx="1.6"/><path d="M6.5 10v2.5a2 2 0 002 2h1.5M17.5 10v2.5a2 2 0 01-2 2h-1.5"/>',
+        ticket: '<path d="M3 9V6.5A1.5 1.5 0 014.5 5h15A1.5 1.5 0 0121 6.5V9a3 3 0 000 6v2.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 17.5V15a3 3 0 000-6z"/><path d="M13 8v8"/>',
+        zoomin: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M11 8v6M8 11h6"/>', zoomout: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4M8 11h6"/>',
+        fit: '<path d="M4 9V5a1 1 0 011-1h4M15 4h4a1 1 0 011 1v4M20 15v4a1 1 0 01-1 1h-4M9 20H5a1 1 0 01-1-1v-4"/>', center: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/>'
       };
+
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
 
       let tt;
@@ -310,7 +358,7 @@
         document.documentElement.setAttribute("data-theme", t); localStorage.setItem("gs_theme", t);
         $("theme").innerHTML = ic(t === "light" ? "moon" : "sun");
         const c = t === "light" ? "#eef0f2" : "#0b0c0e";
-        document.querySelector('meta[name="theme-color"]').content = c; applyAccent();
+        document.querySelector('meta[name="theme-color"]').content = c;
         try { tg?.setHeaderColor?.(c); tg?.setBackgroundColor?.(c); } catch (e) {}
       }
       function toggleTheme() { applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); hap("light"); }
@@ -338,13 +386,13 @@
         $("nav").innerHTML = TABS.map(([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`).join("");
         $("fab").classList.add("hide");
       }
-      function go(v, a) { chrome(v); scrollTo(0, 0); hap("light"); app().className = ""; app().innerHTML = SKL; ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin })[v](a); }
+      function go(v, a) { chrome(v); scrollTo(0, 0); hap("light"); ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin })[v](a); }
       const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
       const empty = (t, s, btn, icon) => `<div class="empty"><div class="ic">${ic(icon || "bot")}</div><b>${t}</b><div style="margin-top:5px">${s}</div>${btn ? `<div style="margin-top:18px">${btn}</div>` : ""}</div>`;
 
       /* ════ خانه = مسیر آموزشیِ ساخت و فعال‌سازی (Wizard) ════ */
       const TOKEN = /^\d{8,12}:[A-Za-z0-9_-]{30,}$/;
-      const vHomeBase = guard(async () => {
+      const vHome = guard(async () => {
         ({ bots } = await api("/api/bots"));
         const connected = bots.length > 0;
         const active = bots.some((b) => b.is_running);
@@ -404,7 +452,7 @@
       });
 
       /* ════ جزئیات/مدیریت یک ربات ════ */
-      const vBotBase = guard(async (id) => {
+      const vBot = guard(async (id) => {
         if (id) { botId = id; tab = "cmds"; }
         bot = (await api("/api/bots/" + botId)).bot;
         const s = bot.stats || {}, u = bot.bot_username || "";
@@ -412,16 +460,16 @@
         app().className = "fade"; app().innerHTML = `<div class="bar" style="align-items:center"><div class="idn"><div class="ib" onclick="go('dev')">${ic("back")}</div><span class="av2 grad">${esc((u || "?").slice(0, 1).toUpperCase())}<i class="live ${bot.is_running ? "on" : ""}"></i></span><div style="min-width:0"><b class="mono" style="font-size:15px">@${esc(u || "—")}</b><small>${bot.is_running ? "در حال اجرا" : "متوقف"}</small></div></div><div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>` +
           (u ? `<div style="display:flex;gap:8px;margin-bottom:12px"><a class="btn line sm" style="flex:1" href="https://t.me/${esc(u)}" target="_blank" rel="noopener">${ic("open")} باز کردن</a><button class="btn line sm" onclick="cl('${esc(u)}')">${ic("copy")}</button></div>` : "") +
           `<div class="strip"><div class="ac"><b>${n(s.unique_users)}</b><span>کاربر</span></div><div><b>${n(s.messages_received)}</b><span>دریافتی</span></div><div><b>${n(s.messages_sent)}</b><span>ارسالی</span></div><div><b>${n(s.broadcasts_sent)}</b><span>همگانی</span></div></div>` +
-          `<div class="seg">${[["cmds", "دستورها", "code"], ["plug", "افزونه‌ها", "plug"], ["users", "کاربران", "users"], ["set", "مدیریت", "gear"], ["sim", "تست", "play"]].map(([k, t, i]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${ic(i)}${t}</button>`).join("")}</div><div id="tb"></div>`;
-        ({ cmds: tCmds, plug: tPlug, users: tUsers, set: tSet, sim: tSim })[tab]();
+          `<div class="seg">${[["cmds", "دستورها", "code"], ["map", "نقشه", "map"], ["plug", "افزونه‌ها", "plug"], ["users", "کاربران", "users"], ["set", "مدیریت", "gear"]].map(([k, t, i]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${ic(i)}${t}</button>`).join("")}</div><div id="tb"></div>`;
+        ({ cmds: tCmds, map: tMap, plug: tPlug, users: tUsers, set: tSet })[tab]();
       });
-      const setTab = (k) => { tab = k; vBot(); };
+      const setTab = (k) => { if (tab === "map" && k !== "map") stopFlowLoop(); tab = k; vBot(); };
       const cl = (u) => navigator.clipboard?.writeText("https://t.me/" + u).then(() => toast("لینک کپی شد"));
       const power = guard(async () => { const on = !$("pw").classList.contains("on"); const r = await api(`/api/bots/${botId}/toggle`, { method: "PATCH", body: { active: on } }); bot.is_running = r.is_running; toast(r.is_running ? "ربات روشن شد" : "ربات خاموش شد"); setTimeout(vBot, 400); });
 
       /* ── دستورها ── */
       let ck = [];
-      const tCmdsBase = guard(async () => {
+      const tCmds = guard(async () => {
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; ck = Object.keys(cmds);
         const menu = bot.auto_menu !== false;
         $("tb").innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 12px"><span style="color:var(--mu);font-size:13px" class="mono">${n(ck.length)} command</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} دستور</button></div>` +
@@ -467,7 +515,7 @@
         $("sheet").innerHTML = `<div class="sh-h"><span>پیام همگانی</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b"><label>متن پیام (HTML مجاز)</label><textarea class="in" id="bc" rows="4" placeholder="سلام! …"></textarea><div class="pv" style="margin-top:12px"><div class="bub" id="bcp">پیش‌نمایش پیام…</div></div></div>
           <div class="sh-f"><button class="btn" onclick="bcast()">${ic("send")} ارسال به ${n(bot.stats?.unique_users)}</button></div>`;
-        const t = $("bc"); t.oninput = () => $("bcp").innerHTML = tgHtml(t.value) || "پیش‌نمایش پیام…";
+        const t = $("bc"); t.oninput = () => $("bcp").textContent = t.value || "پیش‌نمایش پیام…";
         $("scrim").classList.add("on");
       }
 
@@ -481,7 +529,7 @@
         drawRule(); $("scrim").classList.add("on");
       }
       const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
-      function rulePrev() { const p = $("rpv"); if (!p) return; const kw = rd.keywords.split(",").map((x) => x.trim()).filter(Boolean); p.innerHTML = (rd.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[rd.m.type]}</div>` : "") + `<div class="bub">${tgHtml(rd.response) || '<span style="color:var(--mu)">پاسخ…</span>'}</div>` + (kw.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با پیام‌هایی که ${kw.map((k) => `<span class="kw">${esc(k)}</span>`).join(" ")} دارند جواب می‌دهد</div>` : ""); }
+      function rulePrev() { const p = $("rpv"); if (!p) return; const kw = rd.keywords.split(",").map((x) => x.trim()).filter(Boolean); p.innerHTML = (rd.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[rd.m.type]}</div>` : "") + `<div class="bub">${esc(rd.response) || '<span style="color:var(--mu)">پاسخ…</span>'}</div>` + (kw.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با پیام‌هایی که ${kw.map((k) => `<span class="kw">${esc(k)}</span>`).join(" ")} دارند جواب می‌دهد</div>` : ""); }
       function drawRule() {
         const top = $("shb")?.scrollTop || 0; const m = rd.m;
         $("sheet").innerHTML = `<div class="sh-h"><span>${rd.id ? "ویرایش قانون" : "قانون جدید"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
@@ -511,6 +559,213 @@
       const fjSave = guard(async () => { let c = $("fj").value.trim(); if (!c) return toast("آیدی کانال را وارد کن", 1); if (!/^[@\-0-9]/.test(c)) c = "@" + c; await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } }); bot.force_join_channel = c; closeSheet(); toast("فعال شد"); tPlug(); });
       const bcast = guard(async () => { const t = $("bc").value.trim(); if (!t) return toast("متن خالی است", 1); if (!bot.is_running) return toast("اول ربات را روشن کن", 1); sure(`به ${n(bot.stats?.unique_users)} کاربر ارسال شود؟`, guard(async () => { const r = await api(`/api/bots/${botId}/broadcast`, { method: "POST", body: { text: t } }); toast(r.message || "در صف ارسال"); closeSheet(); })); });
 
+      /* ════ نقشهٔ جریان (Flow Map) — توپولوژی به `commands + callbacks` کامپایل می‌شود که همین حالا روی بک‌اند اجرا می‌شود. جای نودها در localStorage هر ربات می‌ماند، چون بک‌اند schema ثابت دارد و فیلد اضافه دور می‌ریزد. ════ */
+      let flow = null, flowRaf = 0, flowPtr = null;
+      const FC = { nw: 200, gapX: 90, gapY: 150, padX: 40, padY: 40 };
+      const fk = (id) => "gs_flow_" + id;
+      const uid = () => Math.random().toString(36).slice(2, 9);
+      const loadFlow = (id, cmds) => {
+        let s = {}; try { s = JSON.parse(localStorage.getItem(fk(id)) || "{}"); } catch (e) {}
+        const nodes = (s.nodes || []).slice();
+        Object.keys(cmds || {}).forEach((name) => {
+          const ex = nodes.find((nd) => nd.kind === "cmd" && nd.name === name);
+          if (!ex) nodes.push({ id: "cmd_" + name, kind: "cmd", name, x: NaN, y: NaN });
+        });
+        const live = nodes.filter((nd) => nd.kind !== "cmd" || !!cmds[nd.name]);
+        const ids = new Set(live.map((n) => n.id));
+        const edges = (s.edges || []).filter((e) => ids.has(e.from) && ids.has(e.to));
+        const pos = s.view || {};
+        const view = { x: pos.x || 0, y: pos.y || 0, z: Math.min(2, Math.max(0.4, pos.z || 1)) };
+        live.forEach((nd) => { if (Number.isFinite(nd.x) && Number.isFinite(nd.y)) return; const ix = live.indexOf(nd); nd.x = FC.padX + (ix % 3) * (FC.nw + FC.gapX); nd.y = FC.padY + Math.floor(ix / 3) * FC.gapY; });
+        return { nodes: live, edges, view };
+      };
+      const saveFlow = () => { if (!flow) return; try { localStorage.setItem(fk(botId), JSON.stringify({ nodes: flow.nodes, edges: flow.edges, view: flow.view })); } catch (e) {} };
+      const nById = (id) => flow.nodes.find((n) => n.id === id);
+      const outEdges = (id) => flow.edges.filter((e) => e.from === id);
+      const inEdges = (id) => flow.edges.filter((e) => e.to === id);
+      const nodeSummary = (nd) => {
+        if (nd.kind === "cmd") { const c = (cmds || {})[nd.name] || {}; const btns = (c.buttons || []).flat(); const media = c.media?.url || c.photo; return { title: "/" + nd.name, sub: c.description || (c.response || "").replace(/\s+/g, " ").slice(0, 52) || "بدون متن", badge: "command", icon: media ? "image" : "code", tone: "cmd", btnCount: btns.length, hasMedia: !!media }; }
+        if (nd.kind === "reply") return { title: nd.text ? nd.text.replace(/\s+/g, " ").slice(0, 42) : "پاسخ", sub: "متن پاسخِ دکمه", badge: "reply", icon: "msg", tone: "cmd" };
+        if (nd.kind === "image") return { title: "تصویر", sub: (nd.url || "").replace(/^https?:\/\//, "").slice(0, 40) || "بدون لینک", badge: nd.mediaType || "photo", icon: "image", tone: "img", hasMedia: !!nd.url };
+        if (nd.kind === "link") return { title: nd.text || "لینک", sub: (nd.url || "").slice(0, 40), badge: "url", icon: "link", tone: "url" };
+        if (nd.kind === "ticket") return { title: "تیکت پشتیبانی", sub: nd.note || "دریافت پیام کاربر و ارسال به ادمین", badge: "beta", icon: "ticket", tone: "ticket" };
+        return { title: "—", sub: "", badge: "?", icon: "bot", tone: "cmd" };
+      };
+      function flowNodeH(nd) { const W = $("fw"); const el = W && W.querySelector(`.node[data-id="${nd.id}"]`); return ((el && el.offsetHeight) || 74); }
+      function drawFlowEdges() {
+        const svg = $("fs"); if (!svg) return;
+        const cy = (nd) => nd.y + flowNodeH(nd) / 2;
+        const wire = (a, b, cls) => {
+          const x1 = a.x + FC.nw, y1 = cy(a), x2 = b.x, y2 = cy(b); const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
+          return `<path class="wire ${cls || ""}" d="M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`;
+        };
+        const wires = flow.edges.map((e) => { const a = nById(e.from), b = nById(e.to); if (!a || !b) return ""; const ok = a.kind === "cmd" && (b.kind === "cmd" || b.kind === "reply"); return wire(a, b, ok ? "on" : ""); }).join("");
+        svg.innerHTML = wires + (flowPtr && flowPtr.mode === "link" ? `<path class="wire draft" d="M${flowPtr.sx},${flowPtr.sy}C${flowPtr.sx + 60},${flowPtr.sy} ${flowPtr.mx - 60},${flowPtr.my} ${flowPtr.mx},${flowPtr.my}"/>` : "");
+      }
+      function drawFlowNodes() {
+        const W = $("fw"); if (!W) return;
+        W.style.transform = `translate(${flow.view.x}px,${flow.view.y}px) scale(${flow.view.z})`;
+        const cnv = $("fc"); if (cnv) { cnv.style.setProperty("--pdx", flow.view.x + "px"); cnv.style.setProperty("--pdy", flow.view.y + "px"); }
+        const nodesHtml = flow.nodes.map((nd) => {
+          const s = nodeSummary(nd); const inD = inEdges(nd.id).length, outD = outEdges(nd.id).length;
+          const canOut = nd.kind === "cmd";
+          return `<div class="node ${s.tone}" data-id="${nd.id}" style="transform:translate(${nd.x}px,${nd.y}px)">` +
+            (canOut ? `<i class="port out" data-port="${nd.id}" title="برای اتصال بکش"></i>` : "") +
+            `<i class="port in" title="ورودی"></i>` +
+            `<div class="nh"><span class="nicon">${ic(s.icon)}</span><b>${esc(s.title)}</b><span class="badge">${esc(s.badge)}</span></div><div class="nt">${esc(s.sub)}</div><div class="nb"><span style="color:var(--mu);font-size:11px" class="mono">${n(inD)}·${n(outD)} lnk</span><div class="acts"><div class="nib" data-act="edit" title="ویرایش">${ic("code")}</div>${nd.kind !== "cmd" ? `<div class="nib" data-act="del" title="حذف" style="color:var(--red)">${ic("trash")}</div>` : ""}</div></div></div>`;
+        }).join("");
+        W.innerHTML = `<svg class="flow-svg" id="fs" xmlns="http://www.w3.org/2000/svg"></svg>` + nodesHtml + (flow.nodes.length ? "" : `<div class="flow-empty"><div class="big">${ic("map")}</div><b style="display:block;margin-top:10px;color:var(--tx)">نقشه خالی است</b><div style="margin-top:5px;font-size:12px">از نقطهٔ فیروزه‌ای کنار کارتِ دستور بکش و روی کارت مقصد رها کن.</div></div>`);
+        drawFlowEdges();
+      }
+      function tMapRedraw() { drawFlowNodes(); const hint = $("fhint"); if (hint) hint.textContent = `z ${n(Math.round(flow.view.z * 100))}% · ${n(flow.nodes.length)} node · ${n(flow.edges.length)} edge`; }
+      function openReply(id) {
+        const isNew = !id; const nd = isNew ? { text: "" } : nById(id);
+        $("sheet").innerHTML = `<div class="sh-h"><span>${isNew ? "کارت پاسخ" : "ویرایش پاسخ"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><label>متن پاسخی که کاربر بعد از زدن دکمه می‌بیند</label><textarea class="in" id="rt" rows="4" placeholder="سلام! چطور کمکت کنم؟">${esc(nd.text || "")}</textarea><div class="pv" style="margin-top:12px"><div class="bub" id="rtp">پیش‌نمایش…</div></div><label>برچسب دکمه‌ای که این پاسخ را باز می‌کند</label><input class="in" id="rlb" placeholder="ادامه" value="${esc(nd.label || "")}"></div>
+          <div class="sh-f"><button class="btn" onclick="saveReply('${id || ""}')">ذخیره</button></div>`;
+        $("scrim").classList.add("on"); const t = $("rt"), p = $("rtp"); const up = () => p.textContent = t.value || "پیش‌نمایش…"; t.oninput = up; up();
+      }
+      const saveReply = guard(async (id) => {
+        const txt = $("rt").value.trim(), lb = $("rlb").value.trim() || "ادامه";
+        if (!txt) return toast("متن پاسخ خالی است", 1);
+        if (id) { const n = nById(id); n.text = txt; n.label = lb; } else flow.nodes.push({ id: "reply_" + uid(), kind: "reply", text: txt, label: lb, x: 100 - flow.view.x, y: 100 - flow.view.y });
+        closeSheet(); saveFlow(); tMapRedraw(); toast("ذخیره شد");
+      });
+      function openImageNode(id) {
+        const isNew = !id; const nd = isNew ? { url: "", mediaType: "photo" } : nById(id);
+        $("sheet").innerHTML = `<div class="sh-h"><span>${isNew ? "کارت تصویر" : "ویرایش تصویر"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><label>نوع رسانه</label><select class="in" id="imt">${Object.entries(MT).map(([k, v]) => `<option value="${k}" ${nd.mediaType === k ? "selected" : ""}>${v}</option>`).join("")}</select><label>URL تصویر/فایل</label><input class="in mono ltr" id="imu" placeholder="https://…" value="${esc(nd.url || "")}"><input type="file" id="imf" hidden><div class="btn line sm" style="width:max-content;margin-top:8px" onclick="$('imf').click()">آپلود</div></div>
+          <div class="sh-f"><button class="btn" onclick="saveImageNode('${id || ""}')">ذخیره</button></div>`;
+        $("scrim").classList.add("on");
+        $("imf").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; toast("در حال آپلود…"); try { const d = await _upload(f); $("imu").value = d.url; $("imt").value = d.type; toast("آپلود شد"); } catch (er) { toast(er.message, 1); } };
+      }
+      const saveImageNode = guard(async (id) => {
+        const url = $("imu").value.trim(), t = $("imt").value; if (!/^https?:\/\//.test(url)) return toast("لینک نامعتبر است", 1);
+        if (id) { const n = nById(id); n.url = url; n.mediaType = t; } else flow.nodes.push({ id: "img_" + uid(), kind: "image", url, mediaType: t, x: 100 - flow.view.x, y: 100 - flow.view.y });
+        closeSheet(); saveFlow(); tMapRedraw(); toast("ذخیره شد");
+      });
+      function openLinkNode(id) {
+        const isNew = !id; const nd = isNew ? { url: "", text: "" } : nById(id);
+        $("sheet").innerHTML = `<div class="sh-h"><span>${isNew ? "کارت لینک" : "ویرایش لینک"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><label>متن دکمه</label><input class="in" id="lnt" placeholder="کانال ما" value="${esc(nd.text || "")}"><label>آدرس</label><input class="in ltr mono" id="lnu" placeholder="https://t.me/…" value="${esc(nd.url || "")}"></div>
+          <div class="sh-f"><button class="btn" onclick="saveLinkNode('${id || ""}')">ذخیره</button></div>`;
+        $("scrim").classList.add("on");
+      }
+      const saveLinkNode = guard(async (id) => {
+        const t = $("lnt").value.trim(), u = $("lnu").value.trim(); if (!t || !u) return toast("هر دو پر شود", 1);
+        if (id) { const n = nById(id); n.text = t; n.url = u; } else flow.nodes.push({ id: "link_" + uid(), kind: "link", text: t, url: u, x: 100 - flow.view.x, y: 100 - flow.view.y });
+        closeSheet(); saveFlow(); tMapRedraw(); toast("ذخیره شد");
+      });
+      function openTicketNode(id) {
+        const isNew = !id; const nd = isNew ? { note: "" } : nById(id);
+        $("sheet").innerHTML = `<div class="sh-h"><span>${isNew ? "کارت تیکت" : "ویرایش تیکت"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><p style="color:var(--mu);font-size:12.5px;padding:10px;background:color-mix(in srgb,var(--amber) 10%,transparent);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:10px">فعال‌سازی کامل این قابلیت به «پچِ بک‌اند» نیاز دارد که در نقشهٔ راه هست. فعلاً می‌توانی کارت را به یک دکمه وصل کنی؛ تا زمان فعال‌سازی، متن پیش‌فرض به کاربر نشان داده می‌شود.</p><label>متن درخواست از کاربر</label><textarea class="in" id="tkn" rows="3" placeholder="مشکل خود را بنویسید…">${esc(nd.note || "")}</textarea></div>
+          <div class="sh-f"><button class="btn" onclick="saveTicketNode('${id || ""}')">ذخیره</button></div>`;
+        $("scrim").classList.add("on");
+      }
+      const saveTicketNode = guard(async (id) => {
+        const note = $("tkn").value.trim() || "مشکل خود را بنویسید تا به پشتیبانی برسد.";
+        if (id) { const n = nById(id); n.note = note; } else flow.nodes.push({ id: "tk_" + uid(), kind: "ticket", note, x: 100 - flow.view.x, y: 100 - flow.view.y });
+        closeSheet(); saveFlow(); tMapRedraw(); toast("ذخیره شد");
+      });
+      function editNode(id) { const nd = nById(id); if (!nd) return; if (nd.kind === "cmd") { const names = Object.keys(cmds || {}); const i = names.indexOf(nd.name); if (i >= 0) openCmd(i); else toast("این دستور دیگر وجود ندارد", 1); } else if (nd.kind === "reply") openReply(id); else if (nd.kind === "image") openImageNode(id); else if (nd.kind === "link") openLinkNode(id); else if (nd.kind === "ticket") openTicketNode(id); }
+      const delNode = (id) => { const nd = nById(id); if (!nd) return; sure("این کارت حذف شود؟", () => { flow.nodes = flow.nodes.filter((n) => n.id !== id); flow.edges = flow.edges.filter((e) => e.from !== id && e.to !== id); saveFlow(); tMapRedraw(); hap("light"); }); };
+      function addNode(kind) {
+        if (kind === "cmd") { openCmd(-1); return; }
+        if (kind === "reply") return openReply(); if (kind === "image") return openImageNode(); if (kind === "link") return openLinkNode(); if (kind === "ticket") return openTicketNode();
+      }
+      function flowZoom(mult) { flow.view.z = Math.min(2, Math.max(0.4, flow.view.z * mult)); tMapRedraw(); saveFlow(); }
+      function flowFit() {
+        if (!flow.nodes.length) { flow.view.x = 0; flow.view.y = 0; flow.view.z = 1; tMapRedraw(); saveFlow(); return; }
+        const xs = flow.nodes.map((n) => n.x), ys = flow.nodes.map((n) => n.y);
+        const minX = Math.min(...xs), maxX = Math.max(...xs) + FC.nw, minY = Math.min(...ys), maxY = Math.max(...ys) + 60;
+        const cnv = $("fc"); const cw = cnv.clientWidth - 40, ch = cnv.clientHeight - 40;
+        const z = Math.min(2, Math.max(0.4, Math.min(cw / (maxX - minX + 40), ch / (maxY - minY + 40))));
+        flow.view.z = z; flow.view.x = 20 - minX * z + (cw - (maxX - minX) * z) / 2; flow.view.y = 20 - minY * z + (ch - (maxY - minY) * z) / 2; tMapRedraw(); saveFlow();
+      }
+      function flowPan(dx, dy) { flow.view.x += dx; flow.view.y += dy; if (flowRaf) return; flowRaf = requestAnimationFrame(() => { flowRaf = 0; tMapRedraw(); }); }
+      function stopFlowLoop() { /* no loop needed; kept for setTab symmetry */ }
+      async function compileFlow() {
+        if (!flow) return toast("ابتدا نقشه را باز کن", 1);
+        const cmdsLive = (bot.commands || {});
+        const updates = {};
+        Object.keys(cmdsLive).forEach((name) => { updates[name] = { response: cmdsLive[name].response || "", description: cmdsLive[name].description || "", buttons: (cmdsLive[name].buttons || []).map((row) => row.slice()), cb: Object.assign({}, cmdsLive[name].callbacks || {}), media: cmdsLive[name].media || null, photo: cmdsLive[name].photo || null }; });
+        const cmdNodes = Object.fromEntries(flow.nodes.filter((n) => n.kind === "cmd").map((n) => [n.name, n]));
+        Object.entries(cmdNodes).forEach(([name, n]) => { const ndEdges = outEdges(n.id); for (const e of ndEdges) { const tgt = nById(e.to); if (!tgt || (tgt.kind !== "reply" && tgt.kind !== "cmd")) continue; const bid = "b_" + e.to.replace(/[^a-z0-9]/gi, "").slice(0, 10); const text = tgt.kind === "reply" ? (tgt.label || "ادامه") : ("/" + tgt.name); const resp = tgt.kind === "reply" ? tgt.text : ((cmdsLive[tgt.name] || {}).response || ""); const row = 0; const U = updates[name]; if (!U.buttons[row]) U.buttons[row] = []; if (!U.buttons[row].some((b) => b.id === bid)) U.buttons[row].push({ text, id: bid }); U.cb[bid] = resp; } });
+        for (const [name, U] of Object.entries(updates)) {
+          const payload = { response: U.response, description: U.description, buttons: U.buttons.length ? U.buttons.map((r) => r.filter((x) => x.text || x.id)) : null, photo: U.photo || null, media: U.media || null };
+          payload.buttons = (payload.buttons || []).filter((r) => r.length) || null;
+          await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: payload });
+          const existing = (cmdsLive[name].callbacks || {});
+          for (const [id, r] of Object.entries(U.cb)) if (r !== existing[id]) await api(`/api/bots/${botId}/commands/${name}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: r } });
+          for (const id of Object.keys(existing)) if (!(id in U.cb)) { try { await api(`/api/bots/${botId}/commands/${name}/callbacks/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch (e) {} }
+        }
+        const fresh = await api(`/api/bots/${botId}/commands`); cmds = fresh.commands || {}; bot.commands = cmds;
+        toast("نقشه روی ربات اعمال شد"); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} }
+      }
+      const applyFlow = guard(compileFlow);
+      const flowMidY = (nd) => nd.y + flowNodeH(nd) / 2;
+      // convert client point → world coords
+      function flowWorldPt(cx, cyv) { const r = $("fc").getBoundingClientRect(); const z = flow.view.z || 1; return { x: (cx - r.left - flow.view.x) / z, y: (cyv - r.top - flow.view.y) / z }; }
+      function nodeAtWorld(wx, wy) { let best = null, ba = 1e9; for (const nd of flow.nodes) { const h = flowNodeH(nd); if (wx >= nd.x - 6 && wx <= nd.x + FC.nw + 6 && wy >= nd.y - 6 && wy <= nd.y + h + 6) { const a = FC.nw * h; if (a < ba) { ba = a; best = nd; } } } return best; }
+      function flowPointerStart(e) {
+        if (e.button !== 0 && e.pointerType === "mouse") return;
+        const cnv = $("fc"); if (!cnv) return;
+        const act = e.target.closest?.("[data-act]");
+        if (act) { const id = act.closest(".node").dataset.id; if (act.dataset.act === "edit") editNode(id); else if (act.dataset.act === "del") delNode(id); return; }
+        const portEl = e.target.closest?.(".port.out"); const nodeEl = e.target.closest?.(".node");
+        try { cnv.setPointerCapture(e.pointerId); } catch (x) {}
+        if (portEl) { const id = portEl.dataset.port; const nd = nById(id); const hy = flowMidY(nd); flowPtr = { mode: "link", id, sx: nd.x + FC.nw, sy: hy, mx: nd.x + FC.nw, my: hy }; portEl.classList.add("src"); drawFlowEdges(); hap("light"); e.preventDefault(); return; }
+        if (nodeEl) { const id = nodeEl.dataset.id; const nd = nById(id); flowPtr = { mode: "drag", id, startX: e.clientX, startY: e.clientY, origX: nd.x, origY: nd.y, moved: 0 }; return; }
+        flowPtr = { mode: "pan", startX: e.clientX, startY: e.clientY, origX: flow.view.x, origY: flow.view.y, moved: 0 };
+      }
+      function flowPointerMove(e) {
+        if (!flowPtr) return; const dx = e.clientX - flowPtr.startX, dy = e.clientY - flowPtr.startY;
+        if (flowPtr.mode === "pan") { flow.view.x = flowPtr.origX + dx; flow.view.y = flowPtr.origY + dy; if (flowRaf) return; flowRaf = requestAnimationFrame(() => { flowRaf = 0; tMapRedraw(); }); return; }
+        if (flowPtr.mode === "drag") { flowPtr.moved = Math.max(flowPtr.moved || 0, Math.abs(dx) + Math.abs(dy)); const nd = nById(flowPtr.id); if (!nd) return; const z = flow.view.z || 1; nd.x = flowPtr.origX + dx / z; nd.y = flowPtr.origY + dy / z; if (flowRaf) return; flowRaf = requestAnimationFrame(() => { flowRaf = 0; drawFlowNodes(); }); return; }
+        if (flowPtr.mode === "link") { const w = flowWorldPt(e.clientX, e.clientY); const over = nodeAtWorld(w.x, w.y); flowPtr.hover = over && over.id !== flowPtr.id ? over.id : null; const wp = flowWorldPt(e.clientX, e.clientY); flowPtr.mx = wp.x; flowPtr.my = wp.y; document.querySelectorAll(".node").forEach((el) => el.classList.toggle("drop", el.dataset.id === flowPtr.hover)); if (flowRaf) return; flowRaf = requestAnimationFrame(() => { flowRaf = 0; drawFlowEdges(); }); return; }
+      }
+      function flowPointerUp(e) {
+        if (!flowPtr) return; const fp = flowPtr; flowPtr = null;
+        document.querySelectorAll(".node.drop").forEach((el) => el.classList.remove("drop"));
+        if (fp.mode === "link") { document.querySelectorAll(".port.src").forEach((p) => p.classList.remove("src")); const w = flowWorldPt(e.clientX, e.clientY); const over = fp.hover ? nById(fp.hover) : nodeAtWorld(w.x, w.y);
+          if (over && over.id !== fp.id) { const from = nById(fp.id); const toN = over; if (from.kind !== "cmd") { toast("اتصال فقط از نقطهٔ کارتِ دستور شروع می‌شود", 1); drawFlowEdges(); return; } if (toN.kind !== "reply" && toN.kind !== "cmd") { toast("این کارت فعلاً به پچ بک‌اند نیاز دارد", 1); drawFlowEdges(); return; } flow.edges = flow.edges.filter((x) => !(x.from === fp.id && x.to === toN.id)); flow.edges.push({ from: fp.id, to: toN.id }); saveFlow(); hap("success"); toast("متصل شد"); tMapRedraw(); return; }
+          drawFlowEdges(); return; }
+        if (fp.mode === "drag" && (fp.moved || 0) < 5) { editNode(fp.id); return; }
+        if (fp.mode === "drag" || fp.mode === "pan") saveFlow();
+      }
+      function flowWheel(e) { if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); flowZoom(e.deltaY > 0 ? 0.9 : 1.1); return; } e.preventDefault(); flowPan(-e.deltaX, -e.deltaY); }
+      const tMap = guard(async () => {
+        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
+        flow = loadFlow(botId, cmds);
+        $("tb").innerHTML = `
+          <div class="flow-toolbar">
+            <div class="tb-title"><b>نقشهٔ جریان</b> · <b>${n(Object.keys(cmds).length)}</b> دستور</div>
+            <div class="ib" style="width:34px;height:34px" onclick="flowZoom(0.85)" title="کوچک‌نمایی">${ic("zoomout")}</div>
+            <div class="ib" style="width:34px;height:34px" onclick="flowZoom(1.18)" title="بزرگ‌نمایی">${ic("zoomin")}</div>
+            <div class="ib" style="width:34px;height:34px" onclick="flowFit()" title="نمایش کامل">${ic("fit")}</div>
+            <div class="ib" style="width:34px;height:34px;color:var(--ac);border-color:var(--ac)" onclick="applyFlow()" title="اعمال روی ربات">${ic("check")}</div>
+          </div>
+          <div class="flow-palette">
+            <button onclick="addNode('cmd')">${ic("plus")} دستور</button>
+            <button onclick="addNode('reply')">${ic("msg")} پاسخ</button>
+            <button onclick="addNode('image')">${ic("image")} تصویر</button>
+            <button onclick="addNode('link')">${ic("link")} لینک</button>
+            <button onclick="addNode('ticket')">${ic("ticket")} تیکت</button>
+          </div>
+          <div class="flow-canvas" id="fc" onpointerdown="flowPointerStart(event)" onpointermove="flowPointerMove(event)" onpointerup="flowPointerUp(event)" onpointercancel="flowPointerUp(event)">
+            <div class="flow-world" id="fw">
+              <svg class="flow-svg" id="fs" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <div class="flow-hint" id="fhint"></div>
+          </div>
+          <div style="color:var(--mu);font-size:11.5px;margin:8px 4px 12px">ساختار به مدل <b class="mono">commands + callbacks</b> فعلی کامپایل می‌شود — همان چیزی که الان روی ربات اجرا می‌شود. اتصال دکمه به تصویر/تیکت نیازمند «پچِ بک‌اند» است و پس از فعال‌سازی آزاد می‌شود.</div>
+          <div style="color:var(--mu);font-size:11.5px;margin:2px 4px 8px">راهنما: یک کارت را بگیر و جابه‌جا کن. برای اتصال، از نقطهٔ سمتِ چپ کارتِ مبدأ شروع کن و روی مقصد رها کن. چرخ ماوس = جابه‌جایی، <kbd>Ctrl</kbd> + چرخ = زوم.</div>
+        `;
+        tMapRedraw();
+        requestAnimationFrame(() => { flowFit(); const c = $("fc"); if (c) c.addEventListener("wheel", flowWheel, { passive: false }); });
+      });
+
       /* ── کاربران ── */
       let allUsers = [];
       const tUsers = guard(async () => {
@@ -524,7 +779,7 @@
       const fu = (q) => { const t = q.trim().toLowerCase(); const list = allUsers.filter((u) => !t || String(u.uid).includes(t) || (u.name || "").toLowerCase().includes(t) || (u.username || "").toLowerCase().includes(t)); $("ul").innerHTML = list.length ? list.map(userRow).join("") : `<div class="empty" style="padding:22px"><div style="color:var(--mu)">موردی یافت نشد.</div></div>`; };
 
       /* ── مدیریت (تنظیمات) ── */
-      const tSetBase = guard(async () => {
+      const tSet = guard(async () => {
         const g = bot.daily_stats || {}; const days = Object.keys(g).sort().slice(-7); const mx = Math.max(...days.map((d) => g[d].new_users || 0), 1);
         const backup = JSON.stringify(bot.commands || {});
         $("tb").innerHTML =
@@ -545,7 +800,7 @@
         ed = { name: k, isNew: i < 0, response: c.response || "", description: c.description || "", cb, m: c.media?.url ? { ...c.media } : c.photo ? { type: "photo", url: c.photo } : { type: "photo", url: "" }, b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, t: x.url ? "url" : "cb", r: cb[x.id] || "", o: 0 }))) };
         drawCmd(); $("scrim").classList.add("on"); }
       const closeSheet = () => $("scrim").classList.remove("on");
-      function prev() { const p = $("pv"); if (!p) return; const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") + `<div class="bub">${tgHtml(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` + rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join(""); }
+      function prev() { const p = $("pv"); if (!p) return; const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") + `<div class="bub">${esc(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` + rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join(""); }
       const rmBtn = (r, b) => { ed.b[r].splice(b, 1); if (!ed.b[r].length) ed.b.splice(r, 1); drawCmd(); };
       function setBType(ri, bi, t) { ed.b[ri][bi].t = t; if (t === "url") ed.b[ri][bi].o = 0; drawCmd(); }
       function drawCmd() { const top = $("shb")?.scrollTop || 0, m = ed.m; const canDel = !ed.isNew && ed.name !== "start"; const orph = Object.keys(ed.cb).filter((id) => !ed.b.flat().some((x) => x.id === id));
@@ -566,116 +821,20 @@
       async function _upload(f) { const fd = new FormData(); fd.append("file", f); const h = {}; if (token) h.Authorization = "Bearer " + token; if (initData) h["X-Init-Data"] = initData; const r = await fetch(API + "/api/upload-media", { method: "POST", headers: h, body: fd }); const d = await r.json(); if (!r.ok) throw new Error(d.error || "خطا در آپلود"); return d; }
       const up = guard(async (f) => { if (!f) return; toast("در حال آپلود…"); const d = await _upload(f); ed.m = { type: d.type, url: d.url }; drawCmd(); toast("آپلود شد"); });
       const cbUrl = (id) => `/api/bots/${botId}/commands/${ed.name}/callbacks/${encodeURIComponent(id)}`;
+      const refreshTab = () => { if (tab === "map") tMap(); else if (tab === "plug") tPlug(); else if (tab === "users") tUsers(); else if (tab === "set") tSet(); else tCmds(); };
       const saveCmd = guard(async () => { const name = ed.name.trim().toLowerCase().replace(/^\//, "").replace(/\s+/g, "_"); if (!name) return toast("نام دستور خالی است", 1); if (!ed.response.trim()) return toast("متن پاسخ خالی است", 1); const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); rows.flat().forEach((x) => { x.text = x.text.trim(); if (x.t === "url") { x.url = (x.url || "").trim(); if (x.url && !/^https?:\/\//.test(x.url)) x.url = "https://" + x.url; } else { x.id = x.id.trim().replace(/\s+/g, "_") || "btn_" + Math.random().toString(36).slice(2, 8); } }); const u = (ed.m.url || "").trim(), ok = /^https?:\/\//.test(u);
         const payload = { response: ed.response.trim(), description: ed.description.trim(), buttons: rows.length ? rows.map((r) => r.map((x) => x.t === "url" ? { text: x.text, url: x.url } : { text: x.text, id: x.id })) : null, photo: ok && ed.m.type === "photo" ? u : null, media: ok ? { type: ed.m.type, url: u } : null };
         await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: payload }); ed.name = name;
         await Promise.all(rows.flat().filter((x) => x.t !== "url").map((x) => { const v = (x.r || "").trim(), old = ed.cb[x.id]; if (v && v !== old) return api(cbUrl(x.id), { method: "PUT", body: { response: v } }); if (!v && old !== undefined) return api(cbUrl(x.id), { method: "DELETE" }); }));
-        toast("ذخیره شد"); closeSheet(); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } tCmds(); });
-      const delCmd = () => sure("این دستور حذف شود؟", guard(async () => { await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" }); toast("حذف شد"); closeSheet(); tCmds(); }));
-      const cbDel = guard(async (id) => { await api(cbUrl(id), { method: "DELETE" }); delete ed.cb[id]; drawCmd(); tCmds(); });
+        toast("ذخیره شد"); closeSheet(); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } refreshTab(); });
+      const delCmd = () => sure("این دستور حذف شود؟", guard(async () => { await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" }); toast("حذف شد"); closeSheet(); refreshTab(); }));
+      const cbDel = guard(async (id) => { await api(cbUrl(id), { method: "DELETE" }); delete ed.cb[id]; drawCmd(); refreshTab(); });
 
       /* ── پروفایل / پنل ادمین ── */
-      const vMeBase = guard(async () => { const nm = user.full_name || user.username || String(user.uid); let rf = ""; try { const r = await api("/api/coins/referral"); rf = `<div class="strip" style="margin-top:14px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div><h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2><div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:46px;height:46px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`; } catch (e) {}
+      const vMe = guard(async () => { const nm = user.full_name || user.username || String(user.uid); let rf = ""; try { const r = await api("/api/coins/referral"); rf = `<div class="strip" style="margin-top:14px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div><h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2><div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:46px;height:46px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`; } catch (e) {}
         app().className = "fade"; app().innerHTML = `<div class="bar"><div><b style="font-size:20px">پروفایل</b></div></div><div class="card" style="display:flex;align-items:center;gap:13px"><span class="ava">${esc(nm.charAt(0))}</span><div style="min-width:0"><b style="font-size:16px;font-weight:600">${esc(nm)}</b><div class="mono ltr" style="color:var(--mu);font-size:13px;text-align:right">#${n(user.uid)}</div></div></div>${rf}<h2>تنظیمات</h2><div class="item" onclick="toggleTheme()"><span class="sq">${ic("moon")}</span><div class="g"><b>تم روشن / تاریک</b></div></div>${user.is_admin ? `<div class="item" onclick="go('admin')"><span class="sq">${ic("shield")}</span><div class="g"><b>آمار سیستم</b></div>${ic("next")}</div>` : ""}<button class="btn red" style="margin-top:16px" onclick="logout()">${ic("logout")} خروج از حساب</button><p style="color:var(--mu);text-align:center;font-size:12px;margin-top:16px">ربات‌ساز · استودیو</p>`; });
       const vAdmin = guard(async () => { const d = await api("/api/admin/full-stats"); const o = d.overview || {}, g = (d.daily_growth || []).slice(-7), mx = Math.max(...g.map((x) => x.new_users), 1); const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : `<p style="color:var(--mu);font-size:13px;padding:2px">—</p>`);
         app().className = "fade"; app().innerHTML = `<div class="bar"><div class="idn"><div class="ib" onclick="go('me')">${ic("back")}</div><div><b>آمار سیستم</b></div></div></div><div class="strip"><div class="ac"><b>${n(o.total_users)}</b><span>کاربر</span></div><div><b>${n(o.total_registered)}</b><span>ثبت‌نام</span></div><div><b>${n(o.total_bots)}</b><span>ربات</span></div><div><b>${n(o.total_active_bots)}</b><span>فعال</span></div></div><div class="strip" style="margin-top:9px"><div><b>${n(o.total_messages_received)}</b><span>دریافتی</span></div><div><b>${n(o.total_messages_sent)}</b><span>ارسالی</span></div><div><b>${n(o.total_coins)}</b><span>سکه</span></div><div><b>${n(o.total_referrals)}</b><span>دعوت</span></div></div>` + (g.length ? `<h2>رشد ۷ روز اخیر</h2><div class="card"><div class="chart">${g.map((x) => `<div class="col"><div class="cbar" style="height:${Math.max(6, (x.new_users / mx) * 100)}%"></div><span class="clab">${x.date.slice(8)}</span></div>`).join("")}</div></div>` : "") + list("برترین ربات‌ها", d.top_bots, (b) => `<div class="item static"><span class="av2 grad" style="width:36px;height:36px">${esc((b.username || "?").slice(0, 1).toUpperCase())}<i class="live ${b.is_active ? "on" : ""}"></i></span><div class="g"><b class="mono">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر</small></div></div>`) + list("برترین کاربران", d.top_users, (u) => `<div class="item static"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} دعوت</small></div><span class="badge">${n(u.coins)} سکه</span></div>`) + list("برترین دعوت‌کننده‌ها", d.top_referrers, (r) => `<div class="item static"><div class="g"><b>${esc(r.name)}</b><small class="mono">@${esc(r.username || "—")}</small></div><span class="badge">${n(r.referral_count)}</span></div>`); });
-
-
-      /* ══════════ نسخهٔ ۲ — لایهٔ افزوده روی همان منطق و همان API (هیچ endpoint تازه‌ای لازم نیست) ══════════ */
-      Object.assign(I, { play: '<path d="M7 4l13 8-13 8z"/>' });
-      const SKL = '<div class="skl"></div>'.repeat(4);
-      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-      /* پیش‌نمایش HTML تلگرام: b i u s code pre a spoiler */
-      const tgHtml = (s) => esc(s)
-        .replace(/&lt;(\/?)(b|i|u|s|em|strong|code|pre)&gt;/g, "<$1$2>")
-        .replace(/&lt;a href=&quot;(https?:\/\/.*?)&quot;&gt;/g, '<a href="$1" target="_blank" rel="noopener">').replace(/&lt;\/a&gt;/g, "</a>")
-        .replace(/&lt;tg-spoiler&gt;/g, '<span class="spo">').replace(/&lt;\/tg-spoiler&gt;/g, "</span>");
-
-      /* رنگ پنل */
-      const ACC = [["فیروزه", "#57c8c1", "#159e97"], ["آبی", "#6ea8ff", "#2f6fe0"], ["کهربایی", "#e2b24d", "#a86f0a"], ["سبز", "#62d18c", "#168a4a"], ["مرجانی", "#f2877b", "#c4472f"]];
-      function applyAccent() { const a = ACC[+localStorage.gs_acc || 0] || ACC[0], v = document.documentElement.getAttribute("data-theme") === "light" ? a[2] : a[1], st = document.documentElement.style; st.setProperty("--ac", v); st.setProperty("--ac2", v); }
-      const setAcc = (i) => { localStorage.gs_acc = i; applyAccent(); hap("light"); document.querySelectorAll(".accd").forEach((d, k) => d.classList.toggle("on", k === i)); };
-      const vMe = guard(async () => { await vMeBase(); app().insertAdjacentHTML("beforeend", `<h2>رنگ پنل</h2><div class="card acc">${ACC.map((a, i) => `<span class="accd ${(+localStorage.gs_acc || 0) === i ? "on" : ""}" style="--c:${a[1]}" title="${a[0]}" onclick="setAcc(${i})"></span>`).join("")}</div>`); });
-
-      /* خانه: نوار پیشرفت راه‌اندازی */
-      const vHome = guard(async () => { await vHomeBase(); const d = document.querySelectorAll(".step .num svg").length, ph = document.querySelector(".panel-h");
-        if (ph) ph.insertAdjacentHTML("beforeend", `<div class="mono" style="margin-top:14px;font-size:11.5px;color:var(--mu);display:flex;justify-content:space-between"><span>پیشرفت راه‌اندازی</span><span>${d}/4</span></div><div class="bar2"><i style="width:${d * 25}%"></i></div>`); });
-
-      /* نوار قالب‌بندی + ایموجی روی هر فیلد متن پاسخ */
-      const FMT = [["b", "B"], ["i", "I"], ["u", "U"], ["s", "S"], ["code", "‹›"], ["a", "🔗"], ["tg-spoiler", "◼"]];
-      function addTb() { const ta = document.querySelector("#sheet textarea.in"); if (!ta || ta.previousElementSibling?.classList.contains("fmt")) return;
-        const nd = 'onmousedown="event.preventDefault()"';
-        ta.insertAdjacentHTML("beforebegin", `<div class="fmt">${FMT.map(([t, l]) => `<button ${nd} onclick="fmt('${t}')">${l}</button>`).join("")}<span class="sep"></span>${["✅", "🔥", "💰", "🎁", "⭐", "📞", "👇", "❤️"].map((e) => `<button ${nd} onclick="ins('${e}')">${e}</button>`).join("")}</div>`); }
-      function fmt(t) { const ta = document.querySelector("#sheet textarea.in"); if (!ta) return; const a = ta.selectionStart, b = ta.selectionEnd, sel = ta.value.slice(a, b) || "متن"; let o = `<${t}>`;
-        if (t === "a") { const u = prompt("لینک (https://…)"); if (!u) return; o = `<a href="${u}">`; }
-        ta.value = ta.value.slice(0, a) + o + sel + `</${t === "a" ? "a" : t}>` + ta.value.slice(b); ta.focus(); ta.setSelectionRange(a + o.length, a + o.length + sel.length); ta.dispatchEvent(new Event("input", { bubbles: true })); hap("light"); }
-      function ins(e) { const ta = document.querySelector("#sheet textarea.in"); if (!ta) return; const a = ta.selectionStart; ta.value = ta.value.slice(0, a) + e + ta.value.slice(ta.selectionEnd); ta.focus(); ta.setSelectionRange(a + e.length, a + e.length); ta.dispatchEvent(new Event("input", { bubbles: true })); }
-      ["drawCmd", "drawRule", "openBroadcast", "openCfg"].forEach((k) => { const o = window[k]; window[k] = function (...a) { const r = o.apply(this, a); addTb(); return r; }; });
-
-      /* سلامت ربات: امتیاز + پیشنهادهای یک‌لمسی */
-      const hgo = (k) => (k === "power" ? power() : setTab(k));
-      async function health(id0) {
-        try { rules = (await api(`/api/bots/${id0}/rules`)).rules || []; } catch (e) { rules = []; }
-        const box = $("hl"); if (!box || id0 !== botId) return;
-        const c = bot.commands || {}, k = Object.keys(c);
-        const chk = [["دستور /start", !!c.start?.response, "cmds"], ["حداقل ۳ دستور", k.length >= 3, "cmds"], ["دکمهٔ شیشه‌ای", k.some((x) => (c[x].buttons || []).length), "cmds"],
-          ["پیام خوش‌آمد", !!bot.welcome_message, "plug"], ["پاسخ ناشناخته", !!bot.unknown_reply, "plug"], ["قانون کلیدواژه", rules.length > 0, "plug"], ["ربات روشن", !!bot.is_running, "power"]];
-        const ok = chk.filter((x) => x[1]).length, p = Math.round((ok / chk.length) * 100), C = 2 * Math.PI * 26, miss = chk.filter((x) => !x[1]);
-        box.innerHTML = `<div class="hr"><svg viewBox="0 0 64 64"><circle class="rb" cx="32" cy="32" r="26"/><circle class="rf" cx="32" cy="32" r="26" style="stroke-dasharray:0 ${C}"/></svg><b>${p}</b></div>
-          <div style="flex:1;min-width:0"><b style="display:block">سلامت ربات</b><small style="color:var(--mu);font-size:12px">${miss.length ? n(miss.length) + " مورد تا ربات کامل" : "همه‌چیز کامل است ✓"}</small></div>
-          ${miss.length ? `<div class="chips" style="width:100%;margin:0">${miss.map((x) => `<span class="kw" onclick="hgo('${x[2]}')">+ ${x[0]}</span>`).join("")}</div>` : ""}`;
-        requestAnimationFrame(() => requestAnimationFrame(() => { const f = box.querySelector(".rf"); f && (f.style.strokeDasharray = `${(C * p) / 100} ${C}`); }));
-      }
-      const vBot = guard(async (id) => { await vBotBase(id); const sg = app().querySelector(".seg"); if (!sg) return; sg.insertAdjacentHTML("beforebegin", '<div class="hl" id="hl"></div>'); health(botId); });
-
-      /* قالب‌های آماده برای دستورها */
-      const TPL = {
-        help: { n: "راهنما", d: "راهنمای ربات", r: "📖 <b>راهنما</b>\nاز دکمه‌های زیر استفاده کن یا سؤالت را بنویس.", b: [[["❓ سؤالات متداول", "faq"], ["📞 پشتیبانی", "sup"]]], cb: { faq: "❓ <b>سؤالات متداول</b>\n۱) …\n۲) …", sup: "📞 پیامت را همین‌جا بنویس؛ به‌زودی پاسخ می‌دهیم." } },
-        about: { n: "درباره ما", d: "دربارهٔ ما", r: "ℹ️ <b>دربارهٔ ما</b>\nمعرفی کوتاه کسب‌وکارت را اینجا بنویس.", b: null, cb: {} },
-        price: { n: "قیمت‌ها", d: "لیست قیمت", r: "💰 <b>لیست قیمت</b>\nیک پلن انتخاب کن:", b: [[["🥉 پایه", "p_basic"], ["🥇 حرفه‌ای", "p_pro"]]], cb: { p_basic: "🥉 <b>پلن پایه</b>\nقیمت: …", p_pro: "🥇 <b>پلن حرفه‌ای</b>\nقیمت: …" } },
-        rules: { n: "قوانین", d: "قوانین", r: "📜 <b>قوانین</b>\n۱) احترام به همه\n۲) …", b: null, cb: {} },
-        contact: { n: "تماس", d: "تماس با ما", r: "📞 <b>تماس با ما</b>\nراه‌های ارتباطی را اینجا بنویس.", b: null, cb: {} },
-      };
-      const applyTpl = guard(async (k) => { const t = TPL[k];
-        await api(`/api/bots/${botId}/commands/${k}`, { method: "PUT", body: { response: t.r, description: t.d, buttons: t.b ? t.b.map((r) => r.map(([text, id]) => ({ text, id }))) : null, photo: null, media: null } });
-        for (const [id, r] of Object.entries(t.cb)) await api(`/api/bots/${botId}/commands/${k}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: r } });
-        toast("دستور /" + k + " ساخته شد"); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } vBot(); });
-      const tCmds = guard(async () => { await tCmdsBase(); const left = Object.keys(TPL).filter((k) => !(k in cmds)); if (!left.length || !$("tb")) return;
-        $("tb").insertAdjacentHTML("afterbegin", `<h2 style="margin-top:0">قالب‌های آماده · یک‌لمسی</h2><div class="sk">${left.map((k) => `<div class="item" onclick="applyTpl('${k}')"><span class="sq mono">+</span><b>${TPL[k].n}</b></div>`).join("")}</div>`); });
-
-      /* بینش‌ها: نمودار نرم + شاخص‌های تعامل */
-      function spark(v, d) { const W = 300, H = 84, P = 8, mx = Math.max(...v, 1), x = (i) => P + (i * (W - 2 * P)) / (v.length - 1), y = (a) => H - P - (a / mx) * (H - 2 * P - 6), pt = v.map((a, i) => [x(i), y(a)]);
-        let p = `M${pt[0]}`; for (let i = 1; i < pt.length; i++) { const a = pt[i - 1], b = pt[i], m = (a[0] + b[0]) / 2; p += ` C${m},${a[1]} ${m},${b[1]} ${b[0]},${b[1]}`; } const L = pt[pt.length - 1];
-        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible"><path d="${p} L${L[0]},${H - P} L${pt[0][0]},${H - P}Z" fill="var(--ac)" opacity=".12" stroke="none"/><path d="${p}" fill="none" stroke="var(--ac)" stroke-width="2.2"/><circle cx="${L[0]}" cy="${L[1]}" r="4" fill="var(--ac)" stroke="none"/></svg><div class="clab mono" style="display:flex;justify-content:space-between;margin-top:6px">${d.map((z) => `<span>${z.slice(8)}</span>`).join("")}</div>`; }
-      const tSet = guard(async () => { await tSetBase(); const tb = $("tb"); if (!tb) return; const g = bot.daily_stats || {}, days = Object.keys(g).sort().slice(-7), s = bot.stats || {}, nu = days.map((d) => g[d].new_users || 0), w = nu.reduce((a, b) => a + b, 0), u = s.unique_users || 0, rx = s.messages_received || 0, tx = s.messages_sent || 0;
-        const card = tb.querySelector(".chart")?.closest(".card"); if (card && nu.length > 1) card.innerHTML = spark(nu, days);
-        const kp = [[u ? (rx / u).toFixed(1) : "0", "پیام به‌ازای کاربر"], [rx ? Math.min(100, Math.round((tx / rx) * 100)) + "%" : "0%", "نرخ پاسخ"], ["+" + n(w), "کاربر جدید ۷ روز"]];
-        tb.insertAdjacentHTML("afterbegin", `<div class="strip" style="margin-bottom:6px">${kp.map(([a, b], i) => `<div class="${i ? "" : "ac"}"><b>${a}</b><span>${b}</span></div>`).join("")}</div>`); });
-
-      /* ★ شبیه‌ساز گفتگو: ربات را همین‌جا، بدون ارسال واقعی، امتحان کن ★ */
-      let sim = { seen: false };
-      const simMatch = (r, t) => (r.keywords || []).some((k) => { k = String(k); const q = k.toLowerCase(); if (r.mode === "exact") return t.trim().toLowerCase() === q.trim(); if (r.mode === "regex") { try { return new RegExp(k, "i").test(t); } catch (e) { return false; } } return t.toLowerCase().includes(q); });
-      const simAdd = (h) => { const l = $("slog"); if (!l) return; l.insertAdjacentHTML("beforeend", h); l.scrollTop = l.scrollHeight; };
-      const simNote = (t) => simAdd(`<div class="m sys">${t}</div>`);
-      const simU = (t) => simAdd(`<div class="m usr"><div class="bub">${esc(t)}</div></div>`);
-      function simBot(html, btns, meta) { simAdd(`<div class="m bot"><div class="bub">${html}</div>${(btns || []).map((r) => `<div class="bubrow">${r.map((x) => `<i ${x.url ? `data-u="${esc(x.url)}"` : `data-id="${esc(x.id)}"`}>${x.url ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join("")}${meta ? `<small class="meta mono">${esc(meta)}</small>` : ""}</div>`); }
-      async function simReply(fn) { simAdd('<div class="m bot ty"><div class="bub"><span class="d"></span><span class="d"></span><span class="d"></span></div></div>'); await sleep(450); $("slog")?.querySelector(".ty")?.remove(); fn(); }
-      function simSend(t) { const inp = $("sin"); if (!inp) return; t = (t ?? inp.value).trim(); if (!t) return; inp.value = ""; simU(t); hap("light");
-        if (t[0] === "/") { const k = t.slice(1).split(/[\s@]/)[0].toLowerCase(), c = cmds[k];
-          if (c) return simReply(() => { if (k === "start" && !sim.seen && bot.welcome_message) simBot(tgHtml(bot.welcome_message), null, "welcome · first /start"); if (k === "start") sim.seen = true; simBot(tgHtml(c.response) || "…", c.buttons, "/" + k + (c.media?.url ? " · " + c.media.type : "")); }); }
-        else { const r = rules.find((r) => simMatch(r, t)); if (r) return simReply(() => simBot(tgHtml(r.response) || "🖼", null, "rule · " + (r.mode || "contains"))); }
-        simReply(() => (bot.unknown_reply ? simBot(tgHtml(bot.unknown_reply), null, "unknown reply") : simNote("ربات پاسخی ندارد — «پاسخ ناشناخته» را از افزونه‌ها فعال کن"))); }
-      function simBtn(id, label) { simNote("کلیک: " + esc(label)); const k = Object.keys(cmds).find((x) => cmds[x].callbacks?.[id] !== undefined);
-        simReply(() => (k ? simBot(tgHtml(cmds[k].callbacks[id]), null, "callback · " + id) : simNote("برای این دکمه پاسخی تعریف نشده"))); }
-      const tSim = guard(async () => {
-        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; try { rules = (await api(`/api/bots/${botId}/rules`)).rules || []; } catch (e) { rules = []; } sim = { seen: false };
-        $("tb").innerHTML = `<div class="phone"><div class="ph-h"><span class="av2 grad" style="width:34px;height:34px;font-size:14px">${esc((bot.bot_username || "?")[0].toUpperCase())}</span><div><b class="mono" style="font-size:13.5px">@${esc(bot.bot_username || "")}</b><small style="display:block;color:var(--mu);font-size:11px">شبیه‌ساز · پیامی واقعاً ارسال نمی‌شود</small></div><span class="ib" style="margin-inline-start:auto" onclick="tSim()" title="شروع دوباره">${ic("sync")}</span></div>
-          <div class="ph-b" id="slog"></div><div class="sk ph-q">${Object.keys(cmds).map((k) => `<span class="kw" onclick="simSend('/${esc(k)}')">/${esc(k)}</span>`).join("")}</div>
-          <div class="ph-f"><input class="in" id="sin" placeholder="پیام تست…" onkeydown="event.key==='Enter'&&simSend()"><div class="ib" style="background:var(--ac);color:#04121a;border:0" onclick="simSend()">${ic("send")}</div></div></div>`;
-        $("slog").onclick = (e) => { const i = e.target.closest("i[data-id],i[data-u]"); if (!i) return; i.dataset.u ? window.open(i.dataset.u, "_blank") : simBtn(i.dataset.id, i.textContent); };
-        if (bot.force_join_channel) simNote("عضویت اجباری فعال است: @" + esc(bot.force_join_channel.replace("@", "")));
-        cmds.start ? simSend("/start") : simNote("دستور /start نداری؛ یک پیام یا دستور بفرست"); });
 
       async function boot(manual) { if (tg?.initData) initData = tg.initData; if (!initData && !token) return showAuth(); try { user = await api(manual ? "/api/auth/me" : initData ? "/api/me" : "/api/auth/me"); go("home"); } catch (e) { if (!token && !initData) return; toast("خطا: " + e.message, 1); if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth(); } }
       if (tg) { tg.ready(); tg.expand(); }
