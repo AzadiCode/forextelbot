@@ -1,691 +1,1555 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0b" />
-    <title>GramSaz</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet" />
-    <style>
-      :root {
-        --bg: #0a0a0b;
-        --panel: #131417;
-        --panel-2: #191b1f;
-        --hair: #23262b;
-        --tx: #f2f3f5;
-        --mu: #868c95;
-        --ac: #b6f36a;
-        --ac-ink: #0e1602;
-        --ac-soft: rgba(182, 243, 106, 0.12);
-        --ok: #40d6a2;
-        --red: #ff6a6a;
-        --amber: #f5b544;
-        --r: 18px;
-        --r-sm: 12px;
-        --maxw: 480px;
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>گرام‌ساز — استودیو ساخت ربات</title>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@33.003/Vazirmatn-font-face.css" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ════════════════════════════════════════════════════════════════
+   نگارخانهٔ طراحی — «گرافیت و کهربا»
+   هویت اختصاصی: خنثیِ گرمِ گرافیتی + رنگ اصلی کهربایی. پالت
+   استارئاپِ بنفش عمداً تکرار نشده. همه‌چیز RTL-native.
+════════════════════════════════════════════════════════════════ */
+:root{
+  /* spacing scale (4px base) */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s7:32px; --s8:44px;
+  /* radius */
+  --r-xs:8px; --r-sm:12px; --r-md:16px; --r-lg:22px; --r-pill:999px;
+  /* motion */
+  --t-fast:150ms; --t:200ms; --t-slow:250ms; --ease:cubic-bezier(.22,.61,.28,1);
+  /* type */
+  --ff:'Vazirmatn',system-ui,'Segoe UI',sans-serif;
+  --fs-cap:11px; --fs-sm:13px; --fs:15px; --fs-lg:17px; --fs-xl:21px; --fs-2xl:28px;
+  /* z-index scale */
+  --z-nav:20; --z-sticky:30; --z-mask:40; --z-sheet:50; --z-palette:60; --z-toast:70;
+  /* layout */
+  --rail:60px; --maxw:1080px; --tap:44px;
+}
+html[data-theme=dark]{
+  --bg:#111214; --bg2:#16181b; --surface:#1b1e22; --surface2:#22262b; --elev:#262b31;
+  --line:#2f343a; --line2:#3b4148;
+  --ink:#eef1f4; --ink2:#b7bdc4; --ink3:#828a93;
+  --brand:#ffb020; --brand2:#ff8c1a; --brand-ink:#1a1206; --brand-soft:#ffb0201f;
+  --ok:#3fd08a; --ok-soft:#3fd08a1f; --warn:#ffc24b; --danger:#ff6b6b; --danger-soft:#ff6b6b1f;
+  --info:#5ac8fa; --shadow:0 20px 50px -22px #000c; --shadow-sm:0 4px 14px -8px #000b;
+  --grid:#ffffff08;
+}
+html[data-theme=light]{
+  --bg:#f2f1ee; --bg2:#eae8e3; --surface:#ffffff; --surface2:#f6f5f2; --elev:#fff;
+  --line:#e2dfd8; --line2:#d3cfc6;
+  --ink:#1c1a16; --ink2:#57534b; --ink3:#8b857a;
+  --brand:#b5651d; --brand2:#9a4f13; --brand-ink:#fff; --brand-soft:#b5651d14;
+  --ok:#1c8a52; --ok-soft:#1c8a5214; --warn:#a9740a; --danger:#c8392f; --danger-soft:#c8392f14;
+  --info:#1c6f9c; --shadow:0 20px 44px -24px #1c1a1655; --shadow-sm:0 3px 12px -8px #1c1a1640;
+  --grid:#00000008;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:var(--ff);background:var(--bg);color:var(--ink);font-size:var(--fs);
+  line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,textarea,select{font:inherit;color:inherit;background:none;border:none;outline:none}
+button{cursor:pointer}
+a{color:var(--brand);text-decoration:none}
+svg{display:block;flex:none}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+::selection{background:var(--brand);color:var(--brand-ink)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+.hidden{display:none!important}
+
+/* ── توکن‌های سطح مؤلفه ── */
+.stack{display:flex;flex-direction:column;gap:var(--s3)}
+.row{display:flex;align-items:center;gap:var(--s3)}
+.between{display:flex;align-items:center;justify-content:space-between;gap:var(--s3)}
+.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.tr{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ltr{direction:ltr;text-align:left}
+.center{text-align:center}
+.dim{color:var(--ink3)} .soft{color:var(--ink2)} .b{font-weight:700}
+.cap{font-size:var(--fs-cap);text-transform:uppercase;letter-spacing:.4px;color:var(--ink3);font-weight:700}
+.sm{font-size:var(--fs-sm)}
+.mono{font-family:ui-monospace,Menlo,monospace;direction:ltr;text-align:left}
+.s1{height:var(--s1)}.s2{height:var(--s2)}.s3{height:var(--s3)}.s4{height:var(--s4)}.s5{height:var(--s5)}
+.mt-auto{margin-top:auto}
+
+/* ── Card ── */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s5)}
+.card.flat{background:var(--surface2)}
+.card.tap{transition:border-color var(--t) var(--ease),transform var(--t) var(--ease)}
+.card.tap:active{transform:scale(.995)}
+.card.tap:hover{border-color:var(--line2)}
+.card.pad-l{padding:var(--s4)}
+
+/* ── Button ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
+  min-height:var(--tap);padding:0 var(--s5);border-radius:var(--r-sm);
+  font-weight:700;font-size:var(--fs-sm);border:1px solid var(--line);background:var(--surface2);
+  color:var(--ink);transition:transform var(--t-fast) var(--ease),background var(--t-fast),opacity var(--t-fast),border-color var(--t-fast);white-space:nowrap}
+.btn:hover{border-color:var(--line2)}
+.btn:active{transform:scale(.975)}
+.btn svg{width:18px;height:18px}
+.btn:disabled{opacity:.45;pointer-events:none}
+.btn.brand{background:linear-gradient(160deg,var(--brand),var(--brand2));color:var(--brand-ink);border-color:transparent;box-shadow:var(--shadow-sm)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink2)}
+.btn.ghost:hover{background:var(--surface2);color:var(--ink)}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
+.btn.solid{background:var(--ink);color:var(--bg);border-color:transparent}
+.btn.sm{min-height:36px;padding:0 var(--s4);font-size:var(--fs-cap);border-radius:var(--r-xs)}
+.btn.blk{width:100%}
+.btn.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+
+.iconbtn{width:var(--tap);height:var(--tap);border-radius:var(--r-sm);display:grid;place-items:center;
+  color:var(--ink2);border:1px solid transparent;transition:var(--t-fast) var(--ease)}
+.iconbtn:hover{background:var(--surface2);color:var(--ink)}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn svg{width:20px;height:20px}
+.iconbtn.sm{width:36px;height:36px}
+.iconbtn.sm svg{width:16px;height:16px}
+.iconbtn.dgr{color:var(--danger)}
+
+/* ── Field ── */
+.field{display:flex;align-items:center;gap:var(--s3);background:var(--bg2);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:0 var(--s4);min-height:var(--tap);transition:border-color var(--t-fast)}
+.field.ta{align-items:flex-start;padding:var(--s3) var(--s4)}
+.field:focus-within{border-color:var(--brand)}
+.field.bad{border-color:var(--danger)}
+.field svg{width:18px;height:18px;color:var(--ink3)}
+.field input,.field textarea{width:100%;background:none;font-size:var(--fs-sm);line-height:1.7}
+.field textarea{resize:none}
+.err{color:var(--danger);font-size:var(--fs-cap);font-weight:600;margin-top:var(--s2);display:flex;gap:6px;align-items:center}
+.ok-note{color:var(--ok);font-size:var(--fs-cap);font-weight:600;margin-top:var(--s2)}
+.hint{font-size:var(--fs-cap);color:var(--ink3)}
+
+/* ── Switch ── */
+.sw{width:46px;height:27px;border-radius:var(--r-pill);background:var(--line2);position:relative;flex:none;transition:var(--t) var(--ease);cursor:pointer}
+.sw::after{content:"";position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;
+  background:#fff;box-shadow:0 2px 5px #0007;transition:transform var(--t) var(--ease)}
+.sw[aria-checked=true]{background:var(--ok)}
+.sw[aria-checked=true]::after{transform:translateX(-19px)}
+.sw.sm{width:38px;height:22px}.sw.sm::after{width:16px;height:16px;top:3px;right:3px}
+.sw.sm[aria-checked=true]::after{transform:translateX(-16px)}
+
+/* ── Chip / Badge ── */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-cap);font-weight:700;
+  padding:4px 10px;border-radius:var(--r-pill);background:var(--surface2);border:1px solid var(--line);color:var(--ink2)}
+.chip svg{width:12px;height:12px}
+.chip.brand{background:var(--brand-soft);border-color:transparent;color:var(--brand)}
+.chip.ok{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.chip.dgr{background:var(--danger-soft);border-color:transparent;color:var(--danger)}
+.chip.line{background:transparent}
+.chip button{display:grid;place-items:center;width:14px;color:var(--ink3)}
+
+/* ── Badge (count) ── */
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-pill);background:var(--brand);
+  color:var(--brand-ink);font-size:10px;font-weight:800;display:inline-grid;place-items:center}
+
+/* ── Tabs / Segmented ── */
+.tabs{display:flex;gap:var(--s1);overflow-x:auto;padding-bottom:2px}
+.tabs button{display:flex;align-items:center;gap:6px;min-height:38px;padding:0 var(--s4);border-radius:var(--r-sm) var(--r-sm) 0 0;
+  font-size:var(--fs-sm);font-weight:700;color:var(--ink3);border-bottom:2px solid transparent;white-space:nowrap;transition:var(--t-fast)}
+.tabs button svg{width:16px;height:16px}
+.tabs button:hover{color:var(--ink2)}
+.tabs button[aria-selected=true]{color:var(--brand);border-bottom-color:var(--brand)}
+.seg{position:relative;display:inline-flex;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px}
+.seg .ind{position:absolute;top:4px;bottom:4px;background:var(--brand);border-radius:var(--r-xs);
+  transition:left var(--t-slow) var(--ease),width var(--t-slow) var(--ease);z-index:0}
+.seg button{position:relative;z-index:1;min-height:32px;padding:0 var(--s4);border-radius:var(--r-xs);font-size:var(--fs-sm);font-weight:700;color:var(--ink3);transition:color var(--t-fast)}
+.seg button[aria-selected=true]{color:var(--brand-ink)}
+
+/* ── Skeleton ── */
+.sk{border-radius:var(--r-md);background:linear-gradient(90deg,var(--surface2),var(--surface),var(--surface2));
+  background-size:220% 100%;animation:sh 1.25s var(--ease) infinite}
+@keyframes sh{from{background-position:130% 0}to{background-position:-130% 0}}
+.spinner{width:22px;height:22px;border:2.5px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;margin:var(--s7) auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.live{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;animation:beat 2s infinite}
+.live.off{background:var(--ink3);animation:none}
+@keyframes beat{0%,100%{box-shadow:0 0 0 0 var(--ok-soft)}50%{box-shadow:0 0 0 5px transparent}}
+
+/* ── Empty / Error state ── */
+.state{text-align:center;padding:var(--s7) var(--s5);max-width:380px;margin:0 auto}
+.state .glyph{width:66px;height:66px;border-radius:20px;display:grid;place-items:center;margin:0 auto var(--s4);
+  background:var(--surface2);border:1px solid var(--line);color:var(--brand)}
+.state .glyph svg{width:30px;height:30px}
+.state h4{font-size:var(--fs-lg);font-weight:800;margin-bottom:var(--s2)}
+.state p{font-size:var(--sm);color:var(--ink3);margin-bottom:var(--s5)}
+.state.err .glyph{color:var(--danger);border-color:var(--danger)}
+
+/* ── Sheet (bottom) / Dialog ── */
+.mask{position:fixed;inset:0;background:#0b0c0e8c;backdrop-filter:blur(4px);z-index:var(--z-mask);opacity:0;pointer-events:none;transition:opacity var(--t-slow)}
+.mask.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,100%);width:100%;max-width:var(--maxw);z-index:var(--z-sheet);
+  background:var(--surface);border:1px solid var(--line);border-bottom:none;border-radius:var(--r-lg) var(--r-lg) 0 0;
+  max-height:94dvh;display:flex;flex-direction:column;box-shadow:var(--shadow);transition:transform var(--t-slow) var(--ease)}
+.sheet.on{transform:translate(-50%,0)}
+.sheet .grab{width:38px;height:4px;border-radius:3px;background:var(--line2);margin:var(--s3) auto 0}
+.sheet header{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s5)}
+.sheet header h3{font-size:var(--fs-lg);font-weight:800}
+.sheet .body{overflow-y:auto;padding:0 var(--s5) var(--s5);flex:1}
+.sheet footer{display:flex;gap:var(--s3);padding:var(--s4) var(--s5) calc(var(--s5) + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+
+.dialog{position:fixed;inset:0;display:grid;place-items:center;padding:var(--s5);z-index:var(--z-sheet);
+  opacity:0;pointer-events:none;transition:var(--t-slow)}
+.dialog.on{opacity:1;pointer-events:auto}
+.dialog .box{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+  width:100%;max-width:420px;box-shadow:var(--shadow)}
+
+/* ── Toast ── */
+#toast{position:fixed;left:50%;bottom:calc(var(--s8) + env(safe-area-inset-bottom));transform:translate(-50%,14px);
+  display:flex;align-items:center;gap:var(--s2);background:var(--elev);color:var(--ink);
+  padding:var(--s3) var(--s5);border-radius:var(--r-pill);border:1px solid var(--line2);
+  font-size:var(--fs-sm);font-weight:700;z-index:var(--z-toast);opacity:0;pointer-events:none;
+  transition:var(--t-slow) var(--ease);box-shadow:var(--shadow);max-width:90vw}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast svg{width:17px;height:17px}
+#toast.ok svg{color:var(--ok)} #toast.er svg{color:var(--danger)} #toast.wr svg{color:var(--warn)}
+
+/* ── Tooltip ── */
+.tip{position:relative}
+.tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);right:50%;transform:translateX(50%);
+  background:var(--elev);color:var(--ink);border:1px solid var(--line2);border-radius:var(--r-xs);
+  padding:5px 9px;font-size:var(--fs-cap);font-weight:600;white-space:nowrap;opacity:0;pointer-events:none;transition:var(--t-fast);z-index:var(--z-palette)}
+.tip:hover::after{opacity:1}
+
+/* ── Stepper ── */
+.stepper{display:flex;align-items:center;gap:var(--s2)}
+.stepper .st{display:flex;align-items:center;gap:var(--s2)}
+.stepper .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-cap);font-weight:800;
+  border:1.5px solid var(--line2);color:var(--ink3);flex:none;transition:var(--t)}
+.stepper .st.on .n,.stepper .st.done .n{background:var(--brand);border-color:transparent;color:var(--brand-ink)}
+.stepper .st.done .n{background:var(--ok);color:#08130c}
+.stepper .bar{width:26px;height:1.5px;background:var(--line2)}
+.stepper .st.on .bar,.stepper .st.done .bar{background:var(--brand)}
+.stepper .lbl{font-size:var(--fs-cap);font-weight:700;color:var(--ink3)}
+.stepper .st.on .lbl{color:var(--ink)}
+
+/* ── Progress ── */
+.pbar{height:6px;border-radius:var(--r-pill);background:var(--bg2);overflow:hidden}
+.pbar i{display:block;height:100%;border-radius:var(--r-pill);background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width var(--t-slow) var(--ease)}
+.pbar.ok i{background:var(--ok)}
+
+/* ── Chart ── */
+.chart{display:flex;align-items:flex-end;gap:var(--s2);height:108px}
+.chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%}
+.chart .col i{display:block;width:100%;max-width:26px;border-radius:var(--r-xs) var(--r-xs) 4px 4px;
+  background:linear-gradient(var(--brand),var(--brand-soft));min-height:3px;transition:height var(--t-slow) var(--ease)}
+.chart .col b{font-size:10px;font-weight:800;color:var(--ink2)}
+.chart .col s{font-size:10px;text-decoration:none;color:var(--ink3)}
+
+/* ── DataTable / list rows ── */
+.list{display:flex;flex-direction:column}
+.list .r{display:flex;align-items:center;gap:var(--s3);min-height:var(--tap);padding:var(--s3) 0;border-bottom:1px solid var(--line)}
+.list .r:last-child{border-bottom:none}
+.list .r:hover{background:var(--surface2);margin:0 calc(var(--s5) * -1);padding-inline:var(--s5)}
+
+/* ── KPI ── */
+.kpi .v{font-size:var(--fs-2xl);font-weight:800;letter-spacing:-.03em;line-height:1.15}
+.kpi .k{font-size:var(--fs-cap);color:var(--ink3);font-weight:700}
+.kpi .d{font-size:var(--fs-cap);font-weight:700;margin-top:2px}
+.kpi .d.up{color:var(--ok)} .kpi .d.dn{color:var(--danger)}
+
+/* ══ App shell ══ */
+#root{display:flex;min-height:100dvh}
+.rail{position:sticky;top:0;height:100dvh;width:var(--rail);flex:none;display:flex;flex-direction:column;
+  align-items:center;gap:var(--s2);padding:var(--s4) 0;background:var(--bg2);border-inline-start:1px solid var(--line);z-index:var(--z-nav)}
+.rail .mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(160deg,var(--brand),var(--brand2));
+  color:var(--brand-ink);display:grid;place-items:center;margin-bottom:var(--s3);box-shadow:var(--shadow-sm)}
+.rail .mark svg{width:19px;height:19px}
+.rail button{width:42px;height:42px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--ink3);position:relative;transition:var(--t-fast) var(--ease)}
+.rail button svg{width:21px;height:21px}
+.rail button:hover{background:var(--surface);color:var(--ink)}
+.rail button.on{background:var(--brand-soft);color:var(--brand)}
+.rail button.on::before{content:"";position:absolute;inset-inline-start:calc(var(--s4) * -1 - 1px);top:22%;height:56%;width:3px;border-radius:3px;background:var(--brand)}
+.rail .sp{flex:1}
+.wrap{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:var(--z-nav);display:flex;align-items:center;gap:var(--s3);
+  padding:var(--s3) var(--s5);background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);min-height:64px}
+.crumb{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--ink3);font-weight:600}
+.crumb b{color:var(--ink);font-weight:800;font-size:var(--fs)}
+.page{padding:var(--s5);width:100%;max-width:var(--maxw);margin:0 auto}
+.page.wide{max-width:none}
+.searchbtn{display:flex;align-items:center;gap:var(--s2);min-height:38px;padding:0 var(--s3) 0 var(--s4);border-radius:var(--r-sm);
+  border:1px solid var(--line);background:var(--surface);color:var(--ink3);font-size:var(--fs-sm)}
+.searchbtn kbd{font-family:var(--ff);font-size:10px;font-weight:700;background:var(--surface2);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.pagehead{margin-bottom:var(--s5)}
+.pagehead h1{font-size:var(--fs-xl);font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:var(--s3)}
+.pagehead p{font-size:var(--sm);color:var(--ink3);margin-top:var(--s1)}
+
+/* ── command palette ── */
+#pal{position:fixed;inset:0;z-index:var(--z-palette);opacity:0;pointer-events:none;transition:var(--t-fast)}
+#pal.on{opacity:1;pointer-events:auto}
+#pal .scrim{position:absolute;inset:0;background:#0b0c0eaa;backdrop-filter:blur(5px)}
+#pal .box{position:relative;top:12vh;margin:0 auto;width:100%;max-width:520px;background:var(--surface);
+  border:1px solid var(--line2);border-radius:var(--r-md);box-shadow:var(--shadow);overflow:hidden;transform:scale(.98);transition:transform var(--t-fast) var(--ease)}
+#pal.on .box{transform:none}
+#pal .in{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s4);border-bottom:1px solid var(--line);height:54px}
+#pal .in svg{width:18px;height:18px;color:var(--ink3)}
+#pal .in input{flex:1;font-size:var(--fs)}
+#pal .res{max-height:56vh;overflow-y:auto;padding:var(--s2)}
+#pal .grp{padding:var(--s3) var(--s3) var(--s1);font-size:10px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px}
+#pal .it{display:flex;align-items:center;gap:var(--s3);padding:var(--s3);border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;cursor:pointer}
+#pal .it svg{width:17px;height:17px;color:var(--ink3)}
+#pal .it.sel{background:var(--surface2);box-shadow:inset 2px 0 0 var(--brand)}
+#pal .it small{margin-inline-start:auto;font-size:10px;color:var(--ink3);font-weight:700}
+
+/* ── Auth ── */
+.auth{display:grid;place-items:center;min-height:100dvh;padding:var(--s6);width:100%;
+  background-image:radial-gradient(90% 55% at 50% -5%,var(--brand-soft),transparent 70%)}
+.auth .panel{width:100%;max-width:400px}
+.auth .mark{width:56px;height:56px;border-radius:18px;background:linear-gradient(160deg,var(--brand),var(--brand2));
+  color:var(--brand-ink);display:grid;place-items:center;box-shadow:var(--shadow);margin-bottom:var(--s5)}
+.auth .mark svg{width:29px;height:29px}
+.auth h1{font-size:var(--fs-2xl);font-weight:800;letter-spacing:-.03em;line-height:1.25}
+.auth .tl{color:var(--ink2);font-size:var(--fs-sm);margin-top:var(--s2)}
+.auth .card{margin-top:var(--s6);box-shadow:var(--shadow-sm)}
+
+/* ══ Flow Builder ══ */
+.fb{display:grid;grid-template-columns:1fr 300px;gap:var(--s4);align-items:start}
+@media(max-width:900px){.fb{grid-template-columns:1fr}}
+.canvas{position:relative;background-color:var(--bg2);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:22px 22px;border:1px solid var(--line);border-radius:var(--r-md);min-height:420px;padding:var(--s4);overflow:auto}
+.node{position:absolute;width:196px;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-sm);
+  box-shadow:var(--shadow-sm);cursor:grab;user-select:none;transition:box-shadow var(--t-fast),border-color var(--t-fast)}
+.node:active{cursor:grabbing}
+.node.sel{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft),var(--shadow-sm)}
+.node.bad{border-color:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
+.node .nh{display:flex;align-items:center;gap:6px;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line)}
+.node .nh svg{width:15px;height:15px}
+.node .nh b{font-size:var(--fs-cap);font-weight:800;flex:1}
+.node .nh .kill{color:var(--ink3);width:18px;height:18px;display:grid;place-items:center;border-radius:5px}
+.node .nh .kill:hover{color:var(--danger);background:var(--danger-soft)}
+.node .nb{padding:var(--s2) var(--s3);font-size:var(--fs-cap);color:var(--ink3)}
+.node .nb .txt{color:var(--ink2);font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.node .nk{display:flex;flex-wrap:wrap;gap:4px;padding:0 var(--s3) var(--s2)}
+.node .nk span{font-size:10px;background:var(--surface2);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.node.trigger{border-inline-start-width:3px;border-inline-start-color:var(--brand)}
+.node.reply{border-inline-start-width:3px;border-inline-start-color:var(--info)}
+.node[data-branch]::after{content:"";position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
+  width:14px;height:14px;border-radius:50%;background:var(--surface);border:2px solid var(--line2);transition:var(--t-fast)}
+.node[data-branch].linking::after{border-color:var(--brand);background:var(--brand);transform:translateX(-50%) scale(1.2)}
+#wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+#wires path{fill:none;stroke:var(--line2);stroke-width:2;marker-end:url(#arw)}
+#wires path.hot{stroke:var(--brand);stroke-dasharray:5 4;animation:dash .5s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-9}}
+.palette{position:absolute;top:var(--s3);left:var(--s3);z-index:2;display:flex;gap:var(--s1);flex-wrap:wrap;max-width:65%}
+.fbp{display:flex;flex-direction:column;gap:var(--s4)}
+.preview{background:var(--bg2);border-radius:var(--r-md);padding:var(--s4);min-height:280px;
+  background-image:radial-gradient(var(--grid) 1px,transparent 1px);background-size:14px 14px}
+.tg-msg{max-width:86%;background:var(--surface);border:1px solid var(--line);border-radius:14px 14px 14px 4px;padding:var(--s3);margin-bottom:var(--s2);font-size:var(--fs-sm)}
+.tg-msg.me{margin-inline-start:auto;border-radius:14px 14px 4px 14px;background:var(--brand-soft);border-color:transparent}
+.tg-kb{display:flex;flex-direction:column;gap:4px;margin-top:var(--s2)}
+.tg-b{background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:7px;font-size:var(--fs-cap);font-weight:700;text-align:center}
+.tg-b.br{color:var(--brand);border-color:var(--brand-soft)}
+.issues{display:flex;flex-direction:column;gap:var(--s2);max-height:180px;overflow:auto}
+.issue{display:flex;gap:var(--s2);align-items:flex-start;font-size:var(--fs-cap);line-height:1.6;
+  padding:var(--s2) var(--s3);border-radius:var(--r-xs);background:var(--danger-soft);color:var(--danger);cursor:pointer;border:1px solid transparent}
+.issue:hover{border-color:var(--danger)}
+.issue svg{width:14px;height:14px;margin-top:2px;flex:none}
+
+/* ── media grid ── */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:var(--s3)}
+.mtile{aspect-ratio:1;border-radius:var(--r-sm);overflow:hidden;border:1px solid var(--line);background:var(--surface2);position:relative}
+.mtile img{width:100%;height:100%;object-fit:cover}
+.mtile .ty{position:absolute;top:5px;right:5px;font-size:9px;font-weight:800;background:#000a;color:#fff;padding:2px 6px;border-radius:5px}
+.mtile .act{position:absolute;inset-inline:0;bottom:0;display:flex;gap:4px;padding:4px;background:linear-gradient(transparent,#000c)}
+.mtile .act button{flex:1;font-size:10px;font-weight:700;color:#fff;background:#ffffff22;border-radius:6px;padding:5px 0;backdrop-filter:blur(3px)}
+
+/* ── subscribers ── */
+.avatar{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-weight:800;font-size:var(--fs-sm);color:#fff;flex:none;position:relative;overflow:hidden}
+.avatar i{position:absolute;inset:0;background:radial-gradient(circle at 72% 12%,#ffffff55,transparent 62%);font-style:normal}
+
+/* ── responsive ── */
+@media(max-width:720px){
+  :root{--rail:0px}
+  #root{display:block;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .rail{position:fixed;bottom:0;top:auto;left:0;right:0;height:calc(60px + env(safe-area-inset-bottom));width:100%;
+    flex-direction:row;justify-content:space-evenly;border-inline-start:none;border-top:1px solid var(--line);padding:var(--s2) 0 calc(env(safe-area-inset-bottom))}
+  .rail .mark,.rail .sp{display:none}
+  .rail button{width:auto;flex:1;height:44px}
+  .rail button.on::before{display:none}
+  .rail button::after{content:attr(data-l);font-family:var(--ff);font-size:9px;font-weight:700;margin-top:1px}
+  .rail button{flex-direction:column;gap:1px}
+  .topbar{padding:var(--s2) var(--s4);min-height:56px}
+  .page{padding:var(--s4)}
+  .fb{grid-template-columns:1fr}
+  .tip::after{display:none}
+}
+.fx{display:grid;gap:var(--s4)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
+@media(max-width:640px){.g2{grid-template-columns:1fr}}
+.g4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s4)}
+.rise{animation:ri var(--t-slow) var(--ease) backwards}
+@keyframes ri{from{opacity:0;transform:translateY(10px)}}
+.rise>*:nth-child(2){animation-delay:40ms}.rise>*:nth-child(3){animation-delay:80ms}
+.rise>*:nth-child(4){animation-delay:120ms}.rise>*:nth-child(n+5){animation-delay:160ms}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet"></div>
+<div class="dialog" id="dialog"></div>
+<div id="toast"></div>
+
+<!-- ══ هستهٔ قلمرو B: نگارخانه، مؤلفه‌ها، سازندهٔ جریان ══ -->
+<script>
+"use strict";
+/* گرام‌ساز — استودیو. قلمرو B کاملاً نو. قلمرو A (gramsaz_webapp.py) دست‌نخورده:
+   فقط همان ۲۴ قرارداد API مصرف می‌شود. */
+const API="https://forextelbot-9jwt.onrender.com";
+const WEBAPP="https://botsazgram.onrender.com";
+const tg=window.Telegram?.WebApp;
+
+/* ── توکن‌های رفتار ── */
+const TAP={light:"light",med:"medium",heavy:"heavy"};
+const tap=(k="light")=>{try{tg?.HapticFeedback?.impactFeedback?.(k)}catch(e){}};
+const ding=(t="success")=>{try{tg?.HapticFeedback?.notificationOccurred?.(t)}catch(e){}};
+
+/* ── ابزار خالص ── */
+const $=(i,r=document)=>r.getElementById(i);
+const E=(h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstElementChild;};
+const esc=s=>(s??"").toString().replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const N=v=>(Number(v||0)).toLocaleString("fa-IR");
+const uid=(p="x")=>p+"_"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
+const dev=()=>localStorage.device_id||(localStorage.device_id=uid("d"));
+const pad=n=>String(n).padStart(2,"0");
+const faDate=iso=>{try{const d=new Date(iso);return new Intl.DateTimeFormat("fa-IR",{month:"short",day:"numeric"}).format(d)}catch(e){return ""}};
+const ago=iso=>{if(!iso)return"—";const t=Date.parse(iso);if(isNaN(t))return"—";const s=(Date.now()-t)/1000;
+  if(s<90)return"همین حالا";if(s<3600)return N(Math.floor(s/60))+" دقیقه پیش";if(s<86400)return N(Math.floor(s/3600))+" ساعت پیش";
+  if(s<604800)return N(Math.floor(s/86400))+" روز پیش";return faDate(iso)};
+const hue=x=>{let h=0;for(const c of String(x))h=(h*33+c.charCodeAt(0))>>>0;return h%360};
+const grad=x=>{const H=hue(x);return`linear-gradient(140deg,hsl(${H} 55% 46%),hsl(${(H+32)%360} 52% 34%))`};
+const ini=x=>((String(x||"@").replace("@","").trim()[0])||"?").toUpperCase();
+const debounce=(f,ms=250)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(...a),ms)}};
+const clone=typeof structuredClone==="function"?structuredClone:(o=>JSON.parse(JSON.stringify(o)));
+
+/* ── آیکون‌ها (stroke, 24) ── */
+const O=(d,w=24,s="1.8")=>`<svg viewBox="0 0 24 24" width="${w}" height="${w}" fill="none" stroke="currentColor" stroke-width="${s}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I={
+  bolt:O('<path d="M13.4 2.6 5.8 13.5h5.1l-1 7.9 7.9-11.2h-5.3l.9-7.6Z"/>',20,"2"),
+  gauge:O('<path d="M4 18a8.5 8.5 0 1 1 16 0"/><path d="M12 18v-1"/><path d="M12 13.5 15.6 9"/>'),
+  flow:O('<circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M8.4 6H15.6M18 8.4v7.2M8 7.6l8.6 9.2"/>'),
+  people:O('<circle cx="9" cy="8" r="3.1"/><path d="M3.6 19c0-2.8 2.4-4.4 5.4-4.4s5.4 1.6 5.4 4.4"/><path d="M16 5.4a2.9 2.9 0 0 1 0 5.6M18.4 15.2c1.6.6 2.6 1.8 2.6 3.8"/>'),
+  megaphone:O('<path d="M4 10.4v3.2a1 1 0 0 0 1 1h2l6.6 4.4a.7.7 0 0 0 1.1-.6V5.6a.7.7 0 0 0-1.1-.6L7 9.4H5a1 1 0 0 0-1 1Z"/><path d="M18.6 8.6a4.6 4.6 0 0 1 0 6.8"/>'),
+  image:O('<rect x="3.4" y="4.8" width="17.2" height="14.4" rx="3"/><circle cx="8.7" cy="9.9" r="1.4"/><path d="M20.6 15 16 10.4 6.4 19.2"/>'),
+  gear:O('<circle cx="12" cy="12" r="2.9"/><path d="M12 3.3v2.1M12 18.6v2.1M4.7 4.7l1.5 1.5M17.8 17.8l1.5 1.5M3.3 12h2.1M18.6 12h2.1M4.7 19.3l1.5-1.5M17.8 6.2l1.5-1.5"/>'),
+  user:O('<circle cx="12" cy="8.2" r="3.5"/><path d="M5 20c0-3.6 3.1-5.2 7-5.2s7 1.6 7 5.2"/>'),
+  bot:O('<path d="M12 9.6a2.9 2.9 0 0 1 2.9 2.9v3.6a2.9 2.9 0 0 1-2.9 2.9h-1.6a2.9 2.9 0 0 1-2.9-2.9v-3.6A2.9 2.9 0 0 1 10.4 9.6Z"/><path d="M12 9.6V6.4a1.7 1.7 0 1 0-2.4-1.5"/><path d="M10.2 13.2h.01M13.8 13.2h.01M10.2 16h3.6"/>'),
+  grid:O('<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'),
+  plus:O('<path d="M12 5.6v12.8M5.6 12h12.8"/>',20,"2.1"),
+  x:O('<path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/>',20,"2"),
+  chevL:O('<path d="M14.6 5.4 8 12l6.6 6.6"/>'),
+  chevR:O('<path d="M9.4 5.4 16 12l-6.6 6.6"/>'),
+  right:O('<path d="M4.6 12.4 9.8 17.6 19.4 6.4"/>',20,"2.2"),
+  search:O('<circle cx="11" cy="11" r="6.6"/><path d="M20.4 20.4l-4-4"/>'),
+  sun:O('<circle cx="12" cy="12" r="3.6"/><path d="M12 2.8v2M12 19.2v2M4.4 12h-2M21.6 12h-2M5.8 5.8 4.4 4.4M19.6 19.6l-1.4-1.4M5.8 18.2l-1.4 1.4M19.6 4.4l-1.4 1.4"/>'),
+  moon:O('<path d="M20.2 14.4A8.4 8.4 0 1 1 9.6 3.8a6.7 6.7 0 0 0 10.6 10.6Z"/>'),
+  send:O('<path d="M20.6 3.4 3.6 10l6.4 2.4 2.4 6.4 8.2-15.4Z"/><path d="M10 12.4 20.6 3.4"/>'),
+  link:O('<path d="M9.8 13.4a4.3 4.3 0 0 0 6.2 0l2.4-2.4a4.3 4.3 0 0 0-6-6l-1 1"/><path d="M14.2 10.6a4.3 4.3 0 0 0-6.2 0l-2.4 2.4a4.3 4.3 0 0 0 6 6l1-1"/>'),
+  msg:O('<path d="M20.4 11.6a7.8 7.8 0 0 1-11.4 7L4 20l1.4-4.8A7.8 7.8 0 1 1 20.4 11.6Z"/>'),
+  trash:O('<path d="M4.4 6.8h15.2M9.4 6.8V4.4h5.2v2.4M6.4 6.8 7.4 20h9.2l1-13.2"/>'),
+  edit:O('<path d="M4.2 19.8h4L19 8.8l-4-4L4.2 15.8v4Z"/><path d="M13.4 6.4l4 4"/>'),
+  reply:O('<path d="M9 16.6 4.4 12 9 7.4"/><path d="M4.4 12h9.2a6 6 0 0 1 6 6v.6"/>'),
+  clock:O('<circle cx="12" cy="12" r="8.2"/><path d="M12 7.4V12l3.2 2"/>'),
+  sync:O('<path d="M4.2 12a7.8 7.8 0 0 1 13.2-5.6l2.4 2.2M19.8 12a7.8 7.8 0 0 1-13.2 5.6l-2.4-2.2M19.4 5.4v4.6h-4.6M4.6 18.6V14H9.2"/>'),
+  down:O('<path d="M12 4v12M6.4 12 12 17.6 17.6 12"/>'),
+  up:O('<path d="M12 20V8M6.4 12 12 6.4 17.6 12"/>'),
+  alert:O('<path d="M12 4.4 21 20H3L12 4.4Z"/><path d="M12 10.4v4M12 17h.01"/>'),
+  check:O('<circle cx="12" cy="12" r="8.4"/><path d="M8.4 12.2l2.5 2.5 4.7-5.2"/>'),
+  info:O('<circle cx="12" cy="12" r="8.4"/><path d="M12 11v5M12 8h.01"/>'),
+  tg:O('<path d="M20.8 4.4 3.6 11.1l5.8 1.9 1.8 5.7 3-3.7 4.3 3.3 2.3-13.9Z"/><path d="M9.4 13 19 6.6l-7 7.3-.8 3.8"/>'),
+  key:O('<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12h8.4M17.6 12v3.1M14.8 12v2.2"/>'),
+  lock:O('<rect x="4.6" y="10.4" width="14.8" height="9.4" rx="2.4"/><path d="M8.2 10.4V7.6a3.8 3.8 0 0 1 7.6 0v2.8"/>'),
+  out:O('<path d="M14.8 4.4h3a2 2 0 0 1 2 2v11.2a2 2 0 0 1-2 2h-3M10 16l4-4-4-4M14 12H4.4"/>'),
+  file:O('<path d="M13.6 3.6H7a2 2 0 0 0-2 2v12.8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9Z"/><path d="M13.6 3.6V9H19"/>'),
+  save:O('<path d="M5 4.6h11.4L19.4 8v11.4a.6.6 0 0 1-.6.6H5.6a.6.6 0 0 1-.6-.6V5.2a.6.6 0 0 1 .6-.6Z"/><path d="M8.4 4.6v5h7M8.4 19v-5h7.2"/>'),
+  undo:O('<path d="M4.4 12a7.6 7.6 0 1 0 2.6-5.7L4.4 8.8"/><path d="M4.4 4.6v4.2h4.2"/>'),
+  eye:O('<path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12Z"/><circle cx="12" cy="12" r="2.7"/>'),
+  zap:O('<path d="M13.4 2.6 5.8 13.5h5.1l-1 7.9 7.9-11.2h-5.3l.9-7.6Z"/>'),
+  chart:O('<path d="M4 20V10.6M9.6 20V4.4M15.2 20v-6M20.8 20H3.2"/>'),
+  shield:O('<path d="M12 3.4 19 6v5.4c0 4.6-3 7.4-7 9.2-4-1.8-7-4.6-7-9.2V6Z"/><path d="M9 12l2 2 4-4.2"/>'),
+  cmd:O('<path d="M8.8 4.4a2.4 2.4 0 1 1 2.4 2.4H8.8m0 0v10.4m0-10.4h6.4m0 0V8.8m0 0a2.4 2.4 0 1 1 2.4 2.4m0 0H8.8m0 0v4m0-4a2.4 2.4 0 1 0-2.4 2.4m2.4-2.4h6.4m0 0v4"/>'),
+  wand:O('<path d="M14.6 4.4 19.6 9.4M4 20 15.4 8.6l-4-4L0 16Z" transform="translate(2 1)"/><path d="M18 15v4M16 17h4M6 3.4v2.4M4.8 4.6h2.4"/>'),
+};
+
+/* ════════════════════════════════════════════════════════════════
+   نگارخانهٔ مؤلفه — هر مؤلفه یک نمونهٔ واحد، بدون موازی‌سازی
+════════════════════════════════════════════════════════════════ */
+const UI={
+  btn(label,{variant="default",size,icon,block,loading,disabled,tip,id,onclick}={}){
+    const b=E(`<button class="btn ${variant==="brand"?"brand":variant==="danger"?"danger":variant==="solid"?"solid":variant==="ghost"?"ghost":""} ${block?"blk":""} ${size==="sm"?"sm":""} ${tip?"tip":""}" ${disabled?"disabled":""} ${tip?`data-tip="${esc(tip)}"`:""}></button>`);
+    if(id)b.id=id; if(onclick)b.onclick=onclick;
+    b.innerHTML=(loading?'<span class="spinner" style="margin:0;width:16px;height:16px;border-width:2px"></span>':(icon?I[icon]:""))+`<span>${esc(label)}</span>`;
+    return b;
+  },
+  iconbtn(icon,{cls="",tip="",aria=""}={}){const b=E(`<button class="iconbtn ${cls} ${tip?"tip":""}" ${tip?`data-tip="${esc(tip)}"`:""} ${aria?`aria-label="${aria}"`:""}>${I[icon]}</button>`);return b},
+  field({type="text",ph="",val="",icon,rows,cls="",id,disabled,rtl=true,auto=""}={}){
+    const f=E(`<label class="field ${rows?"ta":""} ${cls}">${icon?I[icon]:""}</label>`);
+    const inp=rows?document.createElement("textarea"):document.createElement("input");
+    if(rows)inp.rows=rows; else inp.type=type;
+    inp.placeholder=ph; inp.value=val; if(id)inp.id=id; if(disabled)inp.disabled=true; if(auto)inp.autocomplete=auto;
+    if(!rtl){inp.style.direction="ltr";inp.style.textAlign="left";}
+    f.append(inp); f.input=inp; return f;
+  },
+  sw(on,{size,onChange}={}){
+    const s=E(`<div class="sw ${size==="sm"?"sm":""}" role="switch" tabindex="0" aria-checked="${!!on}"></div>`);
+    const go=()=>{const v=s.getAttribute("aria-checked")!=="true";s.setAttribute("aria-checked",v);onChange&&onChange(v)};
+    s.onclick=go; s.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go()}};
+    s.set=v=>s.setAttribute("aria-checked",!!v);
+    return s;
+  },
+  chip(txt,{variant="",icon}={}){return E(`<span class="chip ${variant}">${icon?I[icon]:""}${esc(txt)}</span>`)},
+  kpi(v,k,{delta,dir}={}){const el=E(`<div class="kpi"><div class="v num">${esc(v)}</div><div class="k">${esc(k)}</div>${delta!=null?`<div class="d ${dir==="dn"?"dn":"up"}">${dir==="dn"?I.up:I.up}<span>${esc(delta)}</span></div>`:""}</div>`);return el},
+  state({icon,title,body,cta,onCta,variant=""}={}){
+    const s=E(`<div class="state ${variant}"><div class="glyph">${I[icon]||I.info}</div><h4>${esc(title)}</h4>${body?`<p>${esc(body)}</p>`:""}</div>`);
+    if(cta){const b=UI.btn(cta,{variant:"brand",icon:"plus"});b.onclick=onCta;s.append(b)}
+    return s;
+  },
+  skel(h=74,n=3){const w=document.createElement("div");w.className="stack";for(let i=0;i<n;i++){const s=E(`<div class="sk"></div>`);s.style.height=h+"px";w.append(s)}return w},
+  chart(data,{h=108}={}){
+    const c=E(`<div class="chart" style="height:${h}px"></div>`);
+    const mx=Math.max(1,...data.map(d=>d.v||0));
+    data.forEach(d=>{const col=E(`<div class="col"><b class="num">${d.v?N(d.v):""}</b><i style="height:${Math.max(3,(d.v||0)/mx*(h-34))}px"></i><s>${esc(d.l)}</s></div>`);c.append(col)});
+    return c;
+  },
+  tabs(items,current,onPick){
+    const t=E(`<nav class="tabs" role="tablist"></nav>`);
+    items.forEach(it=>{const b=E(`<button role="tab" aria-selected="${it.id===current}"></button>`);
+      b.innerHTML=(it.icon?I[it.icon]:"")+`<span>${esc(it.label)}</span>`;
+      b.onclick=()=>{tap();onPick(it.id)};t.append(b)});
+    return t;
+  },
+  seg(items,current,onPick){
+    const s=E(`<div class="seg"><span class="ind"></span></div>`);
+    const ind=s.querySelector(".ind");
+    items.forEach(it=>{const b=E(`<button aria-selected="${it.id===current}">${esc(it.label)}</button>`);
+      b.onclick=()=>{tap();onPick(it.id);place()};s.append(b)});
+    const place=()=>{const a=s.querySelector('button[aria-selected=true]');if(!a)return;
+      requestAnimationFrame(()=>{ind.style.width=a.offsetWidth+"px";ind.style.left=a.offsetLeft+"px"})};
+    requestAnimationFrame(place); s.refresh=place; return s;
+  },
+};
+
+/* ── toast ── */
+let _tt;
+function toast(msg,{type=""}={}){const t=$("toast");
+  t.className=type; t.innerHTML=(type==="ok"?I.check:type==="er"?I.alert:type==="wr"?I.info:I.info)+`<span>${esc(msg)}</span>`;
+  t.classList.add("on"); clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove("on"),2600);}
+const ok=m=>toast(m,{type:"ok"}), err=m=>{toast(m,{type:"er"});ding("error")}, warn=m=>toast(m,{type:"wr"});
+const guard=f=>async(...a)=>{try{return await f(...a)}catch(e){err(e.message||"خطا");throw e}};
+
+/* ── sheet / dialog ── */
+let _stack=[];
+function sheet({title,body,foot,size}={}){
+  const sh=$("sheet");
+  sh.innerHTML="";
+  sh.append(E(`<div class="grab"></div>`));
+  const hd=E(`<header><h3 class="grow">${esc(title)}</h3></header>`);
+  hd.append(UI.iconbtn("x",{cls:"sm",tip:"بستن",aria:"بستن"}));
+  hd.querySelector(".iconbtn").onclick=closeSheet;
+  sh.append(hd);
+  const bd=E(`<div class="body"></div>`);
+  if(typeof body==="string")bd.innerHTML=body; else body&&bd.append(body);
+  sh.append(bd);
+  if(foot){const ft=E(`<footer></footer>`);
+    if(typeof foot==="string")ft.innerHTML=foot; else ft.append(foot); sh.append(ft)}
+  $("mask").classList.add("on");requestAnimationFrame(()=>sh.classList.add("on"));
+  const ent={close:closeSheet}; _stack.push(ent);
+  return {node:sh,body:bd};
+}
+function closeSheet(){const s=$("sheet");s.classList.remove("on");_stack.pop();
+  if(!_stack.length)$("mask").classList.remove("on");}
+$("mask").onclick=()=>{closeSheet();$("pal").classList.remove("on")};
+
+function confirmBox({title,body,danger,okLabel,icon="alert"}){
+  return new Promise(res=>{
+    const d=$("dialog");
+    d.innerHTML="";
+    const box=E(`<div class="box"><div style="padding:var(--s6)"><div class="row" style="gap:var(--s4);align-items:flex-start">
+      <div class="glyph" style="width:42px;height:42px;border-radius:13px;display:grid;place-items:center;flex:none;
+        background:var(--${danger?"danger":"brand"}-soft);color:var(--${danger?"danger":"brand"})">${I[icon]}</div>
+      <div class="grow"><h3 style="font-size:var(--fs-lg);font-weight:800;margin-bottom:4px">${esc(title)}</h3>
+      <div class="sm" style="color:var(--ink3);line-height:1.8">${esc(body||"")}</div></div></div></div>
+      <div style="display:flex;gap:var(--s3);padding:0 var(--s6) var(--s6)"><button class="btn grow" data-n>انصراف</button><button class="btn grow ${danger?"danger":""}" data-y>${esc(okLabel||"تأیید")}</button></div></div>`);
+    d.append(box); d.classList.add("on");
+    const done=v=>{d.classList.remove("on");d.innerHTML="";res(v)};
+    box.querySelector("[data-n]").onclick=()=>{tap();done(false)};
+    box.querySelector("[data-y]").onclick=()=>{tap("med");done(true)};
+    box.addEventListener("click",e=>{if(e.target===d)done(false)});
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════
+   state + network (فقط قراردادهای منجمد A)
+════════════════════════════════════════════════════════════════ */
+const st={token:"",user:null,bots:null,bot:null,route:"dashboard",flow:null,palOpen:false};
+async function api(path,{method="GET",body,form}={}){
+  const h={};
+  if(st.token)h.Authorization="Bearer "+st.token;
+  if(tg?.initData)h["X-Init-Data"]=tg.initData;
+  const opt={method,headers:h};
+  if(form)opt.body=form;
+  else if(body!==undefined){h["Content-Type"]="application/json";opt.body=JSON.stringify(body)}
+  let r;try{r=await fetch(API+path,opt)}catch(e){throw new Error("ارتباط با سرور برقرار نشد")}
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){if(r.status===401&&st.token)logout();throw new Error(d.error||`خطای ${r.status}`)}
+  return d;
+}
+
+/* ── سازنده (facade) روی قراردادهای A: جریان ← دستورات ── */
+/* قلمرو B یک گراف محلی می‌سازد؛ «انتشار» یعنی کامپایل به همان
+   payload که هسته در set_command ذخیره می‌کند. هیچ فیلد تازه‌ای به A نمی‌رود. */
+const Flow={
+  blank(){return{nodes:[
+    {id:uid("n"),type:"trigger",name:"start",x:60,y:40,text:"👋 سلام! چطور می‌تونم کمکت کنم؟",buttons:[
+      {id:uid("cb"),text:"راهنما",kind:"reply",val:"راهنما"},{id:uid("cb"),text:"تماس با ما",kind:"reply",val:"support"}]},
+    {id:uid("n"),type:"reply",name:"help",x:290,y:120,text:"برای شروع از منوی /help استفاده کن."}],
+    edges:[],draft:{}}},
+  get(){try{const g=JSON.parse(localStorage.flows||"{}");return g}catch(e){return{}}},
+  save(g){const a=Flow.get();a[st.bot?.bot_id||"_"]=g;localStorage.flows=JSON.stringify(a)},
+  loadBot(id){const a=Flow.get();return a[id]?clone(a[id]):null},
+  /* کامپایل: trigger → command، reply ← callbacks */
+  compile(g){
+    const out={};const byId=Object.fromEntries(g.nodes.map(n=>[n.id,n]));
+    g.nodes.filter(n=>n.type==="trigger").forEach(tr=>{
+      const name=(tr.name||"start").replace(/^\/+/,"").replace(/\s+/g,"_").toLowerCase()||"start";
+      const buttons=tr.buttons&&tr.buttons.length?[tr.buttons.map(b=>b.kind==="url"
+        ?{text:b.text,url:b.val||"https://"}:{text:b.text,id:b.id||b.text})]:null;
+      const cmd={response:tr.text||"",buttons,description:tr.desc||name};
+      out[name]={cmd,callbacks:{}};
+      (tr.buttons||[]).forEach(b=>{
+        if(b.kind!=="reply")return;
+        const target=byId[b.val]||g.nodes.find(n=>n.id===b.val);
+        if(target&&target.text)out[name].callbacks[b.id||b.text]=target.text;
+      });
+    });
+    return out;
+  },
+  /* اعتبارسنجی بصری: خطاهای انسانی با لینک به گره */
+  validate(g){
+    const bad=new Set(),out=[];
+    const names=new Map();
+    g.nodes.forEach(n=>{
+      if(n.type==="trigger"){
+        const nm=(n.name||"").trim().toLowerCase();
+        if(!nm){bad.add(n.id);out.push({id:n.id,t:"نام دستور خالی است"})}
+        else if(names.has(nm)){bad.add(n.id);bad.add(names.get(nm));out.push({id:n.id,t:`نام /${nm} تکراری است`})}
+        else names.set(nm,n.id);
       }
-      html[data-theme="light"] {
-        --bg: #eef0f2;
-        --panel: #ffffff;
-        --panel-2: #f2f4f6;
-        --hair: #e1e5e9;
-        --tx: #101418;
-        --mu: #5b636d;
-        --ac: #4a7a12;
-        --ac-ink: #ffffff;
-        --ac-soft: rgba(74, 122, 18, 0.1);
-        --ok: #0f9d6f;
-        --red: #d84747;
-        --amber: #b7791f;
+      if(!n.text||!n.text.trim()){bad.add(n.id);out.push({id:n.id,t:"متن پیام خالی است"})}
+    });
+    const trig=g.nodes.filter(n=>n.type==="trigger");
+    if(!trig.length)out.push({id:null,t:"حداقل یک گره شروع (دستور) لازم است"});
+    if(!trig.some(n=>(n.name||"").toLowerCase()==="start"))out.push({id:null,t:"گره /start وجود ندارد؛ ربات بی‌پاسخ می‌ماند"});
+    const used=new Set();
+    trig.forEach(t=>(t.buttons||[]).forEach(b=>{if(b.kind==="reply")used.add(b.val)}));
+    g.nodes.filter(n=>n.type==="reply").forEach(r=>{if(!used.has(r.id)){out.push({id:r.id,t:"این پیام به هیچ دکمه‌ای وصل نیست"})}});
+    return{bad,out};
+  },
+  /* انتشار: نوشتن با PUTهای موجود هسته */
+  async publish(g){
+    const c=Flow.compile(g);const names=Object.keys(c);
+    for(const [name,o] of Object.entries(c)){
+      await api(`/api/bots/${st.bot.bot_id}/commands/${name}`,{method:"PUT",
+        body:{response:o.cmd.response,description:o.cmd.description,buttons:o.cmd.buttons,media:null}});
+      for(const [cbid,txt] of Object.entries(o.callbacks)){
+        await api(`/api/bots/${st.bot.bot_id}/commands/${name}/callbacks/${encodeURIComponent(cbid)}`,{method:"PUT",body:{response:txt}});
       }
-      * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-      html, body {
-        background: var(--bg); color: var(--tx);
-        font: 15px/1.6 Vazirmatn, system-ui, sans-serif;
-        min-height: 100vh; -webkit-font-smoothing: antialiased;
-        transition: background .25s, color .25s;
-      }
-      button, input, textarea, select { font: inherit; color: inherit; border: 0; outline: 0; background: none; }
-      a { color: inherit; text-decoration: none; }
-      svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-      .mono { font-family: Inter, Vazirmatn, sans-serif; font-variant-numeric: tabular-nums; }
-      ::selection { background: var(--ac); color: var(--ac-ink); }
+    }
+    return names.length;
+  },
+  /* همگام: خواندن از A و بازسازی گراف */
+  async importFromServer(){
+    const cmds=(await api(`/api/bots/${st.bot.bot_id}/commands`)).commands||{};
+    const ks=Object.keys(cmds);const g=Flow.blank();g.nodes=[];g.edges=[];
+    if(!ks.length){g.nodes.push({id:uid("n"),type:"trigger",name:"start",x:60,y:40,text:"سلام!",buttons:[]});return g}
+    ks.forEach((k,i)=>{
+      const c=cmds[k],rows=Array.isArray(c.buttons)?c.buttons:[];
+      const buttons=[];
+      rows.flat().forEach(b=>buttons.push({id:b.callback_data||b.id||uid("cb"),text:b.text,
+        kind:b.url?"url":"reply",val:b.url||b.callback_data||b.id||b.text}));
+      g.nodes.push({id:uid("n"),type:"trigger",name:k,x:60,y:40+i*140,text:c.response||"",
+        desc:c.description||"",buttons});
+    });
+    // پاسخ‌های callback → گره پیام
+    const replies=[];
+    ks.forEach((k,i)=>{
+      const cb=cmds[k].callbacks||{},src=g.nodes[i];
+      Object.entries(cb).forEach(([cid,txt],j)=>{
+        const node={id:uid("n"),type:"reply",name:cid,x:src.x+300,y:src.y+j*130,text:txt};
+        g.nodes.push(node);replies.push([src.id,cid,node.id]);
+      });
+    });
+    replies.forEach(([from,cid,to])=>{
+      const s=g.nodes.find(n=>n.id===from);const b=(s.buttons||[]).find(x=>x.id===cid||x.text===cid);
+      if(b)b.val=to; else if(s)s.buttons=s.buttons||[];
+    });
+    return g;
+  }
+};
 
-      #app { max-width: var(--maxw); margin: 0 auto; padding: 14px 16px 110px; }
-      .fade { animation: fade .3s cubic-bezier(.2,.7,.2,1); }
-      @keyframes fade { from { opacity: 0; transform: translateY(8px); } }
+/* ════════════════════════════════════════════════════════════════
+   RENDER — پوسته و مسیرها
+════════════════════════════════════════════════════════════════ */
+const ROUTES=[
+  {id:"dashboard",label:"داشبورد",icon:"gauge"},
+  {id:"flows",label:"جریان گفتگو",icon:"flow"},
+  {id:"subs",label:"مشترکان",icon:"people"},
+  {id:"broadcast",label:"برادکست",icon:"megaphone"},
+  {id:"media",label:"رسانه",icon:"image"},
+  {id:"settings",label:"تنظیمات",icon:"gear"},
+];
+function boot(){
+  const r=$("root");
+  if(!st.user){r.innerHTML="";r.append(Auth.render());return}
+  if(!st.bot&&st.route!=="account"){
+    // نمای انتخاب ربات (بدون ربات فعال)
+    r.innerHTML="";const w=E(`<div class="wrap"></div>`);
+    w.append(Rail.top(null));w.append(Rail.body(Bots.render()));r.append(w);
+    Rail.wire();Bots.wire();return;
+  }
+  r.innerHTML="";const w=E(`<div class="wrap"></div>`);
+  w.append(Rail.top(st.route));w.append(Rail.body(Router()));
+  r.append(w);Rail.wire();View.wire&&View.wire();
+}
+/* ریل ناوبری — در دسکتاپ عمودی، در موبایل پایین */
+const Rail={
+  top(active){
+    const r=E(`<nav class="rail"></nav>`);
+    r.append(E(`<div class="mark">${I.bolt}</div>`));
+    if(!st.bot){
+      // بدون ربات: فقط ورودی منو
+      const b=E(`<button data-go="bots" data-l="ربات‌ها" class="${!active?"on":""}">${I.grid}</button>`);
+      r.append(b);
+    }else{
+      ROUTES.slice(0,5).forEach(rt=>{
+        const b=E(`<button data-go="${rt.id}" data-l="${rt.label}" class="${active===rt.id?"on":""} tip" data-tip="${rt.label}">${I[rt.icon]}</button>`);
+        r.append(b)});
+      const b2=E(`<button data-go="bots" data-l="ربات‌ها" class="tip" data-tip="تغییر ربات">${I.grid}</button>`);
+      r.append(b2);
+    }
+    r.append(E(`<div class="sp"></div>`));
+    const c=E(`<button class="tip" data-tip="جست‌وجوی فرمان (Ctrl K)" data-pal>${I.cmd}</button>`);r.append(c);
+    const me=E(`<button data-go="account" data-l="حساب" class="tip" data-tip="حساب کاربری">${I.user}</button>`);r.append(me);
+    return r;
+  },
+  body(node){
+    const m=E(`<main class="page wide"></main>`);
+    if(node)m.append(node);return m;
+  },
+  wire(){
+    document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{tap();go(b.dataset.go)});
+    document.querySelectorAll("[data-pal]").forEach(b=>b.onclick=palette);
+  }
+};
+function go(route){
+  if(route==="bots"){st.bot=null;st.route="bots";boot();return}
+  st.route=route;boot();
+}
+function Router(){
+  switch(st.route){
+    case "dashboard":return View.dashboard();
+    case "flows":return View.flows();
+    case "subs":return View.subs();
+    case "broadcast":return View.broadcast();
+    case "media":return View.media();
+    case "settings":return View.settings();
+    case "account":return View.account();
+    default:return View.dashboard();
+  }
+}
 
-      /* Top bar */
-      .bar { display: flex; align-items: center; justify-content: space-between; margin: 8px 2px 20px; gap: 12px; }
-      .bar .idn { display: flex; align-items: center; gap: 12px; min-width: 0; }
-      .bar small { display: block; color: var(--mu); font-size: 13px; }
-      .bar b { font-size: 18px; font-weight: 700; display: block; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      h2 { font-size: 12px; color: var(--mu); font-weight: 700; letter-spacing: .4px; margin: 26px 3px 11px; text-transform: none; display: flex; align-items: center; justify-content: space-between; }
-      .lnk { color: var(--ac); font-size: 13px; font-weight: 600; cursor: pointer; }
+/* ── لیست ربات‌ها / انتخاب ── */
+const Bots={
+  render(){
+    const w=E(`<div class="page" style="padding-top:var(--s7)"></div>`);
+    const hd=E(`<div class="between mb" style="margin-bottom:var(--s5)">
+      <div><h1 style="font-size:var(--fs-2xl);font-weight:800;letter-spacing:-.03em">ربات‌های شما</h1>
+      <p class="dim sm">یک ربات را انتخاب کنید تا استودیو باز شود.</p></div></div>`);
+    w.append(hd);
+    if(st.bots===null){w.append(UI.skel(78,3));return w}
+    if(!st.bots.length){
+      const s=UI.state({icon:"bot",title:"هنوز رباتی نساخته‌ای",body:"با یک توکن از @BotFather، در ۳۰ ثانیه اولین رباتت را راه بینداز.",cta:"اتصال ربات",onCta:newBotSheet});
+      const card=E(`<div class="card" style="max-width:460px;margin:0 auto"></div>`);card.append(s);w.append(card);return w}
+    const grid=E(`<div class="g2 rise"></div>`);
+    st.bots.forEach(b=>{
+      const un=b.bot_username||b.bot_id;
+      const card=E(`<div class="card tap" data-open="${b.bot_id}"><div class="row" style="align-items:flex-start">
+        <div class="avatar" style="width:46px;height:46px;border-radius:14px;background:${grad(un)}"><i></i>${ini(un)}</div>
+        <div class="grow" style="min-width:0">
+          <div class="row"><b class="tr" style="font-size:var(--fs);font-weight:800;direction:ltr">@${esc(un)}</b>
+            <span class="live ${b.is_running?"":"off"}"></span></div>
+          <div class="sm dim">${b.is_running?"آنلاین":"آفلاین"} · ${N(Object.keys(b.commands||{}).length)} دستور · ${N(b.stats?.unique_users)} مشترک</div>
+        </div></div>
+        <div class="g2" style="margin-top:var(--s4);gap:var(--s2);grid-template-columns:repeat(3,1fr)">
+          <div class="kpi flat" style="background:var(--surface2);border-radius:var(--r-xs);padding:8px"><div class="v num" style="font-size:var(--fs-lg)">${N(b.stats?.unique_users)}</div><div class="k">مشترک</div></div>
+          <div class="kpi" style="background:var(--surface2);border-radius:var(--r-xs);padding:8px"><div class="v num" style="font-size:var(--fs-lg)">${N(b.stats?.messages_received)}</div><div class="k">دریافتی</div></div>
+          <div class="kpi" style="background:var(--surface2);border-radius:var(--r-xs);padding:8px"><div class="v num" style="font-size:var(--fs-lg)">${N(b.stats?.messages_sent)}</div><div class="k">ارسالی</div></div>
+        </div>
+        <div class="center" style="font-size:9px;font-weight:800;color:var(--ink3);margin-top:var(--s3);letter-spacing:.5px">برای ورود به استودیو</div>
+      </div>`);
+      grid.append(card);
+    });
+    w.append(grid);
+    const add=E(`<div style="margin-top:var(--s5);display:flex;justify-content:center"></div>`);
+    add.append(UI.btn("اتصال ربات جدید",{variant:"ghost",icon:"plus",onclick:newBotSheet}));
+    w.append(add);
+    return w;
+  },
+  wire(){document.querySelectorAll("[data-open]").forEach(c=>c.onclick=()=>openBot(c.dataset.open))}
+};
+async function openBot(id){
+  tap("med");st.bot=null;
+  const p=$("root").querySelector(".page");if(p)p.innerHTML='<div class="spinner"></div>';
+  try{const {bot}=await api(`/api/bots/${id}`);st.bot=bot;st.route="dashboard";boot()}
+  catch(e){err(e.message);st.route="bots";boot()}
+}
 
-      .ava { width: 44px; height: 44px; border-radius: 14px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+/* ── اتصال ربات جدید ── */
+function newBotSheet(){
+  const b=E(`<div class="stack"></div>`);
+  b.append(E(`<p class="sm dim">توکن ربات را از <a href="https://t.me/BotFather" target="_blank">@BotFather</a> بگیری؛ فقط همین یک فیلد لازم است.</p>`));
+  const tk=UI.field({ph:"123456789:AA...",icon:"key",rtl:false});b.append(tk);
+  const s=sheet({title:"اتصال ربات",body:b,foot:""});
+  const ft=s.node.querySelector("footer")||E(`<footer></footer>`);
+  if(!s.node.querySelector("footer"))s.node.append(ft);
+  ft.innerHTML="";
+  ft.append(UI.btn("انصراف",{block:true,onclick:closeSheet}));
+  const add=UI.btn("افزودن ربات",{variant:"brand",icon:"plus",block:true});
+  add.onclick=guard(async()=>{
+    const token=tk.input.value.trim();if(!token){warn("توکن را وارد کن");return}
+    add.disabled=true;add.innerHTML='<span class="spinner" style="margin:0;width:16px;height:16px;border-width:2px"></span>';
+    const r=await api("/api/bots",{method:"POST",body:{token}});
+    ding();ok(r.message||"ربات متصل شد");closeSheet();await loadBots();
+    st.route="bots";boot();
+  });
+  ft.append(add);
+}
 
-      /* Stats */
-      .strip { display: flex; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); overflow: hidden; }
-      .strip > div { flex: 1; padding: 15px 4px; text-align: center; }
-      .strip > div + div { border-inline-start: 1px solid var(--hair); }
-      .strip b { display: block; font: 700 19px/1.15 Inter, sans-serif; letter-spacing: -.5px; }
-      .strip .ac b { color: var(--ac); }
-      .strip span { font-size: 11px; color: var(--mu); }
+/* ════════════════════════════════════════════════════════════════
+   View — صفحه‌های B (پنج حالت: bootstrap/empty/loading/error/success)
+════════════════════════════════════════════════════════════════ */
+const View={};
+function head(title,sub,actions){
+  const h=E(`<div class="pagehead between" style="align-items:flex-end"><div>
+    <h1>${esc(title)}</h1>${sub?`<p>${esc(sub)}</p>`:""}</div><div class="row"></div></div>`);
+  if(actions)h.querySelector(".row").append(...actions);
+  return h;
+}
 
-      /* Bot card */
-      .bot { display: flex; align-items: center; gap: 13px; padding: 15px; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); margin-bottom: 10px; cursor: pointer; transition: transform .15s, border-color .15s; }
-      .bot:active { transform: scale(.995); border-color: var(--ac); }
-      .bot .g { flex: 1; min-width: 0; }
-      .bot b { display: block; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .bot small { display: block; color: var(--mu); font-size: 12.5px; margin-top: 2px; }
-      .live { position: absolute; bottom: -1px; left: -1px; width: 13px; height: 13px; border-radius: 50%; background: var(--mu); border: 3px solid var(--panel); }
-      .live.on { background: var(--ok); }
-      .av2 { position: relative; width: 44px; height: 44px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--hair); display: grid; place-items: center; font-weight: 700; color: var(--ac); flex: none; }
+/* ── داشبورد مالک ربات ── */
+View.dashboard=function(){
+  const b=st.bot;
+  const w=E(`<div class="page"></div>`);
+  w.append(head(esc(b.bot_username?`ربات @${b.bot_username}`:"ربات من"),
+    `وضعیت، رشد و دسترسی سریع به سازندهٔ جریان.`, [
+    UI.btn(b.is_running?"متوقف":"راه‌اندازی",{icon:b.is_running?"out":"zap",variant:b.is_running?"default":"brand",id:"tgl"}),
+    UI.btn("ویرایش جریان",{icon:"flow",variant:"ghost",id:"togo"}),
+  ]));
+  const grid=E(`<div class="g4" style="margin-bottom:var(--s5)"></div>`);
+  const days=Object.entries(b.daily_stats||{}).sort().slice(-7);
+  const today=days.at(-1)?.[1]||{};const yest=days.at(-2)?.[1]||{};
+  const growth=(today.new_users||0)-(yest.new_users||0);
+  grid.append(
+    UI.kpi(N(b.stats?.unique_users||0),"مشترکان"),
+    UI.kpi(N(b.stats?.messages_received||0),"پیام‌ها"),
+    UI.kpi(N(today.messages_in||today.new_users||0),"فعالیت امروز"),
+    UI.kpi(N(Object.keys(b.commands||{}).length),"دستور فعال"),
+  );
+  w.append(grid);
+  const sec=E(`<div class="g2"></div>`);
+  const chartCard=E(`<div class="card"><div class="between" style="margin-bottom:var(--s4)"><div><h3 style="font-size:var(--fs);font-weight:800">رشد مشترکان</h3><p class="hint">۷ روز اخیر</p></div>
+    ${growth>=0?UI.chip(`+${N(growth)} امروز`,{variant:"ok"}):UI.chip(`${N(growth)}`,{variant:"dgr"})}</div></div>`);
+  chartCard.append(UI.chart(days.map(d=>({l:faDate(d[0]+"T00:00"),v:(d[1].new_users||0)}))));
+  sec.append(chartCard);
+  const health=E(`<div class="card"><h3 style="font-size:var(--fs);font-weight:800;margin-bottom:var(--s3)">سلامت ربات</h3><div class="stack" id="chk"></div></div>`);
+  sec.append(health);
+  w.append(sec);
+  w.append(E(`<div class="s5"></div>`));
+  w.append(head("دستورهای جاری","از همین‌جا متن هر پاسخ را سریع ویرایش کن"));
+  const list=E(`<div class="card"><div class="list" id="cmds"></div></div>`);w.append(list);
+  return w;
+};
+View.wire=async function(){
+  if(st.route!=="dashboard"||!st.bot)return;
+  const b=st.bot;
+  $("tgl")&&($("tgl").onclick=guard(async()=>{
+    const t=$("tgl");t.disabled=true;
+    const r=await api(`/api/bots/${b.bot_id}/toggle`,{method:"PATCH",body:{active:!b.is_running}});
+    b.is_running=r.is_running;tap("med");ok(r.is_running?"ربات روشن شد":"ربات خاموش شد");boot();
+  }));
+  $("togo")&&($("togo").onclick=()=>go("flows"));
+  // چک‌های سلامت
+  const c=$("chk");
+  const items=[
+    {ok:true,t:"توکن معتبر و متصل",s:"getMe پاسخ داد"},
+    {ok:b.is_running,t:b.is_running?"ربات در حال اجراست":"ربات متوقف است",s:b.is_running?"پیام‌ها پاسخ داده می‌شوند":"برای پاسخ‌دهی روشنش کن"},
+    {ok:!!b.commands?.start,t:"گره /start تعریف شده",s:b.commands?.start?"مسیر ورود آماده است":"یک گره شروع بساز"},
+    {ok:(b.stats?.unique_users||0)>0,t:`${N(b.stats?.unique_users||0)} مشترک`,s:"لینک ربات را بازنشر کن"},
+  ];
+  items.forEach(it=>c.append(E(`<div class="row" style="gap:var(--s3)">
+    <div class="glyph" style="width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;background:var(--${it.ok?"ok":"warn"}-soft);color:var(--${it.ok?"ok":"warn"})">${it.ok?I.check:I.alert}</div>
+    <div class="grow"><div class="sm b">${esc(it.t)}</div><div class="hint">${esc(it.s)}</div></div></div>`)));
+  // لیست دستورهای جاری
+  const l=$("cmds");
+  const ks=Object.keys(b.commands||{});
+  if(!ks.length){l.append(UI.state({icon:"flow",title:"هنوز دستوری نیست",body:"از سازندهٔ جریان، اولین پاسخ را بساز.",cta:"ساخت جریان",onCta:()=>go("flows")}).cloneNode(true));
+    l.querySelector(".state .btn")?.addEventListener("click",()=>go("flows"));
+    l.querySelectorAll(".state").forEach(s=>s.onclick=()=>go("flows"));return}
+  ks.forEach(k=>{
+    const c=b.commands[k];
+    const r=E(`<div class="r"><div class="avatar" style="background:var(--brand-soft);color:var(--brand);width:34px;height:34px;border-radius:10px">${I.msg}</div>
+      <div class="grow" style="min-width:0"><div class="b sm ltr" style="text-align:right">/${esc(k)}</div>
+        <div class="hint tr">${esc(c.description||c.response||"بدون پاسخ").slice(0,40)}</div></div>
+      ${c.buttons?UI.chip(`${N(c.buttons.flat().length)} دکمه`):UI.chip("متنی",{variant:"line"})}</div>`);
+    r.style.cursor="pointer";r.onclick=()=>{go("flows");setTimeout(()=>View.flows.editCmd&&View.flows.editCmd(k),200)};
+    l.append(r);
+  });
+};
 
-      .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
-      .pill.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
-      .pill.off { color: var(--mu); background: var(--panel-2); }
+/* ── Flow Builder ── */
+View.flows=function(){
+  const w=E(`<div class="page"></div>`);
+  w.append(head("سازندهٔ جریان","گره‌ها را به هم وصل کن؛ خروجی دقیقاً همان دستورات ربات است.",[
+    UI.btn("بازگردانی از ربات",{icon:"down",variant:"ghost",size:"sm",id:"imp"}),
+    UI.btn("ذخیرهٔ نسخه",{icon:"save",variant:"ghost",size:"sm",id:"bk"}),
+  ]));
+  const bar=E(`<div class="between" style="margin-bottom:var(--s3);flex-wrap:wrap;gap:var(--s3)">
+    <div class="row" id="tools" style="gap:var(--s2);flex-wrap:wrap"></div>
+    <div class="row" style="gap:var(--s2)"><span id="dirty" class="chip line hidden">${I.save}تغییر ذخیره‌نشده</span>
+    <button class="btn sm" id="undo" disabled>${I.undo}بازگشت</button>
+    <button class="btn brand sm" id="pub">${I.zap}انتشار در ربات</button></div></div>`);
+  w.append(bar);
+  const fb=E(`<div class="fb"><div class="canvas" id="cv"></div><div class="fbp" id="fbp"></div></div>`);
+  w.append(fb);
+  return w;
+};
+View.flows._inited=false;
+View.flows.init=function(){
+  if(View.flows._inited)return; View.flows._inited=true;
+};
+View.flows.wire=function(){};
 
-      /* Buttons */
-      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 48px; padding: 0 18px; border-radius: 14px; background: var(--ac); color: var(--ac-ink); font-weight: 700; cursor: pointer; width: 100%; transition: transform .12s, opacity .12s; }
-      .btn:active { transform: scale(.98); opacity: .92; }
-      .btn:disabled { opacity: .5; }
-      .btn.line { background: var(--panel); color: var(--tx); border: 1px solid var(--hair); }
-      .btn.red { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
-      .btn.sm { height: 38px; width: auto; padding: 0 14px; font-size: 13.5px; border-radius: 11px; }
-      .btn.sm svg { width: 17px; height: 17px; }
-      .btn svg { width: 18px; height: 18px; }
-      .ib { width: 40px; height: 40px; border-radius: 12px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); flex: none; transition: .15s; }
-      .ib:active { background: var(--panel-2); transform: scale(.93); }
+/* ── مشترکان ── */
+View.subs=function(){
+  const w=E(`<div class="page"></div>`);
+  w.append(head("مشترکان",`کاربرانی که به @${st.bot.bot_username||"ربات"} پیام داده‌اند.`,null));
+  const card=E(`<div class="card"><div class="between" style="margin-bottom:var(--s3)"><div id="subs-total" class="chip brand">${I.people}در حال بارگذاری…</div>
+    <div class="field sm" style="min-height:36px;max-width:240px">${I.search}<input id="sub-q" placeholder="جستجوی آیدی عددی"></div></div>
+    <div id="subs-list"></div></div>`);
+  w.append(card);
+  return w;
+};
 
-      /* FAB */
-      #fab { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 78px); inset-inline-end: max(18px, calc(50vw - var(--maxw)/2 + 16px)); width: 58px; height: 58px; border-radius: 19px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--ac) 55%, transparent); cursor: pointer; z-index: 25; transition: transform .16s; }
-      #fab svg { width: 28px; height: 28px; stroke-width: 2.1; }
-      #fab:active { transform: scale(.9); }
-      #fab.hide { display: none; }
+/* ── برادکست ── */
+View.broadcast=function(){
+  const b=st.bot;
+  const w=E(`<div class="page" style="max-width:720px"></div>`);
+  w.append(head("برادکست","یک اطلاعیه برای همهٔ مشترکین.",null));
+  const card=E(`<div class="card stack"></div>`);
+  const cnt=N(b.stats?.unique_users||0);
+  card.append(E(`<div class="between" style="background:var(--surface2);border-radius:var(--r-sm);padding:var(--s3) var(--s4)">
+    <span class="sm dim">مخاطبان</span><span class="chip brand">${I.people}${cnt} نفر</span></div>`));
+  const ed=UI.field({rows:5,ph:"📣 اطلاعیهٔ جدید — از <b>HTML</b> و <a href=''>لینک</a> استفاده کن",id:"bc-txt"});
+  card.append(ed);
+  card.append(E(`<p class="hint">پیش‌نمایش زنده در پایین به‌صورت حباب تلگرام.</p>`));
+  const pv=E(`<div class="preview" id="bc-prev"></div>`);card.append(pv);
+  const time=E(`<div class="between"><span class="sm dim">زمان‌بندی</span></div>`);
+  const sched=UI.sw(false,{onChange:v=>{$("bc-at").classList.toggle("hidden",!v)}});
+  time.append(sched);time.querySelector(".sm").after(E(`<input id="bc-at" type="datetime-local" class="field sm hidden" style="min-height:36px;width:auto;direction:ltr">`));
+  card.append(time);
+  card.append(UI.btn("ارسال همگانی",{variant:"brand",icon:"send",block:true,id:"bc-go"}));
+  w.append(card);
+  return w;
+};
 
-      /* Nav */
-      #nav { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: none; gap: 4px; width: min(var(--maxw), calc(100vw - 24px)); background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--hair); border-radius: 18px; padding: 6px; z-index: 20; }
-      #nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0; border-radius: 13px; color: var(--mu); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .18s; }
-      #nav button.on { color: var(--ac); background: var(--ac-soft); }
+/* ── رسانه ── */
+View.media=function(){
+  const lib=MediaStore.get();
+  const w=E(`<div class="page"></div>`);
+  w.append(head("کتابخانهٔ رسانه","فایل‌های آپلودشدهٔ ربات.",[UI.btn("آپلود",{icon:"up",variant:"brand",id:"mup"})]));
+  const card=E(`<div class="card"><div id="mgrid"></div></div>`);w.append(card);
+  return w;
+};
 
-      /* Inputs */
-      label { display: block; font-size: 12.5px; color: var(--mu); font-weight: 600; margin: 16px 3px 7px; }
-      .in { width: 100%; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 13px; padding: 12px 14px; color: var(--tx); transition: .15s; }
-      .in:focus { border-color: var(--ac); box-shadow: 0 0 0 3px var(--ac-soft); }
-      .in::placeholder { color: var(--mu); opacity: .65; }
-      textarea.in { min-height: 104px; resize: vertical; line-height: 1.75; }
-      .in.ltr { text-align: left; direction: ltr; }
+/* ── تنظیمات ── */
+View.settings=function(){
+  const b=st.bot;
+  const w=E(`<div class="page" style="max-width:720px"></div>`);
+  w.append(head("تنظیمات ربات",null,null));
+  const g=E(`<div class="stack"></div>`);
+  // منوی خودکار
+  const am=E(`<div class="card between"><div><div class="b">منوی خودکار تلگرام</div>
+    <div class="hint">همهٔ دستورها در منوی رسمی ربات ثبت شوند.</div></div></div>`);
+  am.append(UI.sw(b.auto_menu!==false,{onChange:guard(async v=>{
+    await api(`/api/bots/${b.bot_id}/config`,{method:"PATCH",body:{auto_menu:v}});b.auto_menu=v;
+    if(v){try{await api(`/api/bots/${b.bot_id}/sync-menu`,{method:"POST"})}catch(e){}
+      ok("منو همگام شد")}else ok("ذخیره شد")})}));
+  g.append(am);
+  // خوش‌آمد
+  const wc=E(`<div class="card stack"><div class="b">پیام خوش‌آمد</div><div class="hint">برای اولین /start کاربر.</div></div>`);
+  const wcf=UI.field({rows:3,val:b.welcome_message||"",ph:"سلام! خوش اومدی 🌱"});wc.append(wcf);
+  wc.append(UI.btn("ذخیره",{icon:"save",onclick:guard(async()=>{
+    await api(`/api/bots/${b.bot_id}/config`,{method:"PATCH",body:{welcome_message:wcf.input.value.trim()}});b.welcome_message=wcf.input.value.trim();ok("ذخیره شد")})}));
+  g.append(wc);
+  const ur=E(`<div class="card stack"><div class="b">پاسخ به پیام بی‌پاسخ</div><div class="hint">وقتی متن کاربر تطبیق نخورد.</div></div>`);
+  const urf=UI.field({rows:2,val:b.unknown_reply||"",ph:"متأسفانه متوجه نشدم…"});ur.append(urf);
+  ur.append(UI.btn("ذخیره",{icon:"save",onclick:guard(async()=>{
+    await api(`/api/bots/${b.bot_id}/config`,{method:"PATCH",body:{unknown_reply:urf.input.value.trim()}});b.unknown_reply=urf.input.value.trim();ok("ذخیره شد")})}));
+  g.append(ur);
+  // منو + حذف
+  g.append(E(`<div class="card stack"><div class="b">داده و حذف</div>
+    <div class="hint">خروجی گرفتن از جریان‌ها یا حذف کامل ربات.</div>
+    <div class="row wrap"><button class="btn sm" id="bk2">${I.down}خروجی JSON</button>
+    <button class="btn sm" id="im2">${I.up}بارگذاری</button>
+    <button class="btn sm danger" id="db">${I.trash}حذف ربات</button></div></div>`));
+  g.append(E(`<div class="card between" style="border-color:var(--danger-soft)">
+    <div><div class="b" style="color:var(--danger)">منطقهٔ خطر</div><div class="hint">حذف ربات قابل بازگشت نیست.</div></div>
+    <button class="btn sm danger" id="db2">${I.trash}حذف</button></div>`));
+  w.append(g);
+  return w;
+};
+View.settings.wire=function(){};
 
-      /* Toggle */
-      .sw { position: relative; width: 48px; height: 28px; border-radius: 14px; background: var(--hair); cursor: pointer; flex: none; transition: .25s; }
-      .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: .25s cubic-bezier(.34,1.4,.64,1); }
-      .sw.on { background: var(--ac); }
-      .sw.on::after { right: 23px; }
+/* ── حساب ── */
+View.account=function(){
+  const u=st.user;
+  const w=E(`<div class="page" style="max-width:520px"></div>`);
+  w.append(head("حساب کاربری",null,null));
+  const card=E(`<div class="card stack">
+    <div class="row" style="gap:var(--s4)">
+      <div class="avatar" style="width:54px;height:54px;font-size:22px;border-radius:16px;background:${grad(u.username||"u")}"><i></i>${ini(u.username||u.full_name)}</div>
+      <div class="grow"><div class="b" style="font-size:var(--fs-lg)">@${esc(u.username||"—")}</div>
+        <div class="hint">${esc(u.full_name||"")} ${u.telegram_username?"· @"+esc(u.telegram_username):""}</div></div>
+      ${u.is_admin?UI.chip("ادمین",{variant:"brand"}):""}</div>
+    <div class="card flat between" style="padding:var(--s3) var(--s4)"><span class="sm dim">تم روشن</span></div>
+    <div class="card flat between" style="padding:var(--s3) var(--s4)"><span class="sm dim">کد دعوت</span><span class="mono b">${esc(u.referral_code||"—")}</span></div>
+    <button class="btn danger blk" id="lo">${I.out}خروج از حساب</button></div>`);
+  card.querySelectorAll(".card.flat")[0].append(UI.sw(document.documentElement.dataset.theme==="light",{size:"sm",onChange:v=>{theme(v?"light":"dark");boot()}}));
+  w.append(card);
+  return w;
+};
 
-      .seg { display: flex; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 5px; margin: 20px 0; gap: 5px; }
-      .seg button { flex: 1; height: 40px; border-radius: 10px; color: var(--mu); cursor: pointer; font-weight: 600; font-size: 13.5px; transition: .18s; }
-      .seg button.on { background: var(--panel-2); color: var(--tx); box-shadow: inset 0 0 0 1px var(--hair); }
+/* ════════════════════════════════════════════════════════════════
+   View wire — رویدادهای صفحه‌ها
+════════════════════════════════════════════════════════════════ */
+const _wire=View.wire;
+View.wire=async function(){
+  _wire&&_wire();
+  const r=st.route;
+  if(r==="dashboard")return View._dash();
+  if(r==="flows")return FlowBuilder.mount();
+  if(r==="subs")return Subs.mount();
+  if(r==="broadcast")return Broadcast.mount();
+  if(r==="media")return Media.mount();
+  if(r==="settings")return Settings.mount();
+  if(r==="account"){const l=$("lo");l&&(l.onclick=()=>confirmBox({title:"خروج از حساب؟",body:"برای بازگشت باید دوباره وارد شوی.",okLabel:"خروج",danger:true}).then(v=>v&&logout()))}
+};
+View._dash=function(){View.wireDash&&View.wireDash()};
 
-      /* Generic item row */
-      .item { display: flex; align-items: center; gap: 13px; padding: 14px; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; margin-bottom: 9px; cursor: pointer; transition: border-color .15s; }
-      .item:active { border-color: var(--ac); }
-      .item.static { cursor: default; }
-      .item .g { flex: 1; min-width: 0; }
-      .item b { display: block; font-weight: 600; }
-      .item small { display: block; color: var(--mu); font-size: 12.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .sq { width: 42px; height: 42px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--hair); display: grid; place-items: center; color: var(--ac); flex: none; }
-      .badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 8px; background: var(--panel-2); color: var(--mu); border: 1px solid var(--hair); white-space: nowrap; }
-      .badge.url { color: var(--amber); }
-      .del { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mu); cursor: pointer; flex: none; }
-      .del:active { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
-      .del.on { color: var(--ac); background: var(--ac-soft); }
-
-      .card { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 16px; }
-
-      /* Plugin accordion */
-      .pl { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); margin-bottom: 10px; overflow: hidden; }
-      .pl .h { display: flex; align-items: center; gap: 12px; padding: 15px; cursor: pointer; }
-      .pl .h .g { flex: 1; min-width: 0; }
-      .pl .h b { display: block; font-weight: 600; }
-      .pl .h small { display: block; color: var(--mu); font-size: 12px; }
-      .chev { color: var(--mu); transition: transform .22s; }
-      .pl.open .chev { transform: rotate(180deg); }
-      .pl .b { display: none; padding: 6px 15px 16px; border-top: 1px solid var(--hair); }
-      .pl.open .b { display: block; }
-
-      /* Bottom sheet */
-      #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 40; display: none; justify-content: center; align-items: flex-end; }
-      #scrim.on { display: flex; }
-      .sheet { width: min(var(--maxw), 100vw); max-height: 92vh; background: var(--bg); border: 1px solid var(--hair); border-bottom: 0; border-radius: 24px 24px 0 0; display: flex; flex-direction: column; animation: up .3s cubic-bezier(.2,.8,.2,1); }
-      @keyframes up { from { transform: translateY(40px); opacity: 0; } }
-      .sh-h { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--hair); font-weight: 700; }
-      .sh-b { padding: 16px; overflow: auto; flex: 1; }
-      .sh-f { display: flex; gap: 8px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--hair); }
-
-      .pfx { display: flex; align-items: center; direction: ltr; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 13px; padding: 0 14px; }
-      .pfx b { color: var(--mu); font-weight: 700; }
-      .pfx input { flex: 1; padding: 12px 0; text-align: left; }
-      .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
-      .chips span { font: 500 12.5px Inter, Vazirmatn; padding: 5px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--hair); color: var(--mu); cursor: pointer; }
-      .chips span:active { border-color: var(--ac); color: var(--ac); }
-
-      .pv { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 14px; margin-top: 8px; }
-      .bub { background: var(--panel-2); border-radius: 15px 15px 15px 5px; padding: 10px 13px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.75; max-width: 92%; }
-      .bubrow { display: flex; gap: 5px; margin-top: 6px; max-width: 92%; }
-      .bubrow i { flex: 1; text-align: center; font-style: normal; background: var(--panel); border: 1px solid var(--hair); border-radius: 9px; padding: 7px; font-size: 12.5px; color: var(--ac); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .brow { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 11px; margin-bottom: 8px; }
-      .brow .r { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-      .brow .r .in { flex: 1; min-width: 0; padding: 9px 11px; }
-      .brow .r .id { flex: 0 0 82px; font-size: 12px; }
-      .btype { display: flex; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 9px; padding: 3px; gap: 2px; }
-      .btype button { flex: 1; padding: 5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 600; color: var(--mu); cursor: pointer; }
-      .btype button.on { background: var(--panel); color: var(--ac); }
-      details.med { margin-top: 16px; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 0 14px; }
-      details.med summary { list-style: none; cursor: pointer; padding: 14px 0; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-      details.med summary::-webkit-details-marker { display: none; }
-      details.med[open] { padding-bottom: 14px; }
-      details.med[open] summary { border-bottom: 1px solid var(--hair); margin-bottom: 12px; }
-
-      /* Sparkline chart */
-      .chart { display: flex; align-items: flex-end; gap: 6px; height: 84px; padding-top: 6px; }
-      .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
-      .chart .cbar { width: 100%; border-radius: 6px 6px 0 0; background: var(--ac); opacity: .85; min-height: 3px; transition: height .3s; }
-      .chart .clab { font-size: 10px; color: var(--mu); }
-
-      .empty { text-align: center; color: var(--mu); padding: 46px 20px; }
-      .empty .ic { width: 62px; height: 62px; margin: 0 auto 14px; border-radius: 20px; background: var(--panel); border: 1px dashed var(--hair); display: grid; place-items: center; color: var(--ac); }
-      .empty .ic svg { width: 28px; height: 28px; }
-      .empty b { color: var(--tx); font-weight: 600; font-size: 15px; }
-      .bar2 { height: 5px; border-radius: 3px; background: var(--panel-2); margin-top: 5px; overflow: hidden; }
-      .bar2 i { display: block; height: 100%; background: var(--ac); }
-      #toast { position: fixed; top: 12px; left: 50%; transform: translate(-50%, -80px); background: var(--tx); color: var(--bg); padding: 11px 18px; border-radius: 13px; font-weight: 600; font-size: 13.5px; z-index: 99; transition: .32s cubic-bezier(.2,.8,.2,1); max-width: 90%; }
-      #toast.on { transform: translate(-50%, 0); }
-      #toast.err { background: var(--red); color: #fff; }
-
-      /* Auth */
-      #auth { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: none; overflow: auto; padding: max(50px,11vh) 26px 40px; }
-      #auth.on { display: block; }
-      #auth > div { max-width: 340px; margin: 0 auto; }
-      .mark { width: 58px; height: 58px; border-radius: 19px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; margin-bottom: 26px; }
-      .mark svg { width: 32px; height: 32px; stroke-width: 1.9; }
-      .word { position: fixed; top: 20px; right: 20px; font: 700 11px Inter; letter-spacing: 3px; color: var(--mu); }
-      #theme { position: fixed; top: 16px; left: 16px; width: 40px; height: 40px; border-radius: 13px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); z-index: 70; }
-      .field { margin-bottom: 13px; }
-      .err { color: var(--red); font-size: 12px; margin: 6px 3px 0; min-height: 1px; }
-      .err.good { color: var(--ok); }
-      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-    </style>
-  </head>
-  <body>
-    <div id="auth"><div id="authbox"></div></div>
-    <button id="theme" onclick="toggleTheme()"></button>
-    <div id="app"></div>
-    <div id="fab" class="hide" onclick="go('new')"></div>
-    <nav id="nav"></nav>
-    <div id="scrim" onclick="if (event.target === this) closeSheet()"><div class="sheet" id="sheet"></div></div>
-    <div id="toast"></div>
-
-    <script>
-      "use strict";
-      const API = "https://forextelbot-9jwt.onrender.com";
-      const WEBAPP = "https://botsazgram.onrender.com";
-      const tg = window.Telegram?.WebApp || null;
-      let initData = "";
-      let token = localStorage.getItem("authToken") || "";
-      let user = null, bots = [], bot = null, cmds = {}, ed = null, tab = "cmds", botId = null;
-      const ref = new URLSearchParams(location.search).get("ref") || localStorage.getItem("pending_referral") || "";
-      if (ref) localStorage.setItem("pending_referral", ref);
-
-      const $ = (id) => document.getElementById(id);
-      const app = () => $("app");
-      const n = (x) => (+x || 0).toLocaleString("fa-IR");
-      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-      const I = {
-        x: '<path d="M6 6l12 12M18 6L6 18"/>', down: '<path d="M6 9l6 6 6-6"/>', msg: '<path d="M4 5h16v11H9l-5 4z"/>',
-        home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>', bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
-        plus: '<path d="M12 5v14M5 12h14"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
-        back: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
-        plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>', send: '<path d="M21 3L3 10l7 3 3 7z"/>',
-        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>', logo: '<path d="M4 12l16-8-4 16-4-6z"/>',
-        shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>',
-        bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>', code: '<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>',
-        gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.2A1.6 1.6 0 004.5 19.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 001.1-2.7H2a2 2 0 110-4h.2a1.6 1.6 0 001.1-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-1.1V2a2 2 0 114 0v.2a1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-1.1 2.7H22a2 2 0 110 4h-.2a1.6 1.6 0 00-1.4 1z"/>',
-        open: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>', moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
-        sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M5 5l1.4 1.4M17.6 17.6L19 19M2 12h2M20 12h2M5 19l1.4-1.4M17.6 6.4L19 5"/>',
-        image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/>',
-        cast: '<path d="M2 16a6 6 0 016 6M2 12a10 10 0 0110 10M2 8a14 14 0 0114 14"/><circle cx="3" cy="21" r="1"/>',
-        coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/>',
-        logout: '<path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3"/>',
-        wave: '<path d="M18 11V6a2 2 0 00-4 0M14 10V4a2 2 0 00-4 0v2M10 10.5V6a2 2 0 00-4 0v8"/><path d="M18 8a2 2 0 014 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.9-6-2.4L4 18"/>',
-        help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 014 2c0 1.5-2 2-2 3M12 17h.01"/>',
-        link: '<path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/>',
-        sync: '<path d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 00-14-3M4 16a8 8 0 0014 3"/>',
+/* ════════════════════════════════════════════════════════════════
+   FlowBuilder — بوم گره‌ای (کاملاً سمت کلاینت)
+════════════════════════════════════════════════════════════════ */
+const FlowBuilder={
+  undo:[],dragging:null,linking:null,
+  async mount(){
+    const g=Flow.loadBot(st.bot.bot_id)||await Flow.importFromServer();
+    st.flow=g;this.undo=[];
+    this.renderTools();this.renderNodes();this.renderPanel();this.markDirty(false);
+    $("pub")&&($("pub").onclick=this.publish.bind(this));
+    $("imp")&&($("imp").onclick=guard(async()=>{st.flow=await Flow.importFromServer();Flow.save(st.flow);this.renderNodes();this.renderPanel();ok("از ربات بازگردانی شد")}));
+    $("bk")&&($("bk").onclick=guard(async()=>{Flow.save(st.flow);this.markDirty(false);ok("نسخهٔ محلی ذخیره شد")}));
+    $("undo")&&($("undo").onclick=()=>{const p=this.undo.pop();if(p){st.flow=p;this.renderNodes();this.renderPanel();this.undo.length?$("undo").disabled=false:$("undo").disabled=true;tap()}});
+  },
+  push(){this.undo.push(clone(st.flow));if(this.undo.length>30)this.undo.shift();$("undo")&&($("undo").disabled=false)},
+  renderTools(){
+    const t=$("tools");if(!t)return;t.innerHTML="";
+    [["trigger","دستور","flow"],["reply","پیام","msg"]].forEach(([ty,lbl,ic])=>{
+      const b=E(`<button class="btn sm">${I[ic]}${lbl}</button>`);
+      b.onclick=()=>{this.push();const n={id:uid("n"),type:ty,name:ty==="trigger"?"":"",x:60+t.children.length*40+Math.random()*40,y:60+Math.random()*160,text:"",buttons:[]};st.flow.nodes.push(n);this.renderNodes();this.select(n.id);tap()};
+      t.append(b);
+    });
+  },
+  select(id){
+    this.sel=id;this.renderNodes();this.renderPanel();
+  },
+  renderNodes(){
+    const cv=$("cv");if(!cv)return;
+    cv.querySelectorAll(".node,#wires,.palette").forEach(n=>n.remove());
+    const v=Flow.validate(st.flow);
+    // wires
+    const svg=E(`<svg id="wires"><defs><marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--line2)"/></marker></defs></svg>`);
+    cv.append(svg);
+    st.flow.nodes.forEach(n=>{
+      const el=E(`<div class="node ${n.type} ${this.sel===n.id?"sel":""} ${v.bad.has(n.id)?"bad":""} ${this.linking===n.id?"linking":""}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px"></div>`);
+      el.setAttribute("data-branch", n.type==="trigger"?"1":"");
+      const btns=(n.buttons||[]).map(b=>`<span>${esc(b.text)}</span>`).join("");
+      el.innerHTML=`<div class="nh">${n.type==="trigger"?I.bolt:I.msg}<b>${n.type==="trigger"?esc("/"+(n.name||"?")):"پیام"}</b>
+        <button class="kill" data-kill="${n.id}">${I.x}</button></div>
+        <div class="nb"><div class="txt">${esc(n.text||"متن ندارد")}</div></div>
+        ${btns?`<div class="nk">${btns}</div>`:""}`;
+      cv.append(el);
+      el.onpointerdown=e=>{
+        if(e.target.closest(".kill"))return;
+        if(e.button)return;
+        const x0=e.clientX-n.x,y0=e.clientY-n.y;
+        let moved=false;
+        const mv=ev=>{
+          if(!moved&&Math.abs(ev.clientX-x0)+Math.abs(ev.clientY-y0)<4)return;
+          if(!moved){moved=true;this.push();this.sel=n.id;el.classList.add("sel");this.renderPanel()}
+          n.x=Math.max(0,ev.clientX-x0);n.y=Math.max(0,ev.clientY-y0);
+          el.style.left=n.x+"px";el.style.top=n.y+"px";this.renderWires();
+        };
+        const up=()=>{
+          el.onpointermove=null;el.onpointerup=null;el.onpointercancel=null;
+          if(moved){this.markDirty(true);Flow.save(st.flow)}
+          else{this.select(n.id)}
+        };
+        this.sel=n.id;this.renderPanel();
+        el.onpointermove=mv;el.onpointerup=up;el.onpointercancel=up;
       };
-      const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
-
-      let tt;
-      function toast(m, e) {
-        const t = $("toast"); t.textContent = m; t.className = "on" + (e ? " err" : "");
-        clearTimeout(tt); tt = setTimeout(() => (t.className = ""), 2600); hap(e ? "error" : "success");
-      }
-      function hap(t) { try { const H = tg?.HapticFeedback; if (!H) return; ["light","medium","heavy","rigid","soft"].includes(t) ? H.impactOccurred(t) : H.notificationOccurred(t); } catch (e) {} }
-      const sure = (m, f) => (tg?.showConfirm ? tg.showConfirm(m, (r) => r === "ok" && f()) : confirm(m) && f());
-
-      async function api(p, o = {}) {
-        const h = { "Content-Type": "application/json" };
-        if (initData) h["X-Init-Data"] = initData;
-        if (token) h.Authorization = "Bearer " + token;
-        const r = await fetch(API + p, { ...o, headers: { ...h, ...(o.headers || {}) }, body: o.body ? JSON.stringify(o.body) : undefined });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          if (r.status === 401 && token) { token = ""; localStorage.removeItem("authToken"); showAuth(); }
-          throw new Error(d.detail || d.error || "خطای اتصال (" + r.status + ")");
-        }
-        return d;
-      }
-      const guard = (f) => async (...a) => { try { return await f(...a); } catch (e) { toast(e.message, 1); } };
-      const devId = () => localStorage.device_id || (localStorage.device_id = "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 11));
-
-      function applyTheme(t) {
-        document.documentElement.setAttribute("data-theme", t);
-        localStorage.setItem("gs_theme", t);
-        $("theme").innerHTML = ic(t === "light" ? "moon" : "sun");
-        const c = t === "light" ? "#eef0f2" : "#0a0a0b";
-        document.querySelector('meta[name="theme-color"]').content = c;
-        try { tg?.setHeaderColor?.(c); tg?.setBackgroundColor?.(c); } catch (e) {}
-      }
-      function toggleTheme() { applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); hap("light"); }
-
-      /* ── Auth ── */
-      let reg = {};
-      function showAuth(step = "login") {
-        $("auth").classList.add("on"); $("nav").style.display = "none"; $("fab").classList.add("hide");
-        const B = $("authbox");
-        const head = `<div class="word">GRAMSAZ</div><div class="mark">${ic("logo")}</div>`;
-        if (step === "login")
-          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">بازگشت</h1><p style="color:var(--mu);margin:6px 0 26px">وارد پنل گرام‌ساز شو.</p>
-            <div class="field"><label>نام کاربری</label><input class="in ltr" id="lu" placeholder="username"></div>
-            <div class="field"><label>رمز عبور</label><input class="in ltr" id="lp" type="password" placeholder="••••••••"></div>
-            <button class="btn" onclick="doLogin()">ورود</button><button class="btn line" style="margin-top:9px" onclick="showAuth('reg1')">ساخت حساب جدید</button>`;
-        else if (step === "reg1")
-          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">ثبت‌نام</h1><p style="color:var(--mu);margin:6px 0 26px">آیدی تلگرامت را بده تا کد تأیید بفرستیم.</p>
-            <div class="field"><label>آیدی تلگرام</label><input class="in ltr" id="tu" placeholder="@username" value="${esc(reg.tu || "")}"></div>
-            <button class="btn" onclick="sendCode()">ارسال کد تأیید</button><button class="btn line" style="margin-top:9px" onclick="showAuth()">بازگشت</button>`;
-        else if (step === "reg2")
-          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">تکمیل حساب</h1><p style="color:var(--mu);margin:6px 0 26px">کد ۶ رقمی برای <b dir="ltr">${esc(reg.tu || "")}</b> ارسال شد.</p>
-            <div class="field"><label>کد تأیید</label><input class="in" id="rc" inputmode="numeric" maxlength="6" placeholder="۰۰۰۰۰۰" style="text-align:center;letter-spacing:12px"></div>
-            <div class="field"><label>نام کاربری</label><input class="in ltr" id="ru" placeholder="username"></div>
-            <div class="field"><label>رمز عبور</label><input class="in ltr" id="rp" type="password" placeholder="حداقل ۶ کاراکتر" oninput="pwbar(this.value)"><div class="bar2" id="pwBar" style="display:none"><i style="width:0"></i></div></div>
-            ${ref ? `<p style="color:var(--mu);font-size:13px;margin:-2px 2px 14px">کد دعوت: <b class="mono">${esc(ref)}</b></p>` : ""}
-            <button class="btn" onclick="doReg()">ساخت حساب</button><button class="btn line" style="margin-top:9px" onclick="sendCode()">ارسال دوباره کد</button>`;
-      }
-      function pwbar(v) {
-        const bar = $("pwBar"); if (!bar) return; bar.style.display = v ? "block" : "none";
-        let s = (v.length >= 6 ? 40 : 0) + (v.length >= 10 ? 30 : 0) + (/[0-9]/.test(v) ? 15 : 0) + (/[^A-Za-z0-9]/.test(v) ? 15 : 0);
-        const f = bar.firstElementChild; f.style.width = Math.min(100, s) + "%";
-        f.style.background = s < 45 ? "var(--red)" : s < 75 ? "var(--amber)" : "var(--ok)";
-      }
-      const doLogin = guard(async () => {
-        const u = $("lu").value.trim(), p = $("lp").value;
-        if (!u || !p) return toast("نام کاربری و رمز را وارد کن", 1);
-        token = (await api("/api/auth/login", { method: "POST", body: { username: u, password: p } })).token;
-        localStorage.authToken = token; boot(true);
+      el.querySelector("[data-kill]").onclick=e=>{e.stopPropagation();this.push();st.flow.nodes=st.flow.nodes.filter(x=>x.id!==n.id);st.flow.nodes.forEach(x=>(x.buttons||[]).forEach(b=>{if(b.val===n.id)b.val=n.id}));this.renderNodes();this.renderPanel();this.markDirty(true);tap()};
+      el.onclick=e=>{if(!e.target.closest(".kill")&&this.linking){e.stopPropagation()}};
+    });
+  },
+  renderWires(){
+    const svg=$("wires");if(!svg)return;
+    svg.querySelectorAll("path:not(defs path)").forEach(p=>p.remove());
+    const pos=Object.fromEntries(st.flow.nodes.map(n=>[n.id,n]));
+    st.flow.nodes.forEach(tr=>{
+      if(tr.type!=="trigger")return;
+      (tr.buttons||[]).forEach(b=>{
+        if(b.kind!=="reply")return;const tgt=pos[b.val];if(!tgt)return;
+        const a={x:tr.x+196,y:tr.y+34},c={x:tgt.x,y:tgt.y+30};
+        const mx=(a.x+c.x)/2;
+        svg.append(E(`<path class="w" d="M${a.x} ${a.y} C${mx} ${a.y} ${mx} ${c.y} ${c.x} ${c.y}"/>`));
       });
-      const sendCode = guard(async () => {
-        const u = ($("tu")?.value || reg.tu || "").trim();
-        if (u.length < 3) return toast("آیدی تلگرام را درست وارد کن", 1);
-        reg.tu = u;
-        await api("/api/auth/send-code", { method: "POST", body: { telegram_username: u, device_id: devId() } });
-        toast("کد ارسال شد — تلگرام را چک کن"); showAuth("reg2");
-      });
-      const doReg = guard(async () => {
-        const code = $("rc").value.trim(), username = $("ru").value.trim().toLowerCase(), password = $("rp").value;
-        if (code.length !== 6) return toast("کد باید ۶ رقم باشد", 1);
-        if (username.length < 3) return toast("نام کاربری کوتاه است", 1);
-        if (password.length < 6) return toast("رمز عبور کوتاه است", 1);
-        const d = await api("/api/auth/register", { method: "POST", body: { telegram_username: reg.tu, username, password, verification_code: code, referral_code: ref || null, device_id: devId() } });
-        token = d.token; localStorage.authToken = token; localStorage.removeItem("pending_referral");
-        toast(d.message || "ثبت‌نام موفق"); boot(true);
-      });
-      function logout() {
-        sure("از حساب خارج می‌شوی؟", async () => {
-          try { token && (await fetch(API + "/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } })); } catch (e) {}
-          token = ""; user = null; localStorage.removeItem("authToken"); showAuth();
+    });
+  },
+  renderPanel(){
+    const p=$("fbp");if(!p)return;p.innerHTML="";
+    const n=st.flow.nodes.find(x=>x.id===this.sel);
+    // وضعیت اعتبارسنجی
+    const v=Flow.validate(st.flow);
+    const iss=E(`<div class="card"><div class="between" style="margin-bottom:var(--s3)">
+      <div class="row" style="gap:6px">${I.shield}<b class="sm">اعتبارسنجی</b></div>
+      ${v.out.length?UI.chip(`${N(v.out.length)} هشدار`,{variant:"dgr"}):UI.chip("بدون خطا",{variant:"ok"})}</div>
+      <div class="issues">${v.out.length?v.out.map(i=>`<div class="issue" data-jump="${i.id||""}">${I.alert}<div>${esc(i.t)}</div></div>`).join(""):`<div class="hint center" style="padding:var(--s4)">ساختار معتبر و آمادهٔ انتشار است ✓</div>`}</div></div>`);
+    p.append(iss);
+    p.querySelectorAll("[data-jump]").forEach(el=>el.onclick=()=>{if(el.dataset.jump){this.select(el.dataset.jump)}});
+    if(!n){p.append(UI.state({icon:"wand",title:"یک گره انتخاب کن",body:"تنظیمات اینجا ظاهر می‌شود."}));return}
+    const card=E(`<div class="card stack"></div>`);
+    if(n.type==="trigger"){
+      const f=UI.field({ph:"start",icon:"msg",rtl:false});f.input.value=n.name||"";
+      f.input.oninput=debounce(()=>{n.name=f.input.value.replace(/^\/+/,"").replace(/[^a-z0-9_\u0600-\u06FF]/gi,"").toLowerCase();
+        this.refreshNode(n);this.renderWires();this.markDirty(true);Flow.save(st.flow)});
+      const d=UI.field({ph:"توضیح منوی تلگرام",icon:"tag"});d.input.value=n.desc||"";d.input.oninput=()=>n.desc=d.input.value;
+      card.append(E(`<div class="between"><b class="sm">گرهٔ شروع (دستور)</b>${UI.chip("/"+(n.name||"?"))}</div>`),f,d);
+    }else{
+      card.append(E(`<div class="between"><b class="sm">گرهٔ پیام</b>${UI.chip("پاسخ دکمه")}</div>`));
+    }
+    const ta=UI.field({rows:5,ph:"متن پیام… (HTML مجاز)"});ta.input.value=n.text||"";
+    ta.input.oninput=debounce(()=>{this.refreshNode(n);this.markDirty(true);Flow.save(st.flow)});
+    card.append(E(`<div class="hint row">${I.msg}<span>متن پاسخ</span></div>`),ta);
+    if(n.type==="trigger"){
+      const kb=E(`<div><div class="between" style="margin-bottom:6px"><span class="hint">${I.grid}دکمه‌ها</span>
+        <button class="btn sm ghost" id="ab">+ دکمه</button></div><div class="stack" id="btnlist"></div></div>`);
+      card.append(kb);
+      const drawK=()=>{const bl=kb.querySelector("#btnlist");bl.innerHTML="";
+        (n.buttons||[]).forEach((b,i)=>{
+          const r=E(`<div class="card flat pad-l stack"></div>`);
+          const t=UI.field({ph:"متن دکمه",icon:"tag"});t.input.value=b.text;t.input.oninput=debounce(()=>{b.text=t.input.value;this.refreshNode(n)});
+          const kind=UI.seg([{id:"reply",label:"پاسخ"},{id:"url",label:"لینک"}],b.kind==="url"?"url":"reply",v=>{
+            b.kind=v;if(v==="url")b.val="https://";drawK();this.refreshNode(n)});
+          r.append(t,kind);
+          if(b.kind==="url"){const u=UI.field({ph:"https://…",icon:"link",rtl:false});u.input.value=b.val||"";u.input.oninput=()=>b.val=u.input.value;r.append(u)}
+          else{
+            const tgt=st.flow.nodes.find(x=>x.id===b.val);
+            const link=UI.btn(tgt?`→ ${(tgt.text||"پیام").slice(0,22)}`:"اتصال به پیام…",{icon:"reply",size:"sm"});
+            link.onclick=()=>this.pickTarget(n,b,drawK);
+            r.append(link);
+          }
+          const del=UI.btn("حذف",{variant:"ghost",size:"sm",icon:"trash"});del.style.alignSelf="flex-end";
+          del.onclick=()=>{this.push();n.buttons.splice(i,1);drawK();this.renderNodes();this.markDirty(true);tap()};
+          r.append(del);bl.append(r);
         });
-      }
+        if(!n.buttons?.length)bl.append(E(`<div class="hint">بدون دکمه — کاربر فقط متن می‌بیند.</div>`));
+      };
+      drawK();
+      kb.querySelector("#ab").onclick=()=>{this.push();(n.buttons=n.buttons||[]).push({id:uid("cb"),text:"دکمه",kind:"reply",val:""});drawK();this.renderNodes();this.markDirty(true);tap()};
+    }
+    p.append(card);
+  },
+  refreshNode(n){
+    const el=document.querySelector(`.node[data-node="${n.id}"]`);
+    if(el){
+      el.querySelector(".nh b").textContent=n.type==="trigger"?"/"+(n.name||"?"):"پیام";
+      el.querySelector(".txt").textContent=n.text||"متن ندارد";
+      const nk=el.querySelector(".nk");if(nk)nk.innerHTML=(n.buttons||[]).map(b=>`<span>${esc(b.text)}</span>`).join("");
+    }
+    this.renderWires();
+  },
+  pickTarget(trig,btn,done){
+    const opts=st.flow.nodes.filter(x=>x.type==="reply"&&x.id!==trig.id);
+    const body=E(`<div class="stack"></div>`);
+    if(!opts.length){
+      body.append(UI.state({icon:"msg",title:"گره پیامی نیست",body:"ابتدا یک گره «پیام» بساز، بعد به این دکمه وصلش کن."}));
+    }else{
+      const list=E(`<div class="list"></div>`);
+      const none=E(`<div class="r" style="cursor:pointer"><div class="avatar" style="background:var(--surface2);color:var(--ink3)">${I.x}</div>
+        <div class="grow"><div class="b sm">بدون اتصال</div></div></div>`);
+      none.onclick=()=>{this.push();btn.val="";this.refreshNode(trig);closeSheet();done&&done()};
+      list.append(none);
+      opts.forEach(tgt=>{
+        const r=E(`<div class="r" style="cursor:pointer"><div class="avatar" style="background:var(--brand-soft);color:var(--brand)">${I.msg}</div>
+          <div class="grow"><div class="b sm tr">${esc((tgt.text||"پیام خالی").slice(0,40))}</div></div></div>`);
+        r.onclick=()=>{this.push();btn.val=tgt.id;this.refreshNode(trig);this.markDirty(true);Flow.save(st.flow);closeSheet();done&&done();tap("med")};
+        list.append(r);
+      });
+      body.append(list);
+    }
+    sheet({title:"انتخاب پیام دکمه",body});
+  },
+  markDirty(d){const el=$("dirty");if(el)el.classList.toggle("hidden",!d)},
+  publish:guard(async function(){
+    const v=Flow.validate(st.flow);
+    if(v.bad.size){warn("ابتدا خطاهای گره‌ها را برطرف کن");this.renderNodes();return}
+    if(v.out.some(x=>/نباید|نیست|وجود ندارد/.test(x.t))){warn("هشدارها را برطرف کن");return}
+    const p=$("pub");const lbl=p.innerHTML;p.disabled=true;p.innerHTML='<span class="spinner" style="margin:0;width:15px;height:15px;border-width:2px"></span>';
+    try{
+      const count=await Flow.publish(st.flow);
+      Flow.save(st.flow);
+      try{if(st.bot.auto_menu!==false)await api(`/api/bots/${st.bot.bot_id}/sync-menu`,{method:"POST"})}catch(e){}
+      const {bot}=await api(`/api/bots/${st.bot.bot_id}`);st.bot=bot;
+      ding();ok(`انتشار انجام شد — ${N(count)} دستور در ربات`);tap("med");this.markDirty(false);
+    }finally{p.disabled=false;p.innerHTML=lbl}
+  }),
+};
 
-      /* ── Nav / shell ── */
-      const TABS = [["home", "خانه", "home"], ["bots", "ربات‌ها", "bot"], ["me", "پروفایل", "user"]];
-      function chrome(v) {
-        $("auth").classList.remove("on"); $("nav").style.display = "flex";
-        $("nav").innerHTML = TABS.map(([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`).join("");
-        $("fab").classList.toggle("hide", !["home", "bots"].includes(v)); $("fab").innerHTML = ic("plus");
-      }
-      function go(v, a) {
-        chrome(v); scrollTo(0, 0); hap("light");
-        app().innerHTML = `<div style="height:60px" class="fade"></div>`;
-        ({ home: vHome, bots: vBots, new: vNew, bot: vBot, me: vMe, admin: vAdmin })[v](a);
-      }
-      const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
-      const botCard = (b) => `<div class="bot" onclick="go('bot','${b.bot_id}')">
-        <span class="av2">${esc((b.bot_username || "?")[0].toUpperCase())}<i class="live ${b.is_running ? "on" : ""}"></i></span>
-        <div class="g"><b class="mono">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div>
-        <span class="pill ${b.is_running ? "on" : "off"}">${b.is_running ? "روشن" : "خاموش"}</span></div>`;
-      const empty = (t, s, btn) => `<div class="empty"><div class="ic">${ic("bot")}</div><b>${t}</b><div style="margin-top:5px">${s}</div>${btn ? `<div style="margin-top:18px">${btn}</div>` : ""}</div>`;
+/* ════════════════════════════════════════════════════════════════
+   Subs — روی قرارداد /api/bots (bot_users uid-only)
+════════════════════════════════════════════════════════════════ */
+const Subs={
+  async mount(){
+    const list=$("subs-list");if(!list)return;
+    list.append(UI.skel(50,5));
+    try{
+      // هسته نام کاربر را برنمی‌گرداند؛ تنها uid موجود است.
+      // سازندهٔ B از همان قرارداد می‌خواند و اطلاعات تکمیلی را از context محلی استنتاج می‌کند.
+      const b=st.bot;
+      const ids=Array.isArray(b.bot_users)?b.bot_users:[];
+      $("subs-total").innerHTML=I.people+`${N(ids.length)} مشترک`;
+      list.innerHTML="";
+      if(!ids.length){list.append(UI.state({icon:"people",title:"هنوز مشترکی نیست",body:"آدرس ربات را بازنشر کن تا اینجا ظاهر شوند."}));return}
+      const rows=E(`<div class="list"></div>`);
+      const render=(arr)=>{rows.innerHTML="";arr.slice(0,300).forEach(id=>{
+        const meta=this.meta(id);
+        const r=E(`<div class="r"><div class="avatar" style="background:${grad(String(id))}"><i></i>${ini(meta.name||String(id))}</div>
+          <div class="grow"><div class="b sm tr">${esc(meta.name||"مشترک "+id)}</div>
+            <div class="hint mono">${id}${meta.username?" · @"+esc(meta.username):""}</div></div>
+          ${meta.username?`<a class="iconbtn sm tip" data-tip="بازکردن در تلگرام" href="https://t.me/${esc(meta.username)}" target="_blank">${I.tg}</a>`:UI.chip("کاربر")}</div>`);
+        rows.append(r)});
+        if(arr.length>300)rows.append(E(`<div class="hint center" style="padding:var(--s4)">نمایش ۳۰۰ از ${N(arr.length)}</div>`));
+      };
+      render(ids.map(id=>({id})).map(x=>x.id));
+      list.append(rows);
+      $("sub-q").oninput=debounce(e=>{const q=e.target.value.trim();
+        render(q?ids.filter(id=>String(id).includes(q)):ids)},200);
+    }catch(e){list.innerHTML="";list.append(UI.state({variant:"err",icon:"alert",title:"خواندن ناموفق",body:e.message,cta:"تلاش دوباره",onCta:()=>{this.mount()}}).cloneNode(true));
+      list.querySelector(".state")?.querySelector(".btn")&&list.querySelector(".state").addEventListener("click",()=>this.mount());}
+  },
+  meta(id){return (st.bot.bot_user_meta||{})[String(id)]||{}}
+};
 
-      const vHome = guard(async () => {
-        ({ bots } = await api("/api/bots"));
-        const act = bots.filter((b) => b.is_running).length;
-        const h = new Date().getHours(), hi = h < 12 ? "صبح بخیر" : h < 18 ? "عصر بخیر" : "شب بخیر";
-        app().className = ""; app().innerHTML =
-          `<div class="bar"><div class="idn"><span class="ava">${esc((user.full_name || user.username || "؟")[0])}</span><div style="min-width:0"><small>${hi}</small><b>${esc((user.full_name || user.username || "").split(" ")[0])}</b></div></div></div>
-           <div class="strip"><div class="ac"><b>${n(S("unique_users"))}</b><span>کل کاربران</span></div><div><b>${n(bots.length)}</b><span>ربات</span></div><div><b>${n(act)}</b><span>روشن</span></div></div>
-           <h2>ربات‌های شما${bots.length ? `<span class="lnk" onclick="go('bots')">همه</span>` : ""}</h2>` +
-          (bots.length ? bots.slice(0, 4).map(botCard).join("") : empty("هنوز رباتی نداری", "با دکمهٔ + یک ربات بساز.", `<button class="btn sm" style="max-width:190px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
-        requestAnimationFrame(() => app().classList.add("fade"));
-      });
-      const vBots = guard(async () => {
-        ({ bots } = await api("/api/bots"));
-        app().className = "fade";
-        app().innerHTML =
-          `<div class="bar" style="margin-bottom:14px"><div><b style="font-size:22px">ربات‌ها</b><small>${n(bots.length)} ربات</small></div></div>` +
-          (bots.length ? bots.map(botCard).join("") : empty("رباتی نداری", "اولین رباتت را بساز.", `<button class="btn sm" style="max-width:190px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
-      });
-      function vNew() {
-        $("fab").classList.add("hide"); app().className = "fade";
-        app().innerHTML =
-          `<div class="bar"><div class="idn"><div class="ib" onclick="go('bots')">${ic("back")}</div><div><b>ربات جدید</b></div></div></div>
-           <div class="card" style="margin-bottom:14px"><b style="font-size:14px">۳ گام ساده</b>
-             <ol style="color:var(--mu);padding-right:18px;line-height:2.1;font-size:14px;margin-top:8px">
-               <li>در تلگرام به <a href="https://t.me/BotFather" style="color:var(--ac);font-weight:600" target="_blank" rel="noopener">@BotFather</a> برو</li>
-               <li>دستور <b class="mono" style="color:var(--tx)">/newbot</b> را بفرست</li>
-               <li>توکن را اینجا بچسبان</li></ol></div>
-           <label>توکن ربات</label>
-           <input class="in ltr mono" id="tk" placeholder="123456789:AAH…" autocomplete="off" oninput="th()">
-           <div class="err" id="tke"></div>
-           <button class="btn" id="mk" onclick="mkBot()">${ic("bolt")} ساخت ربات</button>`;
+/* ════════════════════════════════════════════════════════════════
+   Broadcast — زمان‌بندی سمت کلاینت
+════════════════════════════════════════════════════════════════ */
+const Broadcast={
+  mount(){
+    const prev=$("bc-prev");if(!prev)return;
+    const draw=debounce(()=>{const t=$("bc-txt").value.trim();
+      prev.innerHTML="";
+      const m=E(`<div class="tg-msg ${t?"":""}">`);m.innerHTML=t?this.sanitize(t):'<span class="hint">پیش‌نمایش اینجا…</span>';
+      prev.append(E(`<div class="row" style="justify-content:center;padding:var(--s3) 0"><span class="chip line" style="font-size:9px">پیش‌نمایش حباب تلگرام</span></div>`));
+      prev.append(m);},300);
+    $("bc-txt").addEventListener("input",draw);draw();
+    $("bc-go").onclick=guard(async()=>{
+      const txt=$("bc-txt").value.trim();if(!txt){warn("متن را بنویس");return}
+      const b=st.bot;const cnt=b.stats?.unique_users||0;
+      if(!b.is_running){warn("برای ارسال، ربات را روشن کن");return}
+      const at=$("bc-at")?.value;
+      if(at&&new Date(at).getTime()>Date.now()){
+        const mins=Math.round((new Date(at)-Date.now())/60000);
+        if(await confirmBox({title:"زمان‌بندی ارسال؟",body:`پیام پس از حدود ${N(mins)} دقیقه (نزدیک‌ترین زمانِ زمان‌بندی سمت دستگاه) ارسال می‌شود. تا بستنِ مینی‌اپ ربات روشن بماند.`})){
+          Broadcast.queue.push({txt,at:+new Date(at),n:cnt});this.persist();ok("در زمان‌بند محلی ثبت شد");return}
       }
-      const TOKEN = /^\d{8,12}:[A-Za-z0-9_-]{30,}$/;
-      function th() {
-        const v = $("tk").value.trim(), e = $("tke"); if (!v) return (e.textContent = "");
-        const ok = TOKEN.test(v); e.className = "err" + (ok ? " good" : "");
-        e.textContent = ok ? "✓ فرمت توکن معتبر است" : "فرمت توکن درست نیست";
-      }
-      const mkBot = guard(async () => {
-        const t = $("tk").value.trim();
-        if (!TOKEN.test(t)) return toast("توکن نامعتبر است", 1);
-        const b = $("mk"); b.disabled = true; b.textContent = "در حال ساخت…";
-        try { const r = await api("/api/bots", { method: "POST", body: { token: t } }); toast(r.message || "ربات ساخته شد"); go("bot", r.bot.bot_id); }
-        finally { if ($("mk")) (($("mk").disabled = false), ($("mk").innerHTML = ic("bolt") + " ساخت ربات")); }
-      });
+      if(!await confirmBox({title:"ارسال همگانی",body:`به ${N(cnt)} مشترک ارسال شود؟`}))return;
+      const go=$("bc-go");go.disabled=true;
+      const r=await api(`/api/bots/${b.bot_id}/broadcast`,{method:"POST",body:{text:txt}});
+      ding();ok(r.message||"در صف ارسال قرار گرفت");$("bc-txt").value="";draw();
+      Broadcast.poll(b.bot_id,cnt);go.disabled=false;
+    });
+    this.resume();
+  },
+  queue:JSON.parse(localStorage.bcq||"[]"),
+  persist(){localStorage.bcq=JSON.stringify(this.queue)},
+  resume(){
+    const now=Date.now();
+    this.queue=this.queue.filter(j=>{
+      if(j.at<=now){api(`/api/bots/${st.bot?.bot_id||j.bot}/broadcast`,{method:"POST",body:{text:j.txt}}).catch(()=>{});
+        ok("پیام زمان‌بندی‌شده ارسال شد");return false}
+      return true;
+    });this.persist();
+  },
+  /* هسته هیچ شناسهٔ پیگیری/وضعیت تحویل برنمی‌گرداند؛ بنابراین
+     گزارش تحویل «قابل انجام نیست» — این سازنده صرفاً روند شمارشِ
+     تغییراتِ مشترک/پیام از همان daily_stats را به‌صورت زنده نشان می‌دهد. */
+  async poll(botId,n0){
+    let last=null;
+    for(let i=0;i<6;i++){
+      await new Promise(r=>setTimeout(r,4000));
+      try{const {bot}=await api(`/api/bots/${botId}`);const s=bot.stats?.messages_sent||0;
+        const card=$("broadcast-status")||Broadcast.progress(n0,s);last=s;
+        const pb=card?.querySelector(".pbar i");if(pb)pb.style.width=Math.min(100,Math.round(s/(n0||1)*100))+"%";
+        const tx=card?.querySelector("[data-st]");if(tx)tx.textContent=`${N(Math.min(s,n0))} از ${N(n0)} ارسال‌شده (برآورد)`;
+        if(s>=n0){card?.querySelector("[data-st]")?.after(E(`<div class="ok-note">${I.check}تحویل کامل شد</div>`));break}
+      }catch(e){break}
+    }
+  },
+  progress(n0,s){
+    let c=$("bc-status");if(c)return c;
+    c=E(`<div class="card stack" id="bc-status" style="margin-top:var(--s5)"><div class="b sm">پیشرفت ارسال</div>
+      <div class="pbar"><i style="width:0%"></i></div><div class="hint" data-st>شروع…</div></div>`);
+    $("root").querySelector(".page")?.append(c);return c;
+  },
+  sanitize(t){return esc(t).replace(/&lt;(\/?(?:b|i|u|s|code|pre|a))(?:\s+([^&]*?))?&gt;/g,(m,tag,attrs)=>{
+    if(/^a$/.test(tag.replace("/",""))){const mm=(attrs||"").match(/href=(['"])(.*?)\1/);
+      return mm&&/^(https?:|tg:\/\/)/i.test(mm[2])?`<${tag} href="${esc(mm[2])}" rel="noopener">`:`<${tag}>`}
+    return `<${tag}>`;})}
+};
 
-      /* ── Bot detail ── */
-      const vBot = guard(async (id) => {
-        if (id) { botId = id; tab = "cmds"; }
-        bot = (await api("/api/bots/" + botId)).bot;
-        const s = bot.stats || {}, u = bot.bot_username || "";
-        $("fab").classList.add("hide");
-        app().className = "fade";
-        app().innerHTML =
-          `<div class="bar" style="align-items:center"><div class="idn"><div class="ib" onclick="go('bots')">${ic("back")}</div>
-             <span class="av2">${esc((u || "?")[0].toUpperCase())}<i class="live ${bot.is_running ? "on" : ""}"></i></span>
-             <div style="min-width:0"><b class="mono" style="font-size:16px">@${esc(u || "—")}</b><small>${bot.is_running ? "در حال اجرا" : "متوقف"}</small></div></div>
-             <div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>` +
-          (u ? `<div style="display:flex;gap:8px;margin-bottom:14px"><a class="btn line sm" style="flex:1" href="https://t.me/${esc(u)}" target="_blank" rel="noopener">${ic("open")} باز کردن ربات</a><button class="btn line sm" onclick="cl('${esc(u)}')">${ic("copy")}</button></div>` : "") +
-          `<div class="strip"><div class="ac"><b>${n(s.unique_users)}</b><span>کاربر</span></div><div><b>${n(s.messages_received)}</b><span>دریافتی</span></div><div><b>${n(s.messages_sent)}</b><span>ارسالی</span></div><div><b>${n(s.broadcasts_sent)}</b><span>همگانی</span></div></div>` +
-          `<div class="seg">${[["cmds", "دستورها"], ["plug", "پاسخ‌ها"], ["set", "تنظیمات"]].map(([k, t]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${t}</button>`).join("")}</div><div id="tb"></div>`;
-        if (tab === "cmds") await tCmds();
-        if (tab === "plug") tPlug();
-        if (tab === "set") tSet();
-      });
-      const setTab = (k) => { tab = k; vBot(); };
-      const cl = (u) => navigator.clipboard?.writeText("https://t.me/" + u).then(() => toast("لینک کپی شد"));
-      const power = guard(async () => {
-        const on = !$("pw").classList.contains("on");
-        const r = await api(`/api/bots/${botId}/toggle`, { method: "PATCH", body: { active: on } });
-        bot.is_running = r.is_running; $("pw").classList.toggle("on", r.is_running);
-        toast(r.is_running ? "ربات روشن شد" : "ربات خاموش شد");
-        setTimeout(vBot, 500);
-      });
+/* ════════════════════════════════════════════════════════════════
+   Media — کتابخانه روی /api/upload-media
+════════════════════════════════════════════════════════════════ */
+const MediaStore={
+  get(){try{return JSON.parse(localStorage.media||"[]")}catch(e){return[]}},
+  save(a){localStorage.media=JSON.stringify(a)},
+  add(m){const a=MediaStore.get();a.unshift({...m,id:uid("m"),at:new Date().toISOString()});MediaStore.save(a.slice(0,120))},
+};
+const Media={
+  mount(){
+    const g=$("mgrid");if(!g)return;const a=MediaStore.get();
+    $("mup").onclick=()=>upload(u=>{MediaStore.add(u);Media.render()});
+    if(!a.length){g.append(UI.state({icon:"image",title:"کتابخانه خالی است",body:"فایل‌ها را اینجا آپلود کن تا در هر گره در دسترس باشند."}));return}
+    Media.render();
+  },
+  render(){
+    const g=$("mgrid");if(!g)return;g.innerHTML="";const grid=E(`<div class="mgrid"></div>`);
+    MediaStore.get().forEach(m=>{
+      const t=E(`<div class="mtile"><span class="ty">${esc(m.type||"file")}</span></div>`);
+      if(m.type==="photo"||!m.type)t.append(E(`<img src="${esc(m.url)}" alt="">`));
+      const act=E(`<div class="act"></div>`);
+      const cp=E(`<button>کپی</button>`);cp.onclick=()=>{navigator.clipboard?.writeText(m.url);ok("لینک کپی شد")};
+      const rm=E(`<button>حذف</button>`);rm.onclick=()=>{MediaStore.save(MediaStore.get().filter(x=>x.id!==m.id));Media.render()};
+      act.append(cp,rm);t.append(act);grid.append(t);
+    });
+    g.append(grid);
+  }
+};
+function upload(cb){
+  const f=document.createElement("input");f.type="file";f.accept="image/*,video/*,audio/*,.pdf,.zip";
+  f.onchange=guard(async()=>{const file=f.files[0];if(!file)return;
+    const btn=$("mup");const old=btn?.innerHTML;if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner" style="margin:0;width:15px;height:15px;border-width:2px"></span>'}
+    toast("آپلود…");const fd=new FormData();fd.append("file",file);
+    try{const r=await api("/api/upload-media",{method:"POST",form:fd});
+      cb({type:r.type||"photo",url:r.url});ding();ok("آپلود شد");
+    }finally{if(btn){btn.disabled=false;btn.innerHTML=old}}});
+  f.click();
+}
 
-      /* Commands */
-      let ck = [];
-      async function tCmds() {
-        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
-        ck = Object.keys(cmds);
-        const menu = bot.auto_menu !== false;
-        $("tb").innerHTML =
-          `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 12px"><span style="color:var(--mu);font-size:13px">${n(ck.length)} دستور</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} دستور</button></div>` +
-          `<div class="item static" style="margin-bottom:14px"><span class="sq">${ic("sync")}</span><div class="g"><b>منوی تلگرام</b><small>دستورها را در منوی / ربات نشان بده</small></div><div class="sw ${menu ? "on" : ""}" id="am" onclick="fj2('am',!this.classList.contains('on'),'auto_menu')"></div></div>` +
-          (ck.length ? ck.map((k, i) => cmdRow(k, i)).join("") : empty("دستوری نیست", "یک دستور بساز.", `<button class="btn sm" style="max-width:180px" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button>`));
-      }
-      function cmdRow(k, i) {
-        const c = cmds[k], cb = Object.keys(c.callbacks || {}).length;
-        const urlb = (c.buttons || []).flat().filter((b) => b.url).length;
-        return `<div class="item" onclick="openCmd(${i})"><span class="sq" style="font-weight:700;font-family:Inter">/</span>
-          <div class="g"><b class="mono">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 48).replace(/\n/g, " ")) || "بدون متن"}</small></div>
-          ${urlb ? `<span class="badge url">${n(urlb)} لینک</span>` : ""}${cb ? `<span class="badge">${n(cb)} دکمه</span>` : ""}${c.media?.url || c.photo ? '<span class="badge">رسانه</span>' : ""}
-          ${k !== "start" ? `<span class="del" onclick="event.stopPropagation();rmCmd(${i})">${ic("trash")}</span>` : ""}</div>`;
-      }
-      const rmCmd = (i) => sure(`دستور /${ck[i]} حذف شود؟`, guard(async () => { await api(`/api/bots/${botId}/commands/${ck[i]}`, { method: "DELETE" }); toast("حذف شد"); tCmds(); }));
-      const fj2 = guard(async (el, on, key) => {
-        const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: on } });
-        bot[key] = r[key]; $(el).classList.toggle("on", !!r[key]);
-        if (key === "auto_menu" && on) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast("منو همگام شد"); } catch (e) {} }
-        else toast("ذخیره شد");
-      });
-
-      /* Plugins: welcome / unknown / force-join / broadcast */
-      const pl = (id, icon, t, d, sw, body, open) => `<div class="pl ${open ? "open" : ""}" id="pl_${id}"><div class="h" onclick="po('${id}')"><div class="sq">${ic(icon)}</div><div class="g"><b>${t}</b><small id="pd_${id}">${d}</small></div>${sw || ""}<span class="chev">${ic("down")}</span></div><div class="b">${body}</div></div>`;
-      const po = (id) => $("pl_" + id).classList.toggle("open");
-      function tPlug() {
-        const ch = bot.force_join_channel || "", w = bot.welcome_message || "", uk = bot.unknown_reply || "";
-        $("tb").innerHTML =
-          pl("wv", "wave", "پیام خوش‌آمد", w ? "فعال" : "برای عضو تازه", "",
-            `<label>این پیام فقط اولین بار که کاربر /start می‌زند ارسال می‌شود (HTML مجاز)</label><textarea class="in" id="wv">${esc(w)}</textarea><button class="btn sm" onclick="cfgSave('welcome_message','wv')">ذخیره</button>`) +
-          pl("un", "help", "پاسخ خودکار", uk ? "فعال" : "برای دستور ناشناخته", "",
-            `<label>اگر کاربر دستوری فرستاد که تعریف نشده، این پیام پاسخ داده می‌شود</label><textarea class="in" id="un">${esc(uk)}</textarea><button class="btn sm" onclick="cfgSave('unknown_reply','un')">ذخیره</button>`) +
-          pl("fj", "lock", "عضویت اجباری", ch ? "فعال · @" + esc(ch.replace("@", "")) : "غیرفعال",
-            `<div class="sw ${ch ? "on" : ""}" id="fjs" onclick="event.stopPropagation();fjToggle()"></div>`,
-            `<label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in ltr" id="fj" placeholder="@channel" value="${esc(ch)}"><button class="btn sm" onclick="fjSave()">ذخیره</button>`) +
-          pl("bc", "cast", "پیام همگانی", "ارسال به همه کاربران (HTML)", "",
-            `<label>متن پیام — می‌توانید از <b class="mono" style="color:var(--ac)">&lt;b&gt;</b> و <b class="mono" style="color:var(--ac)">&lt;a href=""&gt;</b> استفاده کنید</label><textarea class="in" id="bc" placeholder="متن…"></textarea><button class="btn sm" style="width:100%" onclick="bcast()">${ic("send")} ارسال به همه</button>`);
-      }
-      const cfgSave = guard(async (key, el) => {
-        const v = $(el).value.trim();
-        const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: v } });
-        bot[key] = r[key];
-        const lab = key === "welcome_message" ? "wv" : "un";
-        $("pd_" + lab).innerHTML = v ? "فعال" : (key === "welcome_message" ? "برای عضو تازه" : "برای دستور ناشناخته");
-        toast("ذخیره شد");
-      });
-      const fjSave = guard(async () => {
-        let c = $("fj").value.trim(); if (!c) return toast("آیدی کانال را وارد کن", 1);
-        if (!/^[@\-0-9]/.test(c)) c = "@" + c;
-        await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } });
-        bot.force_join_channel = c; $("pd_fj").innerHTML = "فعال · @" + esc(c.replace("@", "")); $("fjs").classList.add("on"); toast("فعال شد");
-      });
-      const fjToggle = guard(async () => {
-        const s = $("fjs"), on = !s.classList.contains("on"); s.classList.toggle("on", on);
-        if (on) { $("pl_fj").classList.add("open"); $("fj").focus(); return; }
-        await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } });
-        bot.force_join_channel = ""; $("fj").value = ""; $("pd_fj").innerHTML = "غیرفعال"; toast("غیرفعال شد");
-      });
-      const bcast = guard(async () => {
-        const t = $("bc").value.trim(); if (!t) return toast("متن خالی است", 1);
-        if (!bot.is_running) return toast("اول ربات را روشن کن", 1);
-        sure(`به ${n(bot.stats?.unique_users)} کاربر ارسال شود؟`, guard(async () => {
-          const r = await api(`/api/bots/${botId}/broadcast`, { method: "POST", body: { text: t } });
-          toast(r.message || "در صف ارسال"); $("bc").value = "";
-        }));
-      });
-
-      function tSet() {
-        const u = bot.bot_username || "";
-        const g = bot.daily_stats || {};
-        const days = Object.keys(g).sort().slice(-7);
-        const mx = Math.max(...days.map((d) => g[d].new_users || 0), 1);
-        $("tb").innerHTML =
-          (days.length ? `<h2>رشد کاربران · ۷ روز اخیر</h2><div class="card"><div class="chart">${days
-            .map((d) => `<div class="col"><div class="cbar" style="height:${Math.max(6, ((g[d].new_users || 0) / mx) * 100)}%"></div><span class="clab">${d.slice(8)}</span></div>`).join("")}</div></div>` : "") +
-          `<h2>منوی تلگرام</h2><div class="card" style="margin-bottom:10px"><p style="color:var(--mu);font-size:13px;margin-bottom:12px">دستورهای تعریف‌شده را به منوی رسمی تلگرام ربات اضافه می‌کند تا کاربر آن‌ها را ببیند.</p><button class="btn line" id="syncb" onclick="syncMenu()">${ic("sync")} همگام‌سازی منو</button></div>` +
-          `<h2>اطلاعات</h2><div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px"><span class="av2">${esc((u || "?")[0].toUpperCase())}</span><div><b class="mono">@${esc(u || "—")}</b><div style="color:var(--mu);font-size:12.5px">ساخته‌شده: <span class="mono">${esc((bot.created_at || "").slice(0, 10))}</span></div></div></div>` +
-          `<div class="card"><b style="color:var(--red)">حذف ربات</b><p style="color:var(--mu);font-size:13px;margin:6px 0 14px">دستورها، پاسخ‌ها و آمار پاک می‌شوند. برگشت‌ناپذیر.</p><button class="btn red" onclick="delBot()">${ic("trash")} حذف برای همیشه</button></div>`;
-      }
-      const syncMenu = guard(async () => {
-        const b = $("syncb"); b.disabled = true; b.textContent = "در حال همگام‌سازی…";
-        try { const r = await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast(r.message || "همگام شد"); }
-        finally { b && ((b.disabled = false), (b.innerHTML = ic("sync") + " همگام‌سازی منو")); }
-      });
-      const delBot = () => sure("ربات برای همیشه حذف شود؟", guard(async () => { await api("/api/bots/" + botId, { method: "DELETE" }); toast("حذف شد"); go("bots"); }));
-
-      /* ── Command editor ── */
-      const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
-      const nb = () => ({ text: "", id: "", r: "", o: 0, url: "", t: "cb" });
-      function openCmd(i) {
-        const k = i < 0 ? "" : ck[i], c = i < 0 ? {} : cmds[k], cb = c.callbacks || {};
-        ed = {
-          name: k, isNew: i < 0, response: c.response || "", description: c.description || "", cb,
-          m: c.media?.url ? { ...c.media } : c.photo ? { type: "photo", url: c.photo } : { type: "photo", url: "" },
-          b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, t: x.url ? "url" : "cb", r: cb[x.id] || "", o: 0 }))),
-        };
-        drawCmd(); $("scrim").classList.add("on");
-      }
-      const closeSheet = () => $("scrim").classList.remove("on");
-      function prev() {
-        const p = $("pv"); if (!p) return;
-        const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
-        p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") +
-          `<div class="bub">${esc(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` +
-          rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join("");
-      }
-      const rmBtn = (r, b) => { ed.b[r].splice(b, 1); if (!ed.b[r].length) ed.b.splice(r, 1); drawCmd(); };
-      function setBType(ri, bi, t) { ed.b[ri][bi].t = t; if (t === "url") ed.b[ri][bi].o = 0; drawCmd(); }
-      function drawCmd() {
-        const top = $("shb")?.scrollTop || 0, m = ed.m;
-        const canDel = !ed.isNew && ed.name !== "start";
-        const orph = Object.keys(ed.cb).filter((id) => !ed.b.flat().some((x) => x.id === id));
-        $("sheet").innerHTML =
-          `<div class="sh-h"><span class="mono">${ed.isNew ? "دستور جدید" : "/" + esc(ed.name)}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
-           <div class="sh-b" id="shb">
-             ${ed.isNew ? `<label>نام دستور</label><div class="pfx"><b>/</b><input class="mono" placeholder="help" value="${esc(ed.name)}" oninput="ed.name=this.value"></div><div class="chips">${["help", "about", "contact", "rules", "support"].map((x) => `<span onclick="ed.name='${x}';drawCmd()">/${x}</span>`).join("")}</div>` : ""}
-             <label>توضیح (نمایش در منوی تلگرام)</label><input class="in" placeholder="مثلاً راهنمای ربات" value="${esc(ed.description)}" oninput="ed.description=this.value">
-             <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value;prev()">${esc(ed.response)}</textarea>
-             <label>پیش‌نمایش</label><div class="pv" id="pv"></div>
-             <label style="display:flex;justify-content:space-between;align-items:center">دکمه‌ها <span class="lnk" onclick="ed.b.push([nb()]);drawCmd()">+ ردیف</span></label>
-             ${ed.b.length ? ed.b.map((row, ri) => `<div class="brow">${row.map((x, bi) => `<div class="r">
-                  <input class="in" placeholder="متن دکمه" value="${esc(x.text)}" oninput="ed.b[${ri}][${bi}].text=this.value;prev()">
-                  <div class="btype" style="flex:0 0 116px"><button class="${x.t === "cb" ? "on" : ""}" onclick="setBType(${ri},${bi},'cb')">پاسخ</button><button class="${x.t === "url" ? "on" : ""}" onclick="setBType(${ri},${bi},'url')">لینک</button></div>
-                  <span class="del" onclick="rmBtn(${ri},${bi})">${ic("trash")}</span></div>
-                  ${x.t === "url" ? `<div class="r"><input class="in ltr mono" placeholder="https://…" value="${esc(x.url)}" oninput="ed.b[${ri}][${bi}].url=this.value;prev()"></div>`
-                : `<div class="r" style="margin-bottom:0"><input class="in id mono ltr" placeholder="شناسه دکمه" value="${esc(x.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"><span class="del ${x.r ? "on" : ""}" onclick="toggleR(${ri},${bi})">${ic("msg")}</span></div>${x.o ? `<textarea class="in" style="min-height:56px;margin-top:6px" placeholder="پاسخ این دکمه" oninput="ed.b[${ri}][${bi}].r=this.value">${esc(x.r)}</textarea>` : ""}`}`).join("")}${row.length < 3 ? `<span class="lnk" onclick="ed.b[${ri}].push(nb());drawCmd()">+ دکمه</span>` : ""}</div>`).join("") +
-                 `<p style="color:var(--mu);font-size:12.5px;margin-top:4px">«پاسخ» دکمه‌ای است که متن برمی‌گرداند؛ «لینک» کاربر را به آدرس دلخواه می‌برد.</p>`
-               : `<p style="color:var(--mu);font-size:13px">دکمه‌ای اضافه نشده.</p>`}
-             <details class="med" ${m.url ? "open" : ""}><summary>${ic("image")} رسانه (اختیاری)</summary>
-               <div style="display:flex;gap:6px;margin-bottom:8px"><select class="in" style="flex:0 0 96px" onchange="ed.m.type=this.value;prev()">${Object.entries(MT).map(([k, t]) => `<option value="${k}" ${m.type === k ? "selected" : ""}>${t}</option>`).join("")}</select><input class="in mono ltr" placeholder="https://…" value="${esc(m.url)}" oninput="ed.m.url=this.value;prev()"></div>
-               <input type="file" id="mf" hidden onchange="up(this.files[0])"><button class="btn line sm" onclick="$('mf').click()">آپلود فایل</button></details>
-             ${orph.length ? `<label>پاسخ‌های بدون دکمه</label>${orph.map((id) => `<div class="item static"><div class="g"><b class="mono ltr" style="text-align:right;font-size:12px">${esc(id)}</b><small>${esc(ed.cb[id])}</small></div><span class="del" onclick="cbDel('${esc(id)}')">${ic("trash")}</span></div>`).join("")}` : ""}
-           </div>
-           <div class="sh-f">${canDel ? `<div class="ib" style="width:48px;color:var(--red)" onclick="delCmd()">${ic("trash")}</div>` : ""}<button class="btn" onclick="saveCmd()">ذخیره</button></div>`;
-        prev(); $("shb").scrollTop = top;
-      }
-      function toggleR(ri, bi) { const x = ed.b[ri][bi]; x.o = x.o ? 0 : 1; if (!x.o) x.r = ""; drawCmd(); }
-      const up = guard(async (f) => {
-        if (!f) return; const fd = new FormData(); fd.append("file", f);
-        const h = {}; if (token) h.Authorization = "Bearer " + token; if (initData) h["X-Init-Data"] = initData;
-        toast("در حال آپلود…");
-        const r = await fetch(API + "/api/upload-media", { method: "POST", headers: h, body: fd }); const d = await r.json();
-        if (!r.ok) throw new Error(d.error || "خطا در آپلود");
-        ed.m = { type: d.type, url: d.url }; drawCmd(); toast("آپلود شد");
-      });
-      const cbUrl = (id) => `/api/bots/${botId}/commands/${ed.name}/callbacks/${encodeURIComponent(id)}`;
-      const saveCmd = guard(async () => {
-        const name = ed.name.trim().toLowerCase().replace(/^\//, "").replace(/\s+/g, "_");
-        if (!name) return toast("نام دستور خالی است", 1);
-        if (!ed.response.trim()) return toast("متن پاسخ خالی است", 1);
-        const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
-        rows.flat().forEach((x) => {
-          x.text = x.text.trim();
-          if (x.t === "url") { x.url = (x.url || "").trim(); if (x.url && !/^https?:\/\//.test(x.url)) x.url = "https://" + x.url; }
-          else { x.id = x.id.trim().replace(/\s+/g, "_") || "btn_" + Math.random().toString(36).slice(2, 8); }
-        });
-        const u = (ed.m.url || "").trim(), ok = /^https?:\/\//.test(u);
-        const payload = {
-          response: ed.response.trim(), description: ed.description.trim(),
-          buttons: rows.length ? rows.map((r) => r.map((x) => x.t === "url" ? { text: x.text, url: x.url } : { text: x.text, id: x.id })) : null,
-          photo: ok && ed.m.type === "photo" ? u : null, media: ok ? { type: ed.m.type, url: u } : null,
-        };
-        await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: payload });
-        ed.name = name;
-        await Promise.all(rows.flat().filter((x) => x.t !== "url").map((x) => {
-          const v = (x.r || "").trim(), old = ed.cb[x.id];
-          if (v && v !== old) return api(cbUrl(x.id), { method: "PUT", body: { response: v } });
-          if (!v && old !== undefined) return api(cbUrl(x.id), { method: "DELETE" });
-        }));
-        toast("ذخیره شد"); closeSheet();
-        if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} }
-        tCmds();
-      });
-      const delCmd = () => sure("این دستور حذف شود؟", guard(async () => { await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" }); toast("حذف شد"); closeSheet(); tCmds(); }));
-      const cbDel = guard(async (id) => { await api(cbUrl(id), { method: "DELETE" }); delete ed.cb[id]; drawCmd(); tCmds(); });
-
-      /* ── Profile / Admin ── */
-      const vMe = guard(async () => {
-        const nm = user.full_name || user.username || String(user.uid);
-        let rf = "";
-        try {
-          const r = await api("/api/coins/referral");
-          rf = `<div class="strip" style="margin-top:16px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
-            <h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2>
-            <div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:48px;height:48px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
-        } catch (e) {}
-        app().className = "fade";
-        app().innerHTML =
-          `<div class="bar"><div><b style="font-size:22px">پروفایل</b></div></div>
-           <div class="card" style="display:flex;align-items:center;gap:13px"><span class="ava">${esc(nm.charAt(0))}</span><div style="min-width:0"><b style="font-size:16px;font-weight:600">${esc(nm)}</b><div class="mono ltr" style="color:var(--mu);font-size:13px;text-align:right">#${user.uid}</div></div></div>
-           ${rf}
-           <h2>تنظیمات</h2>
-           <div class="item" onclick="toggleTheme()"><span class="sq">${ic("moon")}</span><div class="g"><b>تم روشن / تاریک</b></div></div>
-           ${user.is_admin ? `<div class="item" onclick="go('admin')"><span class="sq">${ic("shield")}</span><div class="g"><b>آمار سیستم</b></div>${ic("next")}</div>` : ""}
-           <button class="btn red" style="margin-top:18px" onclick="logout()">${ic("logout")} خروج از حساب</button>
-           <p style="color:var(--mu);text-align:center;font-size:12px;margin-top:18px">GramSaz · وب‌اپ</p>`;
-      });
-      const vAdmin = guard(async () => {
-        const d = await api("/api/admin/full-stats");
-        const o = d.overview || {}, g = (d.daily_growth || []).slice(-7), mx = Math.max(...g.map((x) => x.new_users), 1);
-        const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : `<p style="color:var(--mu);font-size:13px;padding:2px">—</p>`);
-        app().className = "fade";
-        app().innerHTML =
-          `<div class="bar"><div class="idn"><div class="ib" onclick="go('me')">${ic("back")}</div><div><b>آمار سیستم</b></div></div></div>` +
-          `<div class="strip"><div class="ac"><b>${n(o.total_users)}</b><span>کاربر</span></div><div><b>${n(o.total_registered)}</b><span>ثبت‌نام</span></div><div><b>${n(o.total_bots)}</b><span>ربات</span></div><div><b>${n(o.total_active_bots)}</b><span>فعال</span></div></div>` +
-          `<div class="strip" style="margin-top:9px"><div><b>${n(o.total_messages_received)}</b><span>دریافتی</span></div><div><b>${n(o.total_messages_sent)}</b><span>ارسالی</span></div><div><b>${n(o.total_coins)}</b><span>سکه</span></div><div><b>${n(o.total_referrals)}</b><span>دعوت</span></div></div>` +
-          (g.length ? `<h2>رشد ۷ روز اخیر</h2><div class="card"><div class="chart">${g.map((x) => `<div class="col"><div class="cbar" style="height:${Math.max(6, (x.new_users / mx) * 100)}%"></div><span class="clab">${x.date.slice(8)}</span></div>`).join("")}</div></div>` : "") +
-          list("برترین ربات‌ها", d.top_bots, (b) => `<div class="item static"><span class="av2" style="width:38px;height:38px">${esc((b.username || "?")[0].toUpperCase())}<i class="live ${b.is_active ? "on" : ""}"></i></span><div class="g"><b class="mono">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`) +
-          list("برترین کاربران", d.top_users, (u) => `<div class="item static"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} دعوت</small></div><span class="badge">${n(u.coins)} سکه</span></div>`) +
-          list("برترین دعوت‌کننده‌ها", d.top_referrers, (r) => `<div class="item static"><div class="g"><b>${esc(r.name)}</b><small class="mono">@${esc(r.username || "—")}</small></div><span class="badge">${n(r.referral_count)}</span></div>`);
-      });
-
-      /* ── Boot ── */
-      async function boot(manual) {
-        if (tg?.initData) initData = tg.initData;
-        if (!initData && !token) return showAuth();
-        try {
-          user = await api(manual ? "/api/auth/me" : initData ? "/api/me" : "/api/auth/me");
-          go("home");
-        } catch (e) {
-          if (!token && !initData) return;
-          toast("خطا: " + e.message, 1);
-          if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth();
+/* ════════════════════════════════════════════════════════════════
+   Settings mount + Backup
+════════════════════════════════════════════════════════════════ */
+const Settings={
+  async mount(){
+    const b=st.bot;
+    // ذخیره خوش‌آمد
+    const cards=document.querySelectorAll(".card");
+    $("bk2")&&($("bk2").onclick=()=>{
+      const data={app:"gramsaz-studio",v:1,exported:new Date().toISOString(),bot:{username:b.bot_username,commands:b.commands,
+        welcome_message:b.welcome_message,unknown_reply:b.unknown_reply,force_join_channel:b.force_join_channel,flow:st.flow||Flow.loadBot(b.bot_id)}};
+      const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+      const a=E(`<a href="${URL.createObjectURL(blob)}" download="gramsaz-${b.bot_id}.json"></a>`);a.click();ok("خروجی گرفته شد")});
+    $("im2")&&($("im2").onclick=()=>{
+      const f=document.createElement("input");f.type="file";f.accept=".json,application/json";
+      f.onchange=async()=>{try{
+        const j=JSON.parse(await f.files[0].text());
+        if(!j?.bot)throw new Error("فایل معتبر نیست");
+        await confirmBox({title:"بازیابی نسخه",body:"تنظیمات و دستورات این ربات با فایل جایگزین می‌شوند.",okLabel:"جایگزین کن"});
+        const fl=j.bot.flow;if(fl){st.flow=fl;Flow.save(fl)}
+        const cm=j.bot.commands||{};
+        for(const [name,c] of Object.entries(cm)){
+          await api(`/api/bots/${b.bot_id}/commands/${name}`,{method:"PUT",
+            body:{response:c.response||"",description:c.description||"",buttons:c.buttons||null,media:c.media||null}});
+          for(const [cbid,txt] of Object.entries(c.callbacks||{}))
+            await api(`/api/bots/${b.bot_id}/commands/${name}/callbacks/${encodeURIComponent(cbid)}`,{method:"PUT",body:{response:txt}});
         }
+        ding();ok("بازیابی شد");boot();
+      }catch(e){err(e.message)}};f.click()});
+    const del=async()=>{if(await confirmBox({title:"حذف ربات",body:"حذف بازگشت‌ناپذیر است؛ داده‌ها پاک می‌شوند.",danger:true,okLabel:"حذف کن"})){
+      await api(`/api/bots/${b.bot_id}`,{method:"DELETE"});ok("حذف شد");st.bot=null;await loadBots();st.route="bots";boot()}};
+    $("db")&&($("db").onclick=guard(del));$("db2")&&($("db2").onclick=guard(del));
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════
+   Command palette
+════════════════════════════════════════════════════════════════ */
+function palette(){
+  tap();$("pal")?.remove?.();
+  const p=E(`<div id="pal" class="on"><div class="scrim"></div><div class="box">
+    <div class="in">${I.search}<input placeholder="دنبال چی می‌گردی؟" autocomplete="off"></div><div class="res"></div></div></div>`);
+  document.body.append(p);
+  const inp=p.querySelector("input"),res=p.querySelector(".res");
+  const cmds=[
+    {g:"ناوبری",l:"داشبورد",i:"gauge",go:()=>go("dashboard")},
+    {g:"ناوبری",l:"سازندهٔ جریان",i:"flow",go:()=>go("flows")},
+    {g:"ناوبری",l:"مشترکان",i:"people",go:()=>go("subs")},
+    {g:"ناوبری",l:"برادکست",i:"megaphone",go:()=>go("broadcast")},
+    {g:"ناوبری",l:"کتابخانهٔ رسانه",i:"image",go:()=>go("media")},
+    {g:"ناوبری",l:"تنظیمات",i:"gear",go:()=>go("settings")},
+    {g:"ربات‌ها",l:"تغییر / افزودن ربات",i:"grid",go:()=>{st.bot=null;st.route="bots";boot()}},
+    {g:"عمل",l:"اتصال ربات جدید",i:"plus",go:newBotSheet},
+    {g:"عمل",l:st.bot?.is_running?"متوقف کردن ربات":"راه‌اندازی ربات",i:"zap",go:st.bot?()=>toggle():null},
+    {g:"عمل",l:"انتشار جریان در ربات",i:"save",go:st.bot?()=>{go("flows");setTimeout(()=>$("pub")?.click(),400)}:null},
+    {g:"ظاهر",l:document.documentElement.dataset.theme==="dark"?"تم روشن":"تم تاریک",i:document.documentElement.dataset.theme==="dark"?"sun":"moon",go:()=>{theme(document.documentElement.dataset.theme==="dark"?"light":"dark");boot()}},
+    {g:"حساب",l:"خروج",i:"out",go:()=>logout()},
+  ].filter(c=>c.go);
+  let sel=0;
+  const draw=(q="")=>{
+    const list=cmds.filter(c=>c.l.includes(q)||c.g.includes(q));
+    res.innerHTML="";let lastG="";sel=Math.min(sel,list.length-1);
+    list.forEach((c,idx)=>{
+      if(c.g!==lastG){res.append(E(`<div class="grp">${c.g}</div>`));lastG=c.g}
+      const it=E(`<div class="it ${idx===sel?"sel":""}">${I[c.i]}<span>${c.l}</span>${idx===sel?E(`<small>↵</small>`):""}</div>`);
+      it.onclick=c.go;it.onmouseenter=()=>{sel=idx;draw(q)};res.append(it);
+    });
+    if(!list.length)res.append(E(`<div class="hint center" style="padding:var(--s6)">موردی نیست</div>`));
+    return list;
+  };
+  draw();
+  inp.oninput=()=>{sel=0;draw(inp.value.trim())};
+  inp.onkeydown=e=>{
+    const list=draw(inp.value.trim());
+    if(e.key==="ArrowDown"){e.preventDefault();sel=Math.min(sel+1,list.length-1);draw(inp.value.trim());tap("light")}
+    if(e.key==="ArrowUp"){e.preventDefault();sel=Math.max(sel-1,0);draw(inp.value.trim());tap("light")}
+    if(e.key==="Enter"){list[sel]?.go?.();close()}
+    if(e.key==="Escape")close();
+  };
+  const close=()=>{p.classList.remove("on");setTimeout(()=>p.remove(),180)};
+  p.querySelector(".scrim").onclick=close;
+  setTimeout(()=>inp.focus(),60);
+}
+async function toggle(){
+  const r=await api(`/api/bots/${st.bot.bot_id}/toggle`,{method:"PATCH",body:{active:!st.bot.is_running}});
+  st.bot.is_running=r.is_running;ok(r.is_running?"روشن شد":"خاموش شد");boot();
+}
+document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();st.user&&palette()}
+  if(e.key==="Escape"){closeSheet();$("dialog").classList.remove("on");$("dialog").innerHTML="";}
+});
+
+/* ════════════════════════════════════════════════════════════════
+   Auth / Onboarding
+════════════════════════════════════════════════════════════════ */
+const Auth={
+  mode:"login",
+  render(){
+    const w=E(`<div class="auth"><div class="panel"></div></div>`);
+    const p=w.querySelector(".panel");
+    p.innerHTML=`<div class="mark">${I.bolt}</div>
+      <h1>استودیوی ربات‌سازی</h1>
+      <div class="tl">بدون کدنویسی، ربات تلگرامت را با گراف بساز، منتشر کن و مشترکینت را ببین.</div>`;
+    const sw=E(`<div class="card"></div>`);
+    const seg=UI.seg([{id:"login",label:"ورود"},{id:"register",label:"ثبت‌نام"}],this.mode,id=>{this.mode=id;sw.innerHTML="";sw.append(form());});
+    seg.style.width="100%";seg.querySelectorAll("button").forEach(b=>b.style.flex=1);
+    sw.append(seg);
+    const form=()=>{
+      const f=E(`<div class="stack"></div>`);
+      if(this.mode==="register"){
+        const u=UI.field({ph:"نام کاربری",icon:"user",auto:"username"});
+        const p1=UI.field({ph:"رمز عبور",icon:"lock",type:"password",auto:"new-password"});
+        const t=UI.field({ph:"یوزرنیم تلگرام (بدون @)",icon:"tg",rtl:false});
+        const sd=UI.btn("ارسال کد تأیید",{icon:"send",block:true});
+        const vc=UI.field({ph:"کد ۶ رقمی",icon:"check",cls:"hidden"});vc.classList.toggle("hidden",true);
+        const go=UI.btn("ساخت حساب",{variant:"brand",icon:"right",block:true});
+        sd.onclick=guard(async()=>{const u2=t.input.value.trim().replace("@","");
+          if(!u2){warn("یوزرنیم تلگرام لازم است");return}
+          sd.disabled=true;
+          try{await api("/api/auth/send-code",{method:"POST",body:{telegram_username:u2,device_id:dev()}});
+            vc.classList.remove("hidden");vc.input.focus();ok("کد به تلگرام آمد")}finally{sd.disabled=false}});
+        go.onclick=guard(async()=>{
+          const body={username:u.input.value.trim(),password:p1.input.value,full_name:u.input.value.trim(),
+            telegram_username:t.input.value.trim().replace("@",""),verification_code:vc.input.value.trim(),
+            device_id:dev(),referral_code:localStorage.ref||""};
+          if(!body.username||!body.password||!body.telegram_username||!body.verification_code){warn("همهٔ فیلدها را کامل کن");return}
+          const d=await api("/api/auth/register",{method:"POST",body});finish(d);
+        });
+        f.append(u,p1,t,sd,vc,go);
+      }else{
+        const u=UI.field({ph:"نام کاربری",icon:"user",auto:"username"});
+        const p1=UI.field({ph:"رمز عبور",icon:"lock",type:"password",auto:"current-password"});
+        const go=UI.btn("ورود",{variant:"brand",icon:"right",block:true});
+        go.onclick=guard(async()=>{
+          if(!u.input.value.trim()||!p1.input.value){warn("نام کاربری و رمز لازم است");return}
+          const d=await api("/api/auth/login",{method:"POST",body:{username:u.input.value.trim(),password:p1.input.value}});finish(d)});
+        if(tg?.initData){
+          const tgb=UI.btn("ورود با تلگرام",{icon:"tg",block:true});
+          tgb.onclick=guard(async()=>{const d=await api("/api/me");if(!d.uid)throw new Error("دسترسی رد شد");
+            st.user=d;await loadBots();boot();});
+          f.append(u,p1,go,tgb);
+        }else f.append(u,p1,go);
       }
-      if (tg) { tg.ready(); tg.expand(); }
-      applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
-      boot(false);
-    </script>
-  </body>
+      return f;
+    };
+    sw.append(form());p.append(sw);
+    p.append(E(`<p class="hint center" style="margin-top:var(--s5)">با ادامه، قوانین پلتفرم می‌پذیرد.</p>`));
+    return w;
+  }
+};
+async function finish(d){
+  if(!d.token)throw new Error("توکن دریافت نشد");
+  st.token=d.token;localStorage.authToken=d.token;st.user=d.user;localStorage.removeItem("ref");
+  ding();ok("خوش آمدی 👋");await loadBots();
+  st.bot=null;st.route="bots";boot();
+}
+function logout(call=true){
+  if(call&&st.token)api("/api/auth/logout",{method:"POST"}).catch(()=>{});
+  st.token="";st.user=null;st.bot=null;st.bots=null;st.route="bots";Auth.mode="login";localStorage.removeItem("authToken");boot();
+}
+async function loadBots(){const {bots}=await api("/api/bots");st.bots=bots||[]}
+
+/* ── theme ── */
+function theme(t){document.documentElement.dataset.theme=t;localStorage.theme=t;
+  const c=t==="dark"?"#111214":"#f2f1ee";
+  try{tg?.setHeaderColor?.(c);tg?.applyTheme?.()}catch(e){}}
+theme(localStorage.theme||tg?.colorScheme||"dark");
+
+/* ── boot ── */
+(async function start(){
+  try{tg?.ready?.();tg?.expand?.()}catch(e){}
+  const ref=new URLSearchParams(location.search).get("ref");if(ref)localStorage.ref=ref;
+  if(tg?.initData){
+    try{const d=await api("/api/me");if(d.token){st.token=d.token;localStorage.authToken=d.token}
+      st.user=d;await loadBots();boot();return}catch(e){}
+  }
+  const t=localStorage.authToken;
+  if(t){st.token=t;try{st.user=await api("/api/auth/me");await loadBots();boot();return}catch(e){localStorage.removeItem("authToken")}}
+  boot();
+})();
+</script>
+</body>
 </html>
