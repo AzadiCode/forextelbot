@@ -6,7 +6,7 @@ GramSaz WebApp Edition — پلتفرم ربات‌ساز با رابط وب
 """
 
 from __future__ import annotations
-import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, copy, secrets
+import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, copy, secrets, re
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -239,10 +239,12 @@ class Storage:
         })
         b.setdefault("force_join_channel", None)
         b.setdefault("bot_users", [])
-        # ── تنظیمات جدید (سازگار با ربات‌های قبلی) ──
+        # ── نسل جدید ──
         b.setdefault("welcome_message", "")   # پیام خوش‌آمد برای عضو جدید
-        b.setdefault("unknown_reply", "")      # پاسخ خودکار به دستور ناشناخته
+        b.setdefault("unknown_reply", "")      # پاسخ خودکار به ورودی ناشناخته
         b.setdefault("auto_menu", True)        # همگام‌سازی منوی تلگرام
+        b.setdefault("rules", [])              # موتور پاسخ هوشمند (کلیدواژه)
+        b.setdefault("bot_user_info", {})      # کتابخانهٔ کاربران: uid→{name,username,joined}
         b.setdefault("stats", {
             "messages_received": 0,
             "messages_sent": 0,
@@ -582,6 +584,100 @@ class Storage:
             self._bots.update_one({"bot_id": bot_id}, {"$set": {"force_join_channel": channel}})
 
     # ══════════════════════════════════════════════════════════════════
+    # موتور پاسخ هوشمند — قوانین کلیدواژه‌ای
+    # rule = {id, keywords:[...], mode:(exact|contains|regex), response, media}
+    # ══════════════════════════════════════════════════════════════════
+    def add_rule(self, bot_id: str, rule: dict) -> list:
+        if not rule.get("id"):
+            rule["id"] = "r_" + secrets.token_hex(4)
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if not bot: return []
+            rules = bot.setdefault("rules", [])
+            for i, r in enumerate(rules):
+                if r.get("id") == rule["id"]:
+                    rules[i] = rule; return copy.deepcopy(rules)
+            rules.append(rule); return copy.deepcopy(rules)
+        bot = self._bots.find_one({"bot_id": bot_id}, {"rules": 1}) or {}
+        rules = bot.get("rules", [])
+        for i, r in enumerate(rules):
+            if r.get("id") == rule["id"]:
+                rules[i] = rule; break
+        else:
+            rules.append(rule)
+        self._bots.update_one({"bot_id": bot_id}, {"$set": {"rules": rules}})
+        return rules
+
+    def delete_rule(self, bot_id: str, rule_id: str) -> list:
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if not bot: return []
+            bot["rules"] = [r for r in bot.get("rules", []) if r.get("id") != rule_id]
+            return copy.deepcopy(bot["rules"])
+        bot = self._bots.find_one({"bot_id": bot_id}, {"rules": 1}) or {}
+        rules = [r for r in bot.get("rules", []) if r.get("id") != rule_id]
+        self._bots.update_one({"bot_id": bot_id}, {"$set": {"rules": rules}})
+        return rules
+
+    @staticmethod
+    def match_rule(rules: list, text: str):
+        """اولین قانونِ منطبق با متن را برمی‌گرداند"""
+        t = (text or "").strip().lower()
+        if not t:
+            return None
+        for r in rules or []:
+            mode = r.get("mode", "contains")
+            for kw in r.get("keywords", []):
+                k = (kw or "").strip().lower()
+                if not k:
+                    continue
+                if mode == "exact" and t == k:
+                    return r
+                if mode == "contains" and k in t:
+                    return r
+                if mode == "regex":
+                    try:
+                        if re.search(kw, text or "", re.IGNORECASE):
+                            return r
+                    except re.error:
+                        pass
+        return None
+
+    # ══════════════════════════════════════════════════════════════════
+    # کتابخانهٔ کاربرانِ هر ربات
+    # ══════════════════════════════════════════════════════════════════
+    def set_bot_user_info(self, bot_id: str, uid: int, name: str = "", username: str = ""):
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if not bot: return
+            info = bot.setdefault("bot_user_info", {})
+            if str(uid) not in info:
+                info[str(uid)] = {"name": name, "username": username, "joined": now_ir().isoformat()}
+            else:
+                info[str(uid)].update({"name": name or info[str(uid)].get("name", ""),
+                                       "username": username or info[str(uid)].get("username", "")})
+        else:
+            self._bots.update_one(
+                {"bot_id": bot_id, "bot_user_info": {"$exists": True}},
+                {"$set": {f"bot_user_info.{uid}.name": name, f"bot_user_info.{uid}.username": username}},
+            )
+            self._bots.update_one(
+                {"bot_id": bot_id, f"bot_user_info.{uid}": {"$exists": False}},
+                {"$set": {f"bot_user_info.{uid}": {"name": name, "username": username, "joined": now_ir().isoformat()}}},
+            )
+
+    def get_bot_users(self, bot_id: str) -> list:
+        b = self.get_bot(bot_id)
+        if not b: return []
+        users = b.get("bot_users", [])
+        info = b.get("bot_user_info", {})
+        out = []
+        for u in users:
+            meta = info.get(str(u), {})
+            out.append({"uid": u, "name": meta.get("name", ""), "username": meta.get("username", ""), "joined": meta.get("joined", "")})
+        return out
+
+    # ══════════════════════════════════════════════════════════════════
     # سیستم Auth
     # ══════════════════════════════════════════════════════════════════
     def register_user(self, username: str, password: str, full_name: str = "", 
@@ -763,6 +859,9 @@ class BotRunner:
         self._app.add_handler(MessageHandler(
             filters.TEXT & filters.COMMAND,
             lambda u, c: _subbot_command(u, c, self.bot_id)))
+        self._app.add_handler(MessageHandler(
+            filters.TEXT & (~filters.COMMAND),
+            lambda u, c: _subbot_text(u, c, self.bot_id)))
 
         await self._app.initialize()
         me = await self._app.bot.get_me()
@@ -925,10 +1024,12 @@ async def _send_media(bot, chat_id, media, caption, kb):
 
 async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
     uid = update.effective_user.id
+    eu = update.effective_user
     b = storage.get_bot(bot_id)
     if not b:
         return
     is_new = storage.add_bot_user(bot_id, uid)
+    storage.set_bot_user_info(bot_id, uid, eu.full_name or "", eu.username or "")
     storage.update_bot_stats(bot_id, received=1)
     storage.record_daily(bot_id, "messages_in", 1)
 
@@ -1025,6 +1126,51 @@ async def _subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id
         log.error(f"❌ خطا در /{cmd_name} ساب‌بات {bot_id}: {e}")
         try:
             await update.effective_message.reply_text(response, reply_markup=kb)
+            storage.update_bot_stats(bot_id, sent=1)
+        except Exception:
+            pass
+
+
+async def _subbot_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
+    """پاسخ هوشمند به متن معمولی کاربر بر اساس قوانین کلیدواژه‌ای"""
+    uid = update.effective_user.id
+    eu = update.effective_user
+    text = (update.effective_message.text or "").strip()
+    b = storage.get_bot(bot_id)
+    if not b:
+        return
+    storage.add_bot_user(bot_id, uid)
+    storage.set_bot_user_info(bot_id, uid, eu.full_name or "", eu.username or "")
+    storage.update_bot_stats(bot_id, received=1)
+    storage.record_daily(bot_id, "messages_in", 1)
+
+    rule = storage.match_rule(b.get("rules", []), text)
+    if not rule:
+        unknown = (b.get("unknown_reply") or "").strip()
+        if unknown:
+            try:
+                await update.effective_message.reply_text(unknown, parse_mode=ParseMode.HTML)
+                storage.update_bot_stats(bot_id, sent=1)
+                storage.record_daily(bot_id, "messages_out", 1)
+            except Exception as e:
+                log.error(f"❌ خطا در unknown_reply {bot_id}: {e}")
+        return
+
+    resp = rule.get("response", "")
+    kb = _build_inline(rule.get("buttons"))
+    media = rule.get("media")
+    try:
+        sent = False
+        if media and media.get("url"):
+            sent = await _send_media(ctx.bot, update.effective_chat.id, media, resp, kb)
+        if not sent and resp:
+            await update.effective_message.reply_text(resp, reply_markup=kb, parse_mode=ParseMode.HTML)
+        storage.update_bot_stats(bot_id, sent=1)
+        storage.record_daily(bot_id, "messages_out", 1)
+    except Exception as e:
+        log.error(f"❌ خطا در rule-reply {bot_id}: {e}")
+        try:
+            await update.effective_message.reply_text(resp, reply_markup=kb)
             storage.update_bot_stats(bot_id, sent=1)
         except Exception:
             pass
@@ -1547,6 +1693,66 @@ def api_sync_menu(bot_id):
     except Exception as e:
         log.error(f"❌ خطا در sync-menu {bot_id}: {e}")
         return jsonify({"error": f"خطا در همگام‌سازی منو: {e}"}), 500
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /api/bots/<bot_id>/rules — موتور پاسخ هوشمند (کلیدواژه)
+# ──────────────────────────────────────────────────────────────────────
+@flask_app.get("/api/bots/<bot_id>/rules")
+@auth_required
+def api_list_rules(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err: return err
+    return jsonify({"rules": b.get("rules", [])})
+
+
+@flask_app.route("/api/bots/<bot_id>/rules", methods=["PUT"])
+@auth_required
+def api_set_rule(bot_id):
+    _, err = get_owned_bot(bot_id)
+    if err: return err
+    data = request.get_json(force=True) or {}
+    rule = {
+        "id": (data.get("id") or "").strip(),
+        "keywords": [str(k).strip() for k in (data.get("keywords") or []) if str(k).strip()],
+        "mode": data.get("mode") if data.get("mode") in ("exact", "contains", "regex") else "contains",
+        "response": data.get("response", ""),
+        "media": data.get("media") or None,
+        "buttons": data.get("buttons"),
+    }
+    if not rule["keywords"]:
+        return jsonify({"error": "حداقل یک کلیدواژه لازم است"}), 400
+    if not rule["response"] and not rule["media"]:
+        return jsonify({"error": "متن پاسخ یا رسانه لازم است"}), 400
+    rules = storage.add_rule(bot_id, rule)
+    return jsonify({"rules": rules, "message": "قانون ذخیره شد"})
+
+
+@flask_app.route("/api/bots/<bot_id>/rules/<rule_id>", methods=["DELETE"])
+@auth_required
+def api_delete_rule(bot_id, rule_id):
+    _, err = get_owned_bot(bot_id)
+    if err: return err
+    rules = storage.delete_rule(bot_id, rule_id)
+    return jsonify({"rules": rules, "message": "قانون حذف شد"})
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /api/bots/<bot_id>/users — کتابخانهٔ کاربرانِ ربات
+# ──────────────────────────────────────────────────────────────────────
+@flask_app.get("/api/bots/<bot_id>/users")
+@auth_required
+def api_list_bot_users(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err: return err
+    q = (request.args.get("q") or "").strip().lower()
+    users = storage.get_bot_users(bot_id)
+    if q:
+        users = [u for u in users if q in str(u.get("uid", "")).lower()
+                 or q in (u.get("name", "") or "").lower()
+                 or q in (u.get("username", "") or "").lower()]
+    users.sort(key=lambda u: u.get("joined", ""), reverse=True)
+    return jsonify({"users": users, "total": len(b.get("bot_users", []))})
 
 
 # ══════════════════════════════════════════════════════════════════════
