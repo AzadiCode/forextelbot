@@ -2,911 +2,223 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
-    />
-    <meta name="theme-color" content="#0b0d10" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0b" />
     <title>GramSaz</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #0b0d10;
-        --surface: #14171b;
-        --surface-2: #1a1e23;
-        --line: #23282e;
-        --tx: #edeef0;
-        --mu: #7d858f;
-        --ac: #c8fa3c;
-        --ac-ink: #10140a;
-        --ac-soft: rgba(200, 250, 60, 0.12);
-        --ok: #3ddc97;
-        --red: #ff6b6b;
-        --r: 16px;
+        --bg: #0a0a0b;
+        --panel: #131417;
+        --panel-2: #191b1f;
+        --hair: #23262b;
+        --tx: #f2f3f5;
+        --mu: #868c95;
+        --ac: #b6f36a;
+        --ac-ink: #0e1602;
+        --ac-soft: rgba(182, 243, 106, 0.12);
+        --ok: #40d6a2;
+        --red: #ff6a6a;
+        --amber: #f5b544;
+        --r: 18px;
         --r-sm: 12px;
+        --maxw: 480px;
       }
       html[data-theme="light"] {
-        --bg: #f5f6f7;
-        --surface: #ffffff;
-        --surface-2: #eef0f2;
-        --line: #e2e5e9;
-        --tx: #12161b;
-        --mu: #6a727c;
-        --ac: #3f6b00;
+        --bg: #eef0f2;
+        --panel: #ffffff;
+        --panel-2: #f2f4f6;
+        --hair: #e1e5e9;
+        --tx: #101418;
+        --mu: #5b636d;
+        --ac: #4a7a12;
         --ac-ink: #ffffff;
-        --ac-soft: rgba(63, 107, 0, 0.09);
+        --ac-soft: rgba(74, 122, 18, 0.1);
         --ok: #0f9d6f;
-        --red: #d94848;
+        --red: #d84747;
+        --amber: #b7791f;
       }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-        -webkit-tap-highlight-color: transparent;
-      }
-      html,
-      body {
-        background: var(--bg);
-        color: var(--tx);
+      * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+      html, body {
+        background: var(--bg); color: var(--tx);
         font: 15px/1.6 Vazirmatn, system-ui, sans-serif;
-        min-height: 100vh;
-        -webkit-font-smoothing: antialiased;
-        transition: background 0.3s, color 0.3s;
+        min-height: 100vh; -webkit-font-smoothing: antialiased;
+        transition: background .25s, color .25s;
       }
-      button,
-      input,
-      textarea,
-      select {
-        font: inherit;
-        color: inherit;
-        border: 0;
-        outline: 0;
-        background: none;
-      }
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
-      svg {
-        width: 20px;
-        height: 20px;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 1.7;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        flex: none;
-      }
-      .mono,
-      .num {
-        font-family: Inter, Vazirmatn, sans-serif;
-        font-variant-numeric: tabular-nums;
-      }
-      #app {
-        max-width: 460px;
-        margin: 0 auto;
-        padding: 16px 16px 120px;
-      }
-      .fade {
-        animation: fade 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
-      }
-      @keyframes fade {
-        from {
-          opacity: 0;
-          transform: translateY(6px);
-        }
-      }
+      button, input, textarea, select { font: inherit; color: inherit; border: 0; outline: 0; background: none; }
+      a { color: inherit; text-decoration: none; }
+      svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+      .mono { font-family: Inter, Vazirmatn, sans-serif; font-variant-numeric: tabular-nums; }
+      ::selection { background: var(--ac); color: var(--ac-ink); }
 
-      /* Header / greeting */
-      .hello {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin: 6px 2px 20px;
-      }
-      .hello .who {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        min-width: 0;
-      }
-      .hello small {
-        display: block;
-        color: var(--mu);
-        font-size: 13px;
-      }
-      .hello b {
-        font-size: 17px;
-        font-weight: 600;
-        display: block;
-        line-height: 1.3;
-      }
-      .ring {
-        width: 42px;
-        height: 42px;
-        border-radius: 50%;
-        background: conic-gradient(var(--ac), var(--ac) 100%) padding-box;
-        display: grid;
-        place-items: center;
-        flex: none;
-        position: relative;
-      }
-      .ring span {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        background: var(--surface);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        color: var(--ac);
-        border: 1.5px solid var(--line);
-      }
+      #app { max-width: var(--maxw); margin: 0 auto; padding: 14px 16px 110px; }
+      .fade { animation: fade .3s cubic-bezier(.2,.7,.2,1); }
+      @keyframes fade { from { opacity: 0; transform: translateY(8px); } }
 
-      h2 {
-        font-size: 12.5px;
-        color: var(--mu);
-        font-weight: 600;
-        letter-spacing: 0.2px;
-        margin: 26px 2px 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .lnk {
-        color: var(--ac);
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
+      /* Top bar */
+      .bar { display: flex; align-items: center; justify-content: space-between; margin: 8px 2px 20px; gap: 12px; }
+      .bar .idn { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .bar small { display: block; color: var(--mu); font-size: 13px; }
+      .bar b { font-size: 18px; font-weight: 700; display: block; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      h2 { font-size: 12px; color: var(--mu); font-weight: 700; letter-spacing: .4px; margin: 26px 3px 11px; text-transform: none; display: flex; align-items: center; justify-content: space-between; }
+      .lnk { color: var(--ac); font-size: 13px; font-weight: 600; cursor: pointer; }
 
-      /* Stats strip */
-      .strip {
-        display: flex;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        overflow: hidden;
-      }
-      .strip > div {
-        flex: 1;
-        padding: 14px 6px;
-        text-align: center;
-        border-inline-start: 1px solid var(--line);
-      }
-      .strip > div:first-child {
-        border-inline-start: 0;
-      }
-      .strip b {
-        display: block;
-        font: 700 18px/1.2 Inter, sans-serif;
-        letter-spacing: -0.4px;
-      }
-      .strip .ac b {
-        color: var(--ac);
-      }
-      .strip span {
-        font-size: 11px;
-        color: var(--mu);
-      }
+      .ava { width: 44px; height: 44px; border-radius: 14px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+
+      /* Stats */
+      .strip { display: flex; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); overflow: hidden; }
+      .strip > div { flex: 1; padding: 15px 4px; text-align: center; }
+      .strip > div + div { border-inline-start: 1px solid var(--hair); }
+      .strip b { display: block; font: 700 19px/1.15 Inter, sans-serif; letter-spacing: -.5px; }
+      .strip .ac b { color: var(--ac); }
+      .strip span { font-size: 11px; color: var(--mu); }
 
       /* Bot card */
-      .bot {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        margin-bottom: 10px;
-        cursor: pointer;
-        transition: transform 0.15s, border-color 0.15s;
-      }
-      .bot:active {
-        transform: scale(0.99);
-        border-color: var(--ac-soft);
-      }
-      .av {
-        position: relative;
-        width: 44px;
-        height: 44px;
-        border-radius: 13px;
-        background: var(--surface-2);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        color: var(--ac);
-        flex: none;
-      }
-      .live {
-        position: absolute;
-        bottom: -2px;
-        left: -2px;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background: var(--mu);
-        border: 2.5px solid var(--surface);
-      }
-      .live.on {
-        background: var(--ok);
-      }
-      .bot .g {
-        flex: 1;
-        min-width: 0;
-      }
-      .bot b {
-        display: block;
-        font-weight: 600;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .bot small {
-        display: block;
-        color: var(--mu);
-        font-size: 12.5px;
-        margin-top: 1px;
-      }
+      .bot { display: flex; align-items: center; gap: 13px; padding: 15px; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); margin-bottom: 10px; cursor: pointer; transition: transform .15s, border-color .15s; }
+      .bot:active { transform: scale(.995); border-color: var(--ac); }
+      .bot .g { flex: 1; min-width: 0; }
+      .bot b { display: block; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bot small { display: block; color: var(--mu); font-size: 12.5px; margin-top: 2px; }
+      .live { position: absolute; bottom: -1px; left: -1px; width: 13px; height: 13px; border-radius: 50%; background: var(--mu); border: 3px solid var(--panel); }
+      .live.on { background: var(--ok); }
+      .av2 { position: relative; width: 44px; height: 44px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--hair); display: grid; place-items: center; font-weight: 700; color: var(--ac); flex: none; }
+
+      .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+      .pill.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+      .pill.off { color: var(--mu); background: var(--panel-2); }
 
       /* Buttons */
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        height: 46px;
-        padding: 0 18px;
-        border-radius: var(--r-sm);
-        background: var(--ac);
-        color: var(--ac-ink);
-        font-weight: 700;
-        cursor: pointer;
-        width: 100%;
-        transition: transform 0.12s, opacity 0.12s;
-      }
-      .btn:active {
-        transform: scale(0.98);
-        opacity: 0.92;
-      }
-      .btn:disabled {
-        opacity: 0.5;
-      }
-      .btn.line {
-        background: var(--surface);
-        color: var(--tx);
-        border: 1px solid var(--line);
-      }
-      .btn.red {
-        background: rgba(255, 107, 107, 0.1);
-        color: var(--red);
-      }
-      .btn.sm {
-        height: 36px;
-        width: auto;
-        padding: 0 13px;
-        font-size: 13.5px;
-        border-radius: 10px;
-      }
-      .btn.sm svg {
-        width: 16px;
-        height: 16px;
-      }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 48px; padding: 0 18px; border-radius: 14px; background: var(--ac); color: var(--ac-ink); font-weight: 700; cursor: pointer; width: 100%; transition: transform .12s, opacity .12s; }
+      .btn:active { transform: scale(.98); opacity: .92; }
+      .btn:disabled { opacity: .5; }
+      .btn.line { background: var(--panel); color: var(--tx); border: 1px solid var(--hair); }
+      .btn.red { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+      .btn.sm { height: 38px; width: auto; padding: 0 14px; font-size: 13.5px; border-radius: 11px; }
+      .btn.sm svg { width: 17px; height: 17px; }
+      .btn svg { width: 18px; height: 18px; }
+      .ib { width: 40px; height: 40px; border-radius: 12px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); flex: none; transition: .15s; }
+      .ib:active { background: var(--panel-2); transform: scale(.93); }
 
       /* FAB */
-      #fab {
-        position: fixed;
-        bottom: max(94px, calc(env(safe-area-inset-bottom) + 94px));
-        inset-inline-end: max(20px, calc(50vw - 230px));
-        width: 56px;
-        height: 56px;
-        border-radius: 18px;
-        background: var(--ac);
-        color: var(--ac-ink);
-        display: grid;
-        place-items: center;
-        box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.5);
-        cursor: pointer;
-        z-index: 25;
-        transition: transform 0.15s;
-      }
-      #fab svg {
-        width: 26px;
-        height: 26px;
-        stroke-width: 2;
-      }
-      #fab:active {
-        transform: scale(0.9);
-      }
-      #fab.hide {
-        display: none;
-      }
-      /* Skeleton */
-      .skel {
-        background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
-        background-size: 200% 100%;
-        animation: sh 1.3s infinite linear;
-      }
-      @keyframes sh {
-        to {
-          background-position: -200% 0;
-        }
-      }
+      #fab { position: fixed; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 78px); inset-inline-end: max(18px, calc(50vw - var(--maxw)/2 + 16px)); width: 58px; height: 58px; border-radius: 19px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--ac) 55%, transparent); cursor: pointer; z-index: 25; transition: transform .16s; }
+      #fab svg { width: 28px; height: 28px; stroke-width: 2.1; }
+      #fab:active { transform: scale(.9); }
+      #fab.hide { display: none; }
 
       /* Nav */
-      #nav {
-        position: fixed;
-        bottom: max(12px, env(safe-area-inset-bottom));
-        left: 50%;
-        transform: translateX(-50%);
-        display: none;
-        gap: 4px;
-        width: min(460px, calc(100vw - 24px));
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        padding: 6px;
-        z-index: 20;
-      }
-      #nav button {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 3px;
-        padding: 9px 0;
-        border-radius: 15px;
-        color: var(--mu);
-        font-size: 11.5px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: 0.18s;
-      }
-      #nav button.on {
-        background: var(--ac-soft);
-        color: var(--ac);
-      }
+      #nav { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: none; gap: 4px; width: min(var(--maxw), calc(100vw - 24px)); background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--hair); border-radius: 18px; padding: 6px; z-index: 20; }
+      #nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0; border-radius: 13px; color: var(--mu); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .18s; }
+      #nav button.on { color: var(--ac); background: var(--ac-soft); }
 
       /* Inputs */
-      label {
-        display: block;
-        font-size: 12.5px;
-        color: var(--mu);
-        font-weight: 600;
-        margin: 16px 2px 7px;
-      }
-      .in {
-        width: 100%;
-        background: var(--surface-2);
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        padding: 12px 13px;
-        color: var(--tx);
-        transition: 0.15s;
-      }
-      .in:focus {
-        border-color: var(--ac);
-        box-shadow: 0 0 0 3px var(--ac-soft);
-      }
-      .in::placeholder {
-        color: var(--mu);
-        opacity: 0.7;
-      }
-      textarea.in {
-        min-height: 100px;
-        resize: vertical;
-        line-height: 1.7;
-      }
-      .in.ltr {
-        text-align: left;
-        direction: ltr;
-      }
+      label { display: block; font-size: 12.5px; color: var(--mu); font-weight: 600; margin: 16px 3px 7px; }
+      .in { width: 100%; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 13px; padding: 12px 14px; color: var(--tx); transition: .15s; }
+      .in:focus { border-color: var(--ac); box-shadow: 0 0 0 3px var(--ac-soft); }
+      .in::placeholder { color: var(--mu); opacity: .65; }
+      textarea.in { min-height: 104px; resize: vertical; line-height: 1.75; }
+      .in.ltr { text-align: left; direction: ltr; }
 
       /* Toggle */
-      .sw {
-        position: relative;
-        width: 46px;
-        height: 27px;
-        border-radius: 14px;
-        background: var(--line);
-        cursor: pointer;
-        flex: none;
-        transition: 0.25s;
-      }
-      .sw::after {
-        content: "";
-        position: absolute;
-        top: 3px;
-        right: 3px;
-        width: 21px;
-        height: 21px;
-        border-radius: 50%;
-        background: var(--tx);
-        transition: 0.25s cubic-bezier(0.34, 1.4, 0.64, 1);
-      }
-      .sw.on {
-        background: var(--ok);
-      }
-      .sw.on::after {
-        right: 22px;
-        background: #fff;
-      }
+      .sw { position: relative; width: 48px; height: 28px; border-radius: 14px; background: var(--hair); cursor: pointer; flex: none; transition: .25s; }
+      .sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: .25s cubic-bezier(.34,1.4,.64,1); }
+      .sw.on { background: var(--ac); }
+      .sw.on::after { right: 23px; }
 
-      .seg {
-        display: flex;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 13px;
-        padding: 4px;
-        margin: 18px 0;
-        gap: 4px;
-      }
-      .seg button {
-        flex: 1;
-        height: 38px;
-        border-radius: 10px;
-        color: var(--mu);
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 13.5px;
-      }
-      .seg button.on {
-        background: var(--surface-2);
-        color: var(--tx);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-      }
+      .seg { display: flex; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 5px; margin: 20px 0; gap: 5px; }
+      .seg button { flex: 1; height: 40px; border-radius: 10px; color: var(--mu); cursor: pointer; font-weight: 600; font-size: 13.5px; transition: .18s; }
+      .seg button.on { background: var(--panel-2); color: var(--tx); box-shadow: inset 0 0 0 1px var(--hair); }
 
-      /* Command / plugin row */
-      .item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 13px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        margin-bottom: 8px;
-        cursor: pointer;
-        transition: border-color 0.15s;
-      }
-      .item:active {
-        border-color: var(--ac-soft);
-      }
-      .item .g {
-        flex: 1;
-        min-width: 0;
-      }
-      .item b {
-        display: block;
-        font-weight: 600;
-      }
-      .item small {
-        display: block;
-        color: var(--mu);
-        font-size: 12.5px;
-        margin-top: 1px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .badge {
-        font-size: 10.5px;
-        font-weight: 600;
-        padding: 2px 8px;
-        border-radius: 7px;
-        background: var(--surface-2);
-        color: var(--mu);
-        border: 1px solid var(--line);
-        white-space: nowrap;
-      }
-      .sq {
-        width: 40px;
-        height: 40px;
-        border-radius: 11px;
-        background: var(--surface-2);
-        display: grid;
-        place-items: center;
-        color: var(--ac);
-        flex: none;
-      }
-      .del {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-        display: grid;
-        place-items: center;
-        color: var(--mu);
-        cursor: pointer;
-        flex: none;
-      }
-      .del:active {
-        color: var(--red);
-        background: rgba(255, 107, 107, 0.1);
-      }
+      /* Generic item row */
+      .item { display: flex; align-items: center; gap: 13px; padding: 14px; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; margin-bottom: 9px; cursor: pointer; transition: border-color .15s; }
+      .item:active { border-color: var(--ac); }
+      .item.static { cursor: default; }
+      .item .g { flex: 1; min-width: 0; }
+      .item b { display: block; font-weight: 600; }
+      .item small { display: block; color: var(--mu); font-size: 12.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sq { width: 42px; height: 42px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--hair); display: grid; place-items: center; color: var(--ac); flex: none; }
+      .badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 8px; background: var(--panel-2); color: var(--mu); border: 1px solid var(--hair); white-space: nowrap; }
+      .badge.url { color: var(--amber); }
+      .del { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mu); cursor: pointer; flex: none; }
+      .del:active { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+      .del.on { color: var(--ac); background: var(--ac-soft); }
 
-      .card {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        padding: 16px;
-      }
+      .card { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 16px; }
 
       /* Plugin accordion */
-      .pl {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        margin-bottom: 10px;
-        overflow: hidden;
-      }
-      .pl .h {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px;
-        cursor: pointer;
-      }
-      .pl .h .g {
-        flex: 1;
-        min-width: 0;
-      }
-      .pl .h b {
-        display: block;
-        font-weight: 600;
-      }
-      .pl .h small {
-        display: block;
-        color: var(--mu);
-        font-size: 12px;
-      }
-      .chev {
-        color: var(--mu);
-        transition: transform 0.22s;
-      }
-      .pl.open .chev {
-        transform: rotate(180deg);
-      }
-      .pl .b {
-        display: none;
-        padding: 4px 14px 16px;
-        border-top: 1px solid var(--line);
-      }
-      .pl.open .b {
-        display: block;
-      }
+      .pl { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); margin-bottom: 10px; overflow: hidden; }
+      .pl .h { display: flex; align-items: center; gap: 12px; padding: 15px; cursor: pointer; }
+      .pl .h .g { flex: 1; min-width: 0; }
+      .pl .h b { display: block; font-weight: 600; }
+      .pl .h small { display: block; color: var(--mu); font-size: 12px; }
+      .chev { color: var(--mu); transition: transform .22s; }
+      .pl.open .chev { transform: rotate(180deg); }
+      .pl .b { display: none; padding: 6px 15px 16px; border-top: 1px solid var(--hair); }
+      .pl.open .b { display: block; }
 
       /* Bottom sheet */
-      #scrim {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.6);
-        z-index: 40;
-        display: none;
-        justify-content: center;
-        align-items: flex-end;
-      }
-      #scrim.on {
-        display: flex;
-      }
-      .sheet {
-        width: min(460px, 100vw);
-        max-height: 92vh;
-        background: var(--bg);
-        border: 1px solid var(--line);
-        border-bottom: 0;
-        border-radius: 24px 24px 0 0;
-        display: flex;
-        flex-direction: column;
-        animation: up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-      }
-      @keyframes up {
-        from {
-          transform: translateY(30px);
-          opacity: 0;
-        }
-      }
-      .sh-h {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 16px;
-        border-bottom: 1px solid var(--line);
-        font-weight: 700;
-      }
-      .sh-b {
-        padding: 16px;
-        overflow: auto;
-        flex: 1;
-      }
-      .sh-f {
-        display: flex;
-        gap: 8px;
-        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-        border-top: 1px solid var(--line);
-      }
-      .ib {
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        cursor: pointer;
-        color: var(--mu);
-        flex: none;
-      }
-      .ib:active {
-        background: var(--surface-2);
-        transform: scale(0.92);
-      }
-      .ib.red {
-        color: var(--red);
-        background: rgba(255, 107, 107, 0.1);
-        border-color: transparent;
-        width: 46px;
-      }
-      .pfx {
-        display: flex;
-        align-items: center;
-        direction: ltr;
-        background: var(--surface-2);
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        padding: 0 13px;
-      }
-      .pfx b {
-        color: var(--mu);
-        font-weight: 700;
-      }
-      .pfx input {
-        flex: 1;
-        padding: 12px 0;
-        text-align: left;
-      }
-      .chips {
-        display: flex;
-        gap: 7px;
-        flex-wrap: wrap;
-        margin-top: 10px;
-      }
-      .chips span {
-        font: 500 12.5px Inter, Vazirmatn;
-        padding: 4px 11px;
-        border-radius: 999px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        color: var(--mu);
-        cursor: pointer;
-      }
-      .chips span:active {
-        border-color: var(--ac);
-        color: var(--ac);
-      }
+      #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 40; display: none; justify-content: center; align-items: flex-end; }
+      #scrim.on { display: flex; }
+      .sheet { width: min(var(--maxw), 100vw); max-height: 92vh; background: var(--bg); border: 1px solid var(--hair); border-bottom: 0; border-radius: 24px 24px 0 0; display: flex; flex-direction: column; animation: up .3s cubic-bezier(.2,.8,.2,1); }
+      @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+      .sh-h { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--hair); font-weight: 700; }
+      .sh-b { padding: 16px; overflow: auto; flex: 1; }
+      .sh-f { display: flex; gap: 8px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--hair); }
 
-      /* Preview bubble */
-      .pv {
-        background: var(--bg);
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        padding: 14px;
-        margin-top: 8px;
-      }
-      .bub {
-        background: var(--surface-2);
-        border-radius: 14px 14px 14px 4px;
-        padding: 10px 13px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-size: 14px;
-        line-height: 1.75;
-        max-width: 90%;
-      }
-      .bubrow {
-        display: flex;
-        gap: 5px;
-        margin-top: 6px;
-        max-width: 90%;
-      }
-      .bubrow i {
-        flex: 1;
-        text-align: center;
-        font-style: normal;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 6px;
-        font-size: 12.5px;
-        color: var(--ac);
-        font-weight: 600;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .brow {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        padding: 10px;
-        margin-bottom: 8px;
-      }
-      .brow .r {
-        display: flex;
-        gap: 6px;
-        align-items: center;
-      }
-      .brow .r .in {
-        flex: 1;
-        min-width: 0;
-        padding: 9px 10px;
-      }
-      .brow .r .in.id {
-        flex: 0 0 80px;
-        font-size: 12px;
-      }
-      details.med {
-        margin-top: 16px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--r-sm);
-        padding: 0 14px;
-      }
-      details.med summary {
-        list-style: none;
-        cursor: pointer;
-        padding: 14px 0;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      details.med summary::-webkit-details-marker {
-        display: none;
-      }
-      details.med[open] {
-        padding-bottom: 14px;
-      }
-      details.med[open] summary {
-        border-bottom: 1px solid var(--line);
-        margin-bottom: 12px;
-      }
+      .pfx { display: flex; align-items: center; direction: ltr; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 13px; padding: 0 14px; }
+      .pfx b { color: var(--mu); font-weight: 700; }
+      .pfx input { flex: 1; padding: 12px 0; text-align: left; }
+      .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+      .chips span { font: 500 12.5px Inter, Vazirmatn; padding: 5px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--hair); color: var(--mu); cursor: pointer; }
+      .chips span:active { border-color: var(--ac); color: var(--ac); }
 
-      .empty {
-        text-align: center;
-        color: var(--mu);
-        padding: 48px 20px;
-      }
-      .empty .ic {
-        width: 60px;
-        height: 60px;
-        margin: 0 auto 14px;
-        border-radius: 18px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        color: var(--ac);
-      }
-      .empty .ic svg {
-        width: 26px;
-        height: 26px;
-      }
-      .empty b {
-        color: var(--tx);
-        font-weight: 600;
-      }
-      .bar {
-        height: 5px;
-        border-radius: 3px;
-        background: var(--surface-2);
-        margin-top: 5px;
-        overflow: hidden;
-      }
-      .bar i {
-        display: block;
-        height: 100%;
-        background: var(--ac);
-      }
-      #toast {
-        position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translate(-50%, -80px);
-        background: var(--tx);
-        color: var(--bg);
-        padding: 11px 18px;
-        border-radius: 13px;
-        font-weight: 600;
-        font-size: 13.5px;
-        z-index: 99;
-        transition: 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
-        max-width: 90%;
-      }
-      #toast.on {
-        transform: translate(-50%, 0);
-      }
-      #toast.err {
-        background: var(--red);
-        color: #fff;
-      }
+      .pv { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 14px; margin-top: 8px; }
+      .bub { background: var(--panel-2); border-radius: 15px 15px 15px 5px; padding: 10px 13px; white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.75; max-width: 92%; }
+      .bubrow { display: flex; gap: 5px; margin-top: 6px; max-width: 92%; }
+      .bubrow i { flex: 1; text-align: center; font-style: normal; background: var(--panel); border: 1px solid var(--hair); border-radius: 9px; padding: 7px; font-size: 12.5px; color: var(--ac); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .brow { background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 11px; margin-bottom: 8px; }
+      .brow .r { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+      .brow .r .in { flex: 1; min-width: 0; padding: 9px 11px; }
+      .brow .r .id { flex: 0 0 82px; font-size: 12px; }
+      .btype { display: flex; background: var(--panel-2); border: 1px solid var(--hair); border-radius: 9px; padding: 3px; gap: 2px; }
+      .btype button { flex: 1; padding: 5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 600; color: var(--mu); cursor: pointer; }
+      .btype button.on { background: var(--panel); color: var(--ac); }
+      details.med { margin-top: 16px; background: var(--panel); border: 1px solid var(--hair); border-radius: 14px; padding: 0 14px; }
+      details.med summary { list-style: none; cursor: pointer; padding: 14px 0; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+      details.med summary::-webkit-details-marker { display: none; }
+      details.med[open] { padding-bottom: 14px; }
+      details.med[open] summary { border-bottom: 1px solid var(--hair); margin-bottom: 12px; }
+
+      /* Sparkline chart */
+      .chart { display: flex; align-items: flex-end; gap: 6px; height: 84px; padding-top: 6px; }
+      .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+      .chart .cbar { width: 100%; border-radius: 6px 6px 0 0; background: var(--ac); opacity: .85; min-height: 3px; transition: height .3s; }
+      .chart .clab { font-size: 10px; color: var(--mu); }
+
+      .empty { text-align: center; color: var(--mu); padding: 46px 20px; }
+      .empty .ic { width: 62px; height: 62px; margin: 0 auto 14px; border-radius: 20px; background: var(--panel); border: 1px dashed var(--hair); display: grid; place-items: center; color: var(--ac); }
+      .empty .ic svg { width: 28px; height: 28px; }
+      .empty b { color: var(--tx); font-weight: 600; font-size: 15px; }
+      .bar2 { height: 5px; border-radius: 3px; background: var(--panel-2); margin-top: 5px; overflow: hidden; }
+      .bar2 i { display: block; height: 100%; background: var(--ac); }
+      #toast { position: fixed; top: 12px; left: 50%; transform: translate(-50%, -80px); background: var(--tx); color: var(--bg); padding: 11px 18px; border-radius: 13px; font-weight: 600; font-size: 13.5px; z-index: 99; transition: .32s cubic-bezier(.2,.8,.2,1); max-width: 90%; }
+      #toast.on { transform: translate(-50%, 0); }
+      #toast.err { background: var(--red); color: #fff; }
+
       /* Auth */
-      #auth {
-        position: fixed;
-        inset: 0;
-        background: var(--bg);
-        z-index: 60;
-        display: none;
-        overflow: auto;
-        padding: max(52px, 12vh) 26px 40px;
-      }
-      #auth.on {
-        display: block;
-      }
-      #auth > div {
-        max-width: 340px;
-        margin: 0 auto;
-      }
-      .mark {
-        width: 56px;
-        height: 56px;
-        border-radius: 18px;
-        background: var(--ac);
-        color: var(--ac-ink);
-        display: grid;
-        place-items: center;
-        margin-bottom: 26px;
-      }
-      .mark svg {
-        width: 30px;
-        height: 30px;
-        stroke-width: 1.9;
-      }
-      .word {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        font: 700 11px Inter;
-        letter-spacing: 3px;
-        color: var(--mu);
-      }
-      #theme {
-        position: fixed;
-        top: 16px;
-        left: 16px;
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        display: grid;
-        place-items: center;
-        cursor: pointer;
-        color: var(--mu);
-        z-index: 70;
-      }
-      .field {
-        margin-bottom: 12px;
-      }
-      .err {
-        color: var(--red);
-        font-size: 12px;
-        margin: 5px 2px 0;
-        min-height: 1px;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation: none !important;
-          transition: none !important;
-        }
-      }
+      #auth { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: none; overflow: auto; padding: max(50px,11vh) 26px 40px; }
+      #auth.on { display: block; }
+      #auth > div { max-width: 340px; margin: 0 auto; }
+      .mark { width: 58px; height: 58px; border-radius: 19px; background: var(--ac); color: var(--ac-ink); display: grid; place-items: center; margin-bottom: 26px; }
+      .mark svg { width: 32px; height: 32px; stroke-width: 1.9; }
+      .word { position: fixed; top: 20px; right: 20px; font: 700 11px Inter; letter-spacing: 3px; color: var(--mu); }
+      #theme { position: fixed; top: 16px; left: 16px; width: 40px; height: 40px; border-radius: 13px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); z-index: 70; }
+      .field { margin-bottom: 13px; }
+      .err { color: var(--red); font-size: 12px; margin: 6px 3px 0; min-height: 1px; }
+      .err.good { color: var(--ok); }
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     </style>
   </head>
   <body>
@@ -920,302 +232,179 @@
 
     <script>
       "use strict";
-      /* Config — same backend contract as before */
       const API = "https://forextelbot-9jwt.onrender.com";
       const WEBAPP = "https://botsazgram.onrender.com";
       const tg = window.Telegram?.WebApp || null;
       let initData = "";
-
       let token = localStorage.getItem("authToken") || "";
-      let user = null,
-        bots = [],
-        bot = null,
-        cmds = {},
-        ed = null,
-        tab = "cmds",
-        botId = null;
-      const ref =
-        new URLSearchParams(location.search).get("ref") ||
-        localStorage.getItem("pending_referral") ||
-        "";
+      let user = null, bots = [], bot = null, cmds = {}, ed = null, tab = "cmds", botId = null;
+      const ref = new URLSearchParams(location.search).get("ref") || localStorage.getItem("pending_referral") || "";
       if (ref) localStorage.setItem("pending_referral", ref);
 
       const $ = (id) => document.getElementById(id);
       const app = () => $("app");
       const n = (x) => (+x || 0).toLocaleString("fa-IR");
-      const esc = (s) =>
-        String(s ?? "").replace(
-          /[&<>"']/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-        );
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
       const I = {
-        x: '<path d="M6 6l12 12M18 6L6 18"/>',
-        down: '<path d="M6 9l6 6 6-6"/>',
-        msg: '<path d="M4 5h16v11H9l-5 4z"/>',
-        home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>',
-        bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
-        plus: '<path d="M12 5v14M5 12h14"/>',
-        user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
-        back: '<path d="M9 6l6 6-6 6"/>',
-        next: '<path d="M15 6l-6 6 6 6"/>',
-        trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
-        plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>',
-        send: '<path d="M21 3L3 10l7 3 3 7z"/>',
-        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>',
-        logo: '<path d="M4 12l16-8-4 16-4-6z"/>',
-        shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
-        copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>',
-        bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
-        chart: '<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>',
-        code: '<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>',
+        x: '<path d="M6 6l12 12M18 6L6 18"/>', down: '<path d="M6 9l6 6 6-6"/>', msg: '<path d="M4 5h16v11H9l-5 4z"/>',
+        home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>', bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+        back: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+        plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>', send: '<path d="M21 3L3 10l7 3 3 7z"/>',
+        lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>', logo: '<path d="M4 12l16-8-4 16-4-6z"/>',
+        shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>',
+        bolt: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>', code: '<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>',
         gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.2A1.6 1.6 0 004.5 19.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 001.1-2.7H2a2 2 0 110-4h.2a1.6 1.6 0 001.1-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-1.1V2a2 2 0 114 0v.2a1.6 1.6 0 002.7 1.1l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-1.1 2.7H22a2 2 0 110 4h-.2a1.6 1.6 0 00-1.4 1z"/>',
-        open: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
-        moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+        open: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>', moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
         sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M5 5l1.4 1.4M17.6 17.6L19 19M2 12h2M20 12h2M5 19l1.4-1.4M17.6 6.4L19 5"/>',
         image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/>',
         cast: '<path d="M2 16a6 6 0 016 6M2 12a10 10 0 0110 10M2 8a14 14 0 0114 14"/><circle cx="3" cy="21" r="1"/>',
         coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4"/>',
         logout: '<path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3"/>',
-        doc: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/>',
+        wave: '<path d="M18 11V6a2 2 0 00-4 0M14 10V4a2 2 0 00-4 0v2M10 10.5V6a2 2 0 00-4 0v8"/><path d="M18 8a2 2 0 014 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.9-6-2.4L4 18"/>',
+        help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 014 2c0 1.5-2 2-2 3M12 17h.01"/>',
+        link: '<path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/>',
+        sync: '<path d="M4 4v6h6M20 20v-6h-6M20 8a8 8 0 00-14-3M4 16a8 8 0 0014 3"/>',
       };
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
 
       let tt;
       function toast(m, e) {
-        const t = $("toast");
-        t.textContent = m;
-        t.className = "on" + (e ? " err" : "");
-        clearTimeout(tt);
-        tt = setTimeout(() => (t.className = ""), 2500);
-        hap(e ? "error" : "success");
+        const t = $("toast"); t.textContent = m; t.className = "on" + (e ? " err" : "");
+        clearTimeout(tt); tt = setTimeout(() => (t.className = ""), 2600); hap(e ? "error" : "success");
       }
-      function hap(t) {
-        try {
-          const H = tg?.HapticFeedback;
-          if (!H) return;
-          ["light", "medium", "heavy", "rigid", "soft"].includes(t) ? H.impactOccurred(t) : H.notificationOccurred(t);
-        } catch (e) {}
-      }
+      function hap(t) { try { const H = tg?.HapticFeedback; if (!H) return; ["light","medium","heavy","rigid","soft"].includes(t) ? H.impactOccurred(t) : H.notificationOccurred(t); } catch (e) {} }
       const sure = (m, f) => (tg?.showConfirm ? tg.showConfirm(m, (r) => r === "ok" && f()) : confirm(m) && f());
 
       async function api(p, o = {}) {
         const h = { "Content-Type": "application/json" };
         if (initData) h["X-Init-Data"] = initData;
         if (token) h.Authorization = "Bearer " + token;
-        const r = await fetch(API + p, {
-          ...o,
-          headers: { ...h, ...(o.headers || {}) },
-          body: o.body ? JSON.stringify(o.body) : undefined,
-        });
+        const r = await fetch(API + p, { ...o, headers: { ...h, ...(o.headers || {}) }, body: o.body ? JSON.stringify(o.body) : undefined });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) {
-          if (r.status === 401 && token) {
-            token = "";
-            localStorage.removeItem("authToken");
-            showAuth();
-          }
+          if (r.status === 401 && token) { token = ""; localStorage.removeItem("authToken"); showAuth(); }
           throw new Error(d.detail || d.error || "خطای اتصال (" + r.status + ")");
         }
         return d;
       }
-      const guard =
-        (f) =>
-        async (...a) => {
-          try {
-            return await f(...a);
-          } catch (e) {
-            toast(e.message, 1);
-          }
-        };
-      const devId = () =>
-        localStorage.device_id ||
-        (localStorage.device_id = "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 11));
+      const guard = (f) => async (...a) => { try { return await f(...a); } catch (e) { toast(e.message, 1); } };
+      const devId = () => localStorage.device_id || (localStorage.device_id = "dev_" + Date.now() + "_" + Math.random().toString(36).slice(2, 11));
 
-      /* Theme */
       function applyTheme(t) {
         document.documentElement.setAttribute("data-theme", t);
         localStorage.setItem("gs_theme", t);
         $("theme").innerHTML = ic(t === "light" ? "moon" : "sun");
-        const c = t === "light" ? "#f5f6f7" : "#0b0d10";
+        const c = t === "light" ? "#eef0f2" : "#0a0a0b";
         document.querySelector('meta[name="theme-color"]').content = c;
-        try {
-          tg?.setHeaderColor?.(c);
-          tg?.setBackgroundColor?.(c);
-        } catch (e) {}
+        try { tg?.setHeaderColor?.(c); tg?.setBackgroundColor?.(c); } catch (e) {}
       }
-      function toggleTheme() {
-        applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
-        hap("light");
-      }
+      function toggleTheme() { applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); hap("light"); }
 
-      /* Auth */
+      /* ── Auth ── */
       let reg = {};
       function showAuth(step = "login") {
-        $("auth").classList.add("on");
-        $("nav").style.display = "none";
-        $("fab").classList.add("hide");
-        const mark = `<div class="mark">${ic("logo")}</div>`;
+        $("auth").classList.add("on"); $("nav").style.display = "none"; $("fab").classList.add("hide");
         const B = $("authbox");
-        const head = `<div class="word">GRAMSAZ</div>` + mark;
+        const head = `<div class="word">GRAMSAZ</div><div class="mark">${ic("logo")}</div>`;
         if (step === "login")
-          B.innerHTML =
-            head +
-            `<h1 style="font-size:22px;font-weight:700">بازگشت</h1>
-             <p style="color:var(--mu);margin:6px 0 24px">وارد پنل گرام‌ساز شو.</p>
-             <div class="field"><label>نام کاربری</label><input class="in ltr" id="lu" placeholder="username"></div>
-             <div class="field"><label>رمز عبور</label><input class="in ltr" id="lp" type="password" placeholder="••••••••"></div>
-             <button class="btn" onclick="doLogin()">ورود</button>
-             <button class="btn line" style="margin-top:9px" onclick="showAuth('reg1')">ساخت حساب جدید</button>`;
+          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">بازگشت</h1><p style="color:var(--mu);margin:6px 0 26px">وارد پنل گرام‌ساز شو.</p>
+            <div class="field"><label>نام کاربری</label><input class="in ltr" id="lu" placeholder="username"></div>
+            <div class="field"><label>رمز عبور</label><input class="in ltr" id="lp" type="password" placeholder="••••••••"></div>
+            <button class="btn" onclick="doLogin()">ورود</button><button class="btn line" style="margin-top:9px" onclick="showAuth('reg1')">ساخت حساب جدید</button>`;
         else if (step === "reg1")
-          B.innerHTML =
-            head +
-            `<h1 style="font-size:22px;font-weight:700">ثبت‌نام</h1>
-             <p style="color:var(--mu);margin:6px 0 24px">آیدی تلگرامت را بده تا کد تأیید بفرستیم.</p>
-             <div class="field"><label>آیدی تلگرام</label><input class="in ltr" id="tu" placeholder="@username" value="${esc(reg.tu || "")}"></div>
-             <button class="btn" onclick="sendCode()">ارسال کد تأیید</button>
-             <button class="btn line" style="margin-top:9px" onclick="showAuth()">بازگشت</button>`;
+          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">ثبت‌نام</h1><p style="color:var(--mu);margin:6px 0 26px">آیدی تلگرامت را بده تا کد تأیید بفرستیم.</p>
+            <div class="field"><label>آیدی تلگرام</label><input class="in ltr" id="tu" placeholder="@username" value="${esc(reg.tu || "")}"></div>
+            <button class="btn" onclick="sendCode()">ارسال کد تأیید</button><button class="btn line" style="margin-top:9px" onclick="showAuth()">بازگشت</button>`;
         else if (step === "reg2")
-          B.innerHTML =
-            head +
-            `<h1 style="font-size:22px;font-weight:700">تکمیل حساب</h1>
-             <p style="color:var(--mu);margin:6px 0 24px">کد ۶ رقمی برای <b dir="ltr">${esc(reg.tu || "")}</b> ارسال شد.</p>
-             <div class="field"><label>کد تأیید</label><input class="in" id="rc" inputmode="numeric" maxlength="6" placeholder="۰۰۰۰۰۰" style="text-align:center;letter-spacing:10px"></div>
-             <div class="field"><label>نام کاربری</label><input class="in ltr" id="ru" placeholder="username"></div>
-             <div class="field"><label>رمز عبور</label><input class="in ltr" id="rp" type="password" placeholder="حداقل ۶ کاراکتر"><div class="bar" id="pwBar" style="display:none"><i style="width:0"></i></div></div>
-             ${ref ? `<p style="color:var(--mu);font-size:13px;margin:-2px 2px 12px">کد دعوت: <b class="mono">${esc(ref)}</b></p>` : ""}
-             <button class="btn" onclick="doReg()">ساخت حساب</button>
-             <button class="btn line" style="margin-top:9px" onclick="sendCode()">ارسال دوباره کد</button>`;
-        $("rp")?.addEventListener("input", (e) => pw(e.target.value));
+          B.innerHTML = head + `<h1 style="font-size:23px;font-weight:700">تکمیل حساب</h1><p style="color:var(--mu);margin:6px 0 26px">کد ۶ رقمی برای <b dir="ltr">${esc(reg.tu || "")}</b> ارسال شد.</p>
+            <div class="field"><label>کد تأیید</label><input class="in" id="rc" inputmode="numeric" maxlength="6" placeholder="۰۰۰۰۰۰" style="text-align:center;letter-spacing:12px"></div>
+            <div class="field"><label>نام کاربری</label><input class="in ltr" id="ru" placeholder="username"></div>
+            <div class="field"><label>رمز عبور</label><input class="in ltr" id="rp" type="password" placeholder="حداقل ۶ کاراکتر" oninput="pwbar(this.value)"><div class="bar2" id="pwBar" style="display:none"><i style="width:0"></i></div></div>
+            ${ref ? `<p style="color:var(--mu);font-size:13px;margin:-2px 2px 14px">کد دعوت: <b class="mono">${esc(ref)}</b></p>` : ""}
+            <button class="btn" onclick="doReg()">ساخت حساب</button><button class="btn line" style="margin-top:9px" onclick="sendCode()">ارسال دوباره کد</button>`;
       }
-      function pw(v) {
-        const bar = $("pwBar");
-        if (!bar) return;
-        bar.style.display = v ? "block" : "none";
+      function pwbar(v) {
+        const bar = $("pwBar"); if (!bar) return; bar.style.display = v ? "block" : "none";
         let s = (v.length >= 6 ? 40 : 0) + (v.length >= 10 ? 30 : 0) + (/[0-9]/.test(v) ? 15 : 0) + (/[^A-Za-z0-9]/.test(v) ? 15 : 0);
-        const f = bar.firstElementChild;
-        f.style.width = Math.min(100, s) + "%";
-        f.style.background = s < 45 ? "var(--red)" : s < 75 ? "var(--mu)" : "var(--ok)";
+        const f = bar.firstElementChild; f.style.width = Math.min(100, s) + "%";
+        f.style.background = s < 45 ? "var(--red)" : s < 75 ? "var(--amber)" : "var(--ok)";
       }
       const doLogin = guard(async () => {
-        const u = $("lu").value.trim(),
-          p = $("lp").value;
+        const u = $("lu").value.trim(), p = $("lp").value;
         if (!u || !p) return toast("نام کاربری و رمز را وارد کن", 1);
         token = (await api("/api/auth/login", { method: "POST", body: { username: u, password: p } })).token;
-        localStorage.authToken = token;
-        boot(true);
+        localStorage.authToken = token; boot(true);
       });
       const sendCode = guard(async () => {
         const u = ($("tu")?.value || reg.tu || "").trim();
         if (u.length < 3) return toast("آیدی تلگرام را درست وارد کن", 1);
         reg.tu = u;
         await api("/api/auth/send-code", { method: "POST", body: { telegram_username: u, device_id: devId() } });
-        toast("کد ارسال شد — تلگرام را چک کن");
-        showAuth("reg2");
+        toast("کد ارسال شد — تلگرام را چک کن"); showAuth("reg2");
       });
       const doReg = guard(async () => {
-        const code = $("rc").value.trim(),
-          username = $("ru").value.trim().toLowerCase(),
-          password = $("rp").value;
+        const code = $("rc").value.trim(), username = $("ru").value.trim().toLowerCase(), password = $("rp").value;
         if (code.length !== 6) return toast("کد باید ۶ رقم باشد", 1);
         if (username.length < 3) return toast("نام کاربری کوتاه است", 1);
         if (password.length < 6) return toast("رمز عبور کوتاه است", 1);
-        const d = await api("/api/auth/register", {
-          method: "POST",
-          body: { telegram_username: reg.tu, username, password, verification_code: code, referral_code: ref || null, device_id: devId() },
-        });
-        token = d.token;
-        localStorage.authToken = token;
-        localStorage.removeItem("pending_referral");
-        boot(true);
+        const d = await api("/api/auth/register", { method: "POST", body: { telegram_username: reg.tu, username, password, verification_code: code, referral_code: ref || null, device_id: devId() } });
+        token = d.token; localStorage.authToken = token; localStorage.removeItem("pending_referral");
+        toast(d.message || "ثبت‌نام موفق"); boot(true);
       });
       function logout() {
         sure("از حساب خارج می‌شوی؟", async () => {
-          try {
-            token && (await fetch(API + "/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } }));
-          } catch (e) {}
-          token = "";
-          user = null;
-          localStorage.removeItem("authToken");
-          showAuth();
+          try { token && (await fetch(API + "/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } })); } catch (e) {}
+          token = ""; user = null; localStorage.removeItem("authToken"); showAuth();
         });
       }
 
-      /* Nav */
+      /* ── Nav / shell ── */
       const TABS = [["home", "خانه", "home"], ["bots", "ربات‌ها", "bot"], ["me", "پروفایل", "user"]];
       function chrome(v) {
-        $("auth").classList.remove("on");
-        $("nav").style.display = "flex";
-        $("nav").innerHTML = TABS.map(
-          ([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`,
-        ).join("");
-        const showFab = ["home", "bots"].includes(v);
-        $("fab").classList.toggle("hide", !showFab);
-        $("fab").innerHTML = ic("plus");
+        $("auth").classList.remove("on"); $("nav").style.display = "flex";
+        $("nav").innerHTML = TABS.map(([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`).join("");
+        $("fab").classList.toggle("hide", !["home", "bots"].includes(v)); $("fab").innerHTML = ic("plus");
       }
       function go(v, a) {
-        chrome(v);
-        scrollTo(0, 0);
-        hap("light");
-        const map = { home: vHome, bots: vBots, new: vNew, bot: vBot, me: vMe, admin: vAdmin };
-        app().innerHTML = '<div style="height:30px"></div><div class="skel" style="height:70px;border-radius:16px;background:var(--surface);margin-bottom:10px"></div><div class="skel" style="height:66px;border-radius:14px;background:var(--surface)"></div>';
-        map[v](a);
+        chrome(v); scrollTo(0, 0); hap("light");
+        app().innerHTML = `<div style="height:60px" class="fade"></div>`;
+        ({ home: vHome, bots: vBots, new: vNew, bot: vBot, me: vMe, admin: vAdmin })[v](a);
       }
       const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
-      const botCard = (b) =>
-        `<div class="bot" onclick="go('bot','${b.bot_id}')">
-           <span class="av">${esc((b.bot_username || "?")[0].toUpperCase())}<i class="live ${b.is_running ? "on" : ""}"></i></span>
-           <div class="g"><b class="mono">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div>
-           ${ic("next")}
-         </div>`;
-      const empty = (t, s, btn) =>
-        `<div class="empty"><div class="ic">${ic("bot")}</div><b>${t}</b><div style="margin-top:4px">${s}</div>${btn ? `<div style="margin-top:16px">${btn}</div>` : ""}</div>`;
+      const botCard = (b) => `<div class="bot" onclick="go('bot','${b.bot_id}')">
+        <span class="av2">${esc((b.bot_username || "?")[0].toUpperCase())}<i class="live ${b.is_running ? "on" : ""}"></i></span>
+        <div class="g"><b class="mono">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${n(b.stats?.messages_received)} پیام</small></div>
+        <span class="pill ${b.is_running ? "on" : "off"}">${b.is_running ? "روشن" : "خاموش"}</span></div>`;
+      const empty = (t, s, btn) => `<div class="empty"><div class="ic">${ic("bot")}</div><b>${t}</b><div style="margin-top:5px">${s}</div>${btn ? `<div style="margin-top:18px">${btn}</div>` : ""}</div>`;
 
       const vHome = guard(async () => {
         ({ bots } = await api("/api/bots"));
         const act = bots.filter((b) => b.is_running).length;
-        const h = new Date().getHours();
-        const hi = h < 12 ? "صبح بخیر" : h < 18 ? "عصر بخیر" : "شب بخیر";
-        app().className = "fade";
-        app().innerHTML =
-          `<div class="hello">
-             <div class="who"><span class="ring"><span>${esc((user.full_name || user.username || "؟")[0])}</span></span>
-             <div style="min-width:0"><small>${hi}</small><b>${esc((user.full_name || user.username || "").split(" ")[0])}</b></div></div>
-           </div>` +
-          `<div class="strip">
-             <div class="ac"><b>${n(S("unique_users"))}</b><span>کل کاربران</span></div>
-             <div><b>${n(bots.length)}</b><span>ربات</span></div>
-             <div><b>${n(act)}</b><span>روشن</span></div>
-           </div>` +
-          `<h2>ربات‌های شما${bots.length ? `<span class="lnk" onclick="go('bots')">همه</span>` : ""}</h2>` +
-          (bots.length ? bots.slice(0, 4).map(botCard).join("") : empty("هنوز رباتی نداری", "با دکمهٔ + یک ربات بساز.", `<button class="btn sm" style="max-width:180px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
-        app().classList.remove("fade");
-        void app().offsetWidth;
-        app().classList.add("fade");
+        const h = new Date().getHours(), hi = h < 12 ? "صبح بخیر" : h < 18 ? "عصر بخیر" : "شب بخیر";
+        app().className = ""; app().innerHTML =
+          `<div class="bar"><div class="idn"><span class="ava">${esc((user.full_name || user.username || "؟")[0])}</span><div style="min-width:0"><small>${hi}</small><b>${esc((user.full_name || user.username || "").split(" ")[0])}</b></div></div></div>
+           <div class="strip"><div class="ac"><b>${n(S("unique_users"))}</b><span>کل کاربران</span></div><div><b>${n(bots.length)}</b><span>ربات</span></div><div><b>${n(act)}</b><span>روشن</span></div></div>
+           <h2>ربات‌های شما${bots.length ? `<span class="lnk" onclick="go('bots')">همه</span>` : ""}</h2>` +
+          (bots.length ? bots.slice(0, 4).map(botCard).join("") : empty("هنوز رباتی نداری", "با دکمهٔ + یک ربات بساز.", `<button class="btn sm" style="max-width:190px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
+        requestAnimationFrame(() => app().classList.add("fade"));
       });
-
       const vBots = guard(async () => {
         ({ bots } = await api("/api/bots"));
+        app().className = "fade";
         app().innerHTML =
-          `<div class="hello" style="margin-bottom:8px"><div><b style="font-size:22px">ربات‌ها</b><small>${n(bots.length)} ربات</small></div></div>` +
-          (bots.length
-            ? `<div id="bl">${bots.map(botCard).join("")}</div>`
-            : empty("رباتی نداری", "اولین رباتت را بساز.", `<button class="btn sm" style="max-width:180px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
+          `<div class="bar" style="margin-bottom:14px"><div><b style="font-size:22px">ربات‌ها</b><small>${n(bots.length)} ربات</small></div></div>` +
+          (bots.length ? bots.map(botCard).join("") : empty("رباتی نداری", "اولین رباتت را بساز.", `<button class="btn sm" style="max-width:190px" onclick="go('new')">${ic("plus")} ساخت ربات</button>`));
       });
-
       function vNew() {
-        $("fab").classList.add("hide");
+        $("fab").classList.add("hide"); app().className = "fade";
         app().innerHTML =
-          `<div class="hello" style="margin-bottom:10px">
-             <div class="who"><div class="ib" onclick="go('bots')">${ic("back")}</div><div><b style="font-size:20px">ربات جدید</b></div></div>
-           </div>
-           <div class="card" style="margin-bottom:14px">
-             <p style="font-weight:600;margin-bottom:10px">۳ گام ساده</p>
-             <ol style="color:var(--mu);padding-right:18px;line-height:2;font-size:14px">
-               <li>در تلگرام به <a href="https://t.me/BotFather" style="color:var(--ac)" target="_blank" rel="noopener">@BotFather</a> برو</li>
+          `<div class="bar"><div class="idn"><div class="ib" onclick="go('bots')">${ic("back")}</div><div><b>ربات جدید</b></div></div></div>
+           <div class="card" style="margin-bottom:14px"><b style="font-size:14px">۳ گام ساده</b>
+             <ol style="color:var(--mu);padding-right:18px;line-height:2.1;font-size:14px;margin-top:8px">
+               <li>در تلگرام به <a href="https://t.me/BotFather" style="color:var(--ac);font-weight:600" target="_blank" rel="noopener">@BotFather</a> برو</li>
                <li>دستور <b class="mono" style="color:var(--tx)">/newbot</b> را بفرست</li>
-               <li>توکن را اینجا بچسبان</li>
-             </ol>
-           </div>
+               <li>توکن را اینجا بچسبان</li></ol></div>
            <label>توکن ربات</label>
            <input class="in ltr mono" id="tk" placeholder="123456789:AAH…" autocomplete="off" oninput="th()">
            <div class="err" id="tke"></div>
@@ -1223,271 +412,196 @@
       }
       const TOKEN = /^\d{8,12}:[A-Za-z0-9_-]{30,}$/;
       function th() {
-        const v = $("tk").value.trim();
-        const e = $("tke");
-        if (!v) return (e.textContent = "");
-        e.style.color = TOKEN.test(v) ? "var(--ok)" : "var(--red)";
-        e.textContent = TOKEN.test(v) ? "✓ فرمت معتبر" : "فرمت توکن درست نیست";
+        const v = $("tk").value.trim(), e = $("tke"); if (!v) return (e.textContent = "");
+        const ok = TOKEN.test(v); e.className = "err" + (ok ? " good" : "");
+        e.textContent = ok ? "✓ فرمت توکن معتبر است" : "فرمت توکن درست نیست";
       }
       const mkBot = guard(async () => {
         const t = $("tk").value.trim();
         if (!TOKEN.test(t)) return toast("توکن نامعتبر است", 1);
-        const b = $("mk");
-        b.disabled = true;
-        b.textContent = "در حال ساخت…";
-        try {
-          const r = await api("/api/bots", { method: "POST", body: { token: t } });
-          toast(r.message || "ربات ساخته شد");
-          go("bot", r.bot.bot_id);
-        } finally {
-          if ($("mk")) (($("mk").disabled = false), ($("mk").innerHTML = ic("bolt") + " ساخت ربات"));
-        }
+        const b = $("mk"); b.disabled = true; b.textContent = "در حال ساخت…";
+        try { const r = await api("/api/bots", { method: "POST", body: { token: t } }); toast(r.message || "ربات ساخته شد"); go("bot", r.bot.bot_id); }
+        finally { if ($("mk")) (($("mk").disabled = false), ($("mk").innerHTML = ic("bolt") + " ساخت ربات")); }
       });
 
-      /* Bot detail */
+      /* ── Bot detail ── */
       const vBot = guard(async (id) => {
-        if (id) {
-          botId = id;
-          tab = "cmds";
-        }
+        if (id) { botId = id; tab = "cmds"; }
         bot = (await api("/api/bots/" + botId)).bot;
-        const s = bot.stats || {};
-        const u = bot.bot_username || "";
+        const s = bot.stats || {}, u = bot.bot_username || "";
+        $("fab").classList.add("hide");
+        app().className = "fade";
         app().innerHTML =
-          `<div class="hello" style="align-items:center">
-             <div class="who"><div class="ib" onclick="go('bots')">${ic("back")}</div>
-               <span class="av" style="width:40px;height:40px">${esc((u || "?")[0].toUpperCase())}<i class="live ${bot.is_running ? "on" : ""}"></i></span>
-               <div style="min-width:0"><b class="mono" style="font-size:17px">@${esc(u || "—")}</b><small style="color:var(--mu);font-size:12.5px">${bot.is_running ? "در حال اجرا" : "متوقف"}</small></div>
-             </div>
-             <div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div>
-           </div>` +
-          (u ? `<div style="display:flex;gap:8px;margin-bottom:16px"><a class="btn line sm" style="flex:1" href="https://t.me/${esc(u)}" target="_blank" rel="noopener">${ic("open")} باز کردن</a><button class="btn line sm" onclick="cl('${esc(u)}')">${ic("copy")} لینک</button></div>` : "") +
-          `<div class="strip">
-             <div class="ac"><b>${n(s.unique_users)}</b><span>کاربر</span></div>
-             <div><b>${n(s.messages_received)}</b><span>دریافتی</span></div>
-             <div><b>${n(s.messages_sent)}</b><span>ارسالی</span></div>
-             <div><b>${n(s.broadcasts_sent)}</b><span>همگانی</span></div>
-           </div>` +
-          `<div class="seg">${[
-            ["cmds", "دستورها"],
-            ["plug", "افزونه‌ها"],
-            ["set", "تنظیمات"],
-          ]
-            .map(([k, t]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${t}</button>`)
-            .join("")}</div>
-           <div id="tb"></div>`;
+          `<div class="bar" style="align-items:center"><div class="idn"><div class="ib" onclick="go('bots')">${ic("back")}</div>
+             <span class="av2">${esc((u || "?")[0].toUpperCase())}<i class="live ${bot.is_running ? "on" : ""}"></i></span>
+             <div style="min-width:0"><b class="mono" style="font-size:16px">@${esc(u || "—")}</b><small>${bot.is_running ? "در حال اجرا" : "متوقف"}</small></div></div>
+             <div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>` +
+          (u ? `<div style="display:flex;gap:8px;margin-bottom:14px"><a class="btn line sm" style="flex:1" href="https://t.me/${esc(u)}" target="_blank" rel="noopener">${ic("open")} باز کردن ربات</a><button class="btn line sm" onclick="cl('${esc(u)}')">${ic("copy")}</button></div>` : "") +
+          `<div class="strip"><div class="ac"><b>${n(s.unique_users)}</b><span>کاربر</span></div><div><b>${n(s.messages_received)}</b><span>دریافتی</span></div><div><b>${n(s.messages_sent)}</b><span>ارسالی</span></div><div><b>${n(s.broadcasts_sent)}</b><span>همگانی</span></div></div>` +
+          `<div class="seg">${[["cmds", "دستورها"], ["plug", "پاسخ‌ها"], ["set", "تنظیمات"]].map(([k, t]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${t}</button>`).join("")}</div><div id="tb"></div>`;
         if (tab === "cmds") await tCmds();
         if (tab === "plug") tPlug();
         if (tab === "set") tSet();
       });
-      const setTab = (k) => {
-        tab = k;
-        vBot();
-      };
+      const setTab = (k) => { tab = k; vBot(); };
       const cl = (u) => navigator.clipboard?.writeText("https://t.me/" + u).then(() => toast("لینک کپی شد"));
       const power = guard(async () => {
         const on = !$("pw").classList.contains("on");
         const r = await api(`/api/bots/${botId}/toggle`, { method: "PATCH", body: { active: on } });
-        bot.is_running = r.is_running;
-        $("pw").classList.toggle("on", r.is_running);
+        bot.is_running = r.is_running; $("pw").classList.toggle("on", r.is_running);
         toast(r.is_running ? "ربات روشن شد" : "ربات خاموش شد");
+        setTimeout(vBot, 500);
       });
 
+      /* Commands */
       let ck = [];
       async function tCmds() {
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
         ck = Object.keys(cmds);
+        const menu = bot.auto_menu !== false;
         $("tb").innerHTML =
-          `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="color:var(--mu);font-size:13px">${n(ck.length)} دستور</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} جدید</button></div>` +
-          (ck.length
-            ? ck
-                .map((k, i) => {
-                  const c = cmds[k];
-                  const cb = Object.keys(c.callbacks || {}).length;
-                  return `<div class="item" onclick="openCmd(${i})">
-                    <span class="sq" style="font-weight:700">/</span>
-                    <div class="g"><b class="mono">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 50).replace(/\n/g, " ")) || "—"}</small></div>
-                    ${c.media?.url || c.photo ? '<span class="badge">رسانه</span>' : ""}${c.buttons ? '<span class="badge">دکمه</span>' : ""}${cb ? `<span class="badge">${n(cb)} پاسخ</span>` : ""}
-                    ${k !== "start" ? `<span class="del" onclick="event.stopPropagation();rmCmd(${i})">${ic("trash")}</span>` : ""}
-                  </div>`;
-                })
-                .join("")
-            : empty("دستوری نیست", "یک دستور جدید بساز.", `<button class="btn sm" style="max-width:170px" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button>`));
+          `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 12px"><span style="color:var(--mu);font-size:13px">${n(ck.length)} دستور</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} دستور</button></div>` +
+          `<div class="item static" style="margin-bottom:14px"><span class="sq">${ic("sync")}</span><div class="g"><b>منوی تلگرام</b><small>دستورها را در منوی / ربات نشان بده</small></div><div class="sw ${menu ? "on" : ""}" id="am" onclick="fj2('am',!this.classList.contains('on'),'auto_menu')"></div></div>` +
+          (ck.length ? ck.map((k, i) => cmdRow(k, i)).join("") : empty("دستوری نیست", "یک دستور بساز.", `<button class="btn sm" style="max-width:180px" onclick="openCmd(-1)">${ic("plus")} دستور جدید</button>`));
       }
-      const rmCmd = (i) =>
-        sure(`دستور /${ck[i]} حذف شود؟`, guard(async () => {
-          await api(`/api/bots/${botId}/commands/${ck[i]}`, { method: "DELETE" });
-          toast("حذف شد");
-          tCmds();
-        }));
+      function cmdRow(k, i) {
+        const c = cmds[k], cb = Object.keys(c.callbacks || {}).length;
+        const urlb = (c.buttons || []).flat().filter((b) => b.url).length;
+        return `<div class="item" onclick="openCmd(${i})"><span class="sq" style="font-weight:700;font-family:Inter">/</span>
+          <div class="g"><b class="mono">/${esc(k)}</b><small>${esc((c.response || "").slice(0, 48).replace(/\n/g, " ")) || "بدون متن"}</small></div>
+          ${urlb ? `<span class="badge url">${n(urlb)} لینک</span>` : ""}${cb ? `<span class="badge">${n(cb)} دکمه</span>` : ""}${c.media?.url || c.photo ? '<span class="badge">رسانه</span>' : ""}
+          ${k !== "start" ? `<span class="del" onclick="event.stopPropagation();rmCmd(${i})">${ic("trash")}</span>` : ""}</div>`;
+      }
+      const rmCmd = (i) => sure(`دستور /${ck[i]} حذف شود؟`, guard(async () => { await api(`/api/bots/${botId}/commands/${ck[i]}`, { method: "DELETE" }); toast("حذف شد"); tCmds(); }));
+      const fj2 = guard(async (el, on, key) => {
+        const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: on } });
+        bot[key] = r[key]; $(el).classList.toggle("on", !!r[key]);
+        if (key === "auto_menu" && on) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast("منو همگام شد"); } catch (e) {} }
+        else toast("ذخیره شد");
+      });
 
-      /* Plugins */
-      const pl = (id, icon, t, d, sw, body) =>
-        `<div class="pl" id="pl_${id}"><div class="h" onclick="po('${id}')"><div class="sq">${ic(icon)}</div><div class="g"><b>${t}</b><small id="pd_${id}">${d}</small></div>${sw || ""}<span class="chev">${ic("down")}</span></div><div class="b">${body}</div></div>`;
+      /* Plugins: welcome / unknown / force-join / broadcast */
+      const pl = (id, icon, t, d, sw, body, open) => `<div class="pl ${open ? "open" : ""}" id="pl_${id}"><div class="h" onclick="po('${id}')"><div class="sq">${ic(icon)}</div><div class="g"><b>${t}</b><small id="pd_${id}">${d}</small></div>${sw || ""}<span class="chev">${ic("down")}</span></div><div class="b">${body}</div></div>`;
       const po = (id) => $("pl_" + id).classList.toggle("open");
       function tPlug() {
-        const ch = bot.force_join_channel || "";
+        const ch = bot.force_join_channel || "", w = bot.welcome_message || "", uk = bot.unknown_reply || "";
         $("tb").innerHTML =
-          pl(
-            "fj",
-            "lock",
-            "عضویت اجباری",
-            ch ? `فعال · @${esc(ch.replace("@", ""))}` : "غیرفعال",
+          pl("wv", "wave", "پیام خوش‌آمد", w ? "فعال" : "برای عضو تازه", "",
+            `<label>این پیام فقط اولین بار که کاربر /start می‌زند ارسال می‌شود (HTML مجاز)</label><textarea class="in" id="wv">${esc(w)}</textarea><button class="btn sm" onclick="cfgSave('welcome_message','wv')">ذخیره</button>`) +
+          pl("un", "help", "پاسخ خودکار", uk ? "فعال" : "برای دستور ناشناخته", "",
+            `<label>اگر کاربر دستوری فرستاد که تعریف نشده، این پیام پاسخ داده می‌شود</label><textarea class="in" id="un">${esc(uk)}</textarea><button class="btn sm" onclick="cfgSave('unknown_reply','un')">ذخیره</button>`) +
+          pl("fj", "lock", "عضویت اجباری", ch ? "فعال · @" + esc(ch.replace("@", "")) : "غیرفعال",
             `<div class="sw ${ch ? "on" : ""}" id="fjs" onclick="event.stopPropagation();fjToggle()"></div>`,
-            `<label>آیدی کانال (ربات باید ادمین باشد)</label><input class="in ltr" id="fj" placeholder="@channel" value="${esc(ch)}"><button class="btn sm" onclick="fjSave()">ذخیره</button>`,
-          ) +
-          pl(
-            "bc",
-            "cast",
-            "پیام همگانی",
-            "ارسال به همه کاربران",
-            "",
-            `<label>متن پیام</label><textarea class="in" id="bc" placeholder="متن…"></textarea><button class="btn sm" style="width:100%" onclick="bcast()">${ic("send")} ارسال به همه</button>`,
-          );
+            `<label>آیدی کانال (ربات باید ادمین کانال باشد)</label><input class="in ltr" id="fj" placeholder="@channel" value="${esc(ch)}"><button class="btn sm" onclick="fjSave()">ذخیره</button>`) +
+          pl("bc", "cast", "پیام همگانی", "ارسال به همه کاربران (HTML)", "",
+            `<label>متن پیام — می‌توانید از <b class="mono" style="color:var(--ac)">&lt;b&gt;</b> و <b class="mono" style="color:var(--ac)">&lt;a href=""&gt;</b> استفاده کنید</label><textarea class="in" id="bc" placeholder="متن…"></textarea><button class="btn sm" style="width:100%" onclick="bcast()">${ic("send")} ارسال به همه</button>`);
       }
+      const cfgSave = guard(async (key, el) => {
+        const v = $(el).value.trim();
+        const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: v } });
+        bot[key] = r[key];
+        const lab = key === "welcome_message" ? "wv" : "un";
+        $("pd_" + lab).innerHTML = v ? "فعال" : (key === "welcome_message" ? "برای عضو تازه" : "برای دستور ناشناخته");
+        toast("ذخیره شد");
+      });
       const fjSave = guard(async () => {
-        let c = $("fj").value.trim();
-        if (!c) return toast("آیدی کانال را وارد کن", 1);
+        let c = $("fj").value.trim(); if (!c) return toast("آیدی کانال را وارد کن", 1);
         if (!/^[@\-0-9]/.test(c)) c = "@" + c;
         await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } });
-        bot.force_join_channel = c;
-        $("pd_fj").innerHTML = `فعال · @${esc(c.replace("@", ""))}`;
-        $("fjs").classList.add("on");
-        toast("فعال شد");
+        bot.force_join_channel = c; $("pd_fj").innerHTML = "فعال · @" + esc(c.replace("@", "")); $("fjs").classList.add("on"); toast("فعال شد");
       });
       const fjToggle = guard(async () => {
-        const s = $("fjs"),
-          on = !s.classList.contains("on");
-        s.classList.toggle("on", on);
-        if (on) {
-          $("pl_fj").classList.add("open");
-          $("fj").focus();
-          return;
-        }
+        const s = $("fjs"), on = !s.classList.contains("on"); s.classList.toggle("on", on);
+        if (on) { $("pl_fj").classList.add("open"); $("fj").focus(); return; }
         await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } });
-        bot.force_join_channel = "";
-        $("fj").value = "";
-        $("pd_fj").innerHTML = "غیرفعال";
-        toast("غیرفعال شد");
+        bot.force_join_channel = ""; $("fj").value = ""; $("pd_fj").innerHTML = "غیرفعال"; toast("غیرفعال شد");
       });
       const bcast = guard(async () => {
-        const t = $("bc").value.trim();
-        if (!t) return toast("متن خالی است", 1);
+        const t = $("bc").value.trim(); if (!t) return toast("متن خالی است", 1);
         if (!bot.is_running) return toast("اول ربات را روشن کن", 1);
         sure(`به ${n(bot.stats?.unique_users)} کاربر ارسال شود؟`, guard(async () => {
           const r = await api(`/api/bots/${botId}/broadcast`, { method: "POST", body: { text: t } });
-          toast(r.message || "در صف ارسال");
-          $("bc").value = "";
+          toast(r.message || "در صف ارسال"); $("bc").value = "";
         }));
       });
-      function tSet() {
-        $("tb").innerHTML =
-          `<div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px">
-             <span class="av">${esc((bot.bot_username || "?")[0].toUpperCase())}</span>
-             <div style="min-width:0"><b class="mono">@${esc(bot.bot_username || "—")}</b><div style="color:var(--mu);font-size:12.5px">ساخته‌شده: <span class="mono">${esc((bot.created_at || "").slice(0, 10))}</span></div></div>
-           </div>
-           <div class="card">
-             <b style="color:var(--red)">حذف ربات</b>
-             <p style="color:var(--mu);font-size:13px;margin:6px 0 14px">دستورها، پاسخ‌ها و آمار پاک می‌شوند. این کار برگشت‌ناپذیر است.</p>
-             <button class="btn red" onclick="delBot()">${ic("trash")} حذف برای همیشه</button>
-           </div>`;
-      }
-      const delBot = () =>
-        sure("ربات برای همیشه حذف شود؟", guard(async () => {
-          await api("/api/bots/" + botId, { method: "DELETE" });
-          toast("حذف شد");
-          go("bots");
-        }));
 
-      /* Command editor */
+      function tSet() {
+        const u = bot.bot_username || "";
+        const g = bot.daily_stats || {};
+        const days = Object.keys(g).sort().slice(-7);
+        const mx = Math.max(...days.map((d) => g[d].new_users || 0), 1);
+        $("tb").innerHTML =
+          (days.length ? `<h2>رشد کاربران · ۷ روز اخیر</h2><div class="card"><div class="chart">${days
+            .map((d) => `<div class="col"><div class="cbar" style="height:${Math.max(6, ((g[d].new_users || 0) / mx) * 100)}%"></div><span class="clab">${d.slice(8)}</span></div>`).join("")}</div></div>` : "") +
+          `<h2>منوی تلگرام</h2><div class="card" style="margin-bottom:10px"><p style="color:var(--mu);font-size:13px;margin-bottom:12px">دستورهای تعریف‌شده را به منوی رسمی تلگرام ربات اضافه می‌کند تا کاربر آن‌ها را ببیند.</p><button class="btn line" id="syncb" onclick="syncMenu()">${ic("sync")} همگام‌سازی منو</button></div>` +
+          `<h2>اطلاعات</h2><div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px"><span class="av2">${esc((u || "?")[0].toUpperCase())}</span><div><b class="mono">@${esc(u || "—")}</b><div style="color:var(--mu);font-size:12.5px">ساخته‌شده: <span class="mono">${esc((bot.created_at || "").slice(0, 10))}</span></div></div></div>` +
+          `<div class="card"><b style="color:var(--red)">حذف ربات</b><p style="color:var(--mu);font-size:13px;margin:6px 0 14px">دستورها، پاسخ‌ها و آمار پاک می‌شوند. برگشت‌ناپذیر.</p><button class="btn red" onclick="delBot()">${ic("trash")} حذف برای همیشه</button></div>`;
+      }
+      const syncMenu = guard(async () => {
+        const b = $("syncb"); b.disabled = true; b.textContent = "در حال همگام‌سازی…";
+        try { const r = await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast(r.message || "همگام شد"); }
+        finally { b && ((b.disabled = false), (b.innerHTML = ic("sync") + " همگام‌سازی منو")); }
+      });
+      const delBot = () => sure("ربات برای همیشه حذف شود؟", guard(async () => { await api("/api/bots/" + botId, { method: "DELETE" }); toast("حذف شد"); go("bots"); }));
+
+      /* ── Command editor ── */
       const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
-      const nb = () => ({ text: "", id: "", r: "", o: 0 });
+      const nb = () => ({ text: "", id: "", r: "", o: 0, url: "", t: "cb" });
       function openCmd(i) {
-        const k = i < 0 ? "" : ck[i];
-        const c = i < 0 ? {} : cmds[k];
-        const cb = c.callbacks || {};
+        const k = i < 0 ? "" : ck[i], c = i < 0 ? {} : cmds[k], cb = c.callbacks || {};
         ed = {
-          name: k,
-          isNew: i < 0,
-          response: c.response || "",
-          cb,
+          name: k, isNew: i < 0, response: c.response || "", description: c.description || "", cb,
           m: c.media?.url ? { ...c.media } : c.photo ? { type: "photo", url: c.photo } : { type: "photo", url: "" },
-          b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, r: cb[x.id] || "", o: 0 }))),
+          b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, t: x.url ? "url" : "cb", r: cb[x.id] || "", o: 0 }))),
         };
-        drawCmd();
-        $("scrim").classList.add("on");
+        drawCmd(); $("scrim").classList.add("on");
       }
       const closeSheet = () => $("scrim").classList.remove("on");
       function prev() {
-        const p = $("pv");
-        if (!p) return;
+        const p = $("pv"); if (!p) return;
         const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
-        p.innerHTML =
-          (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") +
+        p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") +
           `<div class="bub">${esc(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` +
-          rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${esc(x.text)}</i>`).join("")}</div>`).join("");
+          rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join("");
       }
-      const rmBtn = (r, b) => {
-        ed.b[r].splice(b, 1);
-        if (!ed.b[r].length) ed.b.splice(r, 1);
-        drawCmd();
-      };
+      const rmBtn = (r, b) => { ed.b[r].splice(b, 1); if (!ed.b[r].length) ed.b.splice(r, 1); drawCmd(); };
+      function setBType(ri, bi, t) { ed.b[ri][bi].t = t; if (t === "url") ed.b[ri][bi].o = 0; drawCmd(); }
       function drawCmd() {
-        const top = $("shb")?.scrollTop || 0;
-        const m = ed.m;
+        const top = $("shb")?.scrollTop || 0, m = ed.m;
         const canDel = !ed.isNew && ed.name !== "start";
         const orph = Object.keys(ed.cb).filter((id) => !ed.b.flat().some((x) => x.id === id));
         $("sheet").innerHTML =
           `<div class="sh-h"><span class="mono">${ed.isNew ? "دستور جدید" : "/" + esc(ed.name)}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
            <div class="sh-b" id="shb">
-             ${ed.isNew ? `<label>نام دستور</label><div class="pfx"><b>/</b><input class="mono" placeholder="help" value="${esc(ed.name)}" oninput="ed.name=this.value"></div><div class="chips">${["help", "about", "contact", "rules"].map((x) => `<span onclick="ed.name='${x}';drawCmd()">/${x}</span>`).join("")}</div>` : ""}
+             ${ed.isNew ? `<label>نام دستور</label><div class="pfx"><b>/</b><input class="mono" placeholder="help" value="${esc(ed.name)}" oninput="ed.name=this.value"></div><div class="chips">${["help", "about", "contact", "rules", "support"].map((x) => `<span onclick="ed.name='${x}';drawCmd()">/${x}</span>`).join("")}</div>` : ""}
+             <label>توضیح (نمایش در منوی تلگرام)</label><input class="in" placeholder="مثلاً راهنمای ربات" value="${esc(ed.description)}" oninput="ed.description=this.value">
              <label>متن پاسخ</label><textarea class="in" oninput="ed.response=this.value;prev()">${esc(ed.response)}</textarea>
              <label>پیش‌نمایش</label><div class="pv" id="pv"></div>
-             <label style="display:flex;justify-content:space-between;align-items:center">دکمه‌های شیشه‌ای <span class="lnk" onclick="ed.b.push([nb()]);drawCmd()">+ ردیف</span></label>
-             ${ed.b.length
-               ? ed.b
-                   .map(
-                     (row, ri) =>
-                       `<div class="brow">${row
-                         .map(
-                           (x, bi) =>
-                             `<div class="r" style="margin-bottom:${bi < row.length - 1 ? 6 : 0}px"><input class="in" placeholder="متن دکمه" value="${esc(x.text)}" oninput="ed.b[${ri}][${bi}].text=this.value;prev()"><input class="in id mono ltr" placeholder="id" value="${esc(x.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"><span class="del" onclick="toggleR(${ri},${bi})">${ic("msg")}</span><span class="del" onclick="rmBtn(${ri},${bi})">${ic("trash")}</span></div>${x.o ? `<textarea class="in" style="min-height:56px;margin-top:6px" placeholder="پاسخ این دکمه" oninput="ed.b[${ri}][${bi}].r=this.value">${esc(x.r)}</textarea>` : ""}`,
-                         )
-                         .join("")}${row.length < 3 ? `<span class="lnk" onclick="ed.b[${ri}].push(nb());drawCmd()">+ دکمه</span>` : ""}</div>`,
-                   )
-                   .join("") +
-                 `<p style="color:var(--mu);font-size:12.5px;margin-top:4px">آیکون پیام ← پاسخ اختصاصی هر دکمه. شناسه خالی بماند خودکار ساخته می‌شود.</p>`
+             <label style="display:flex;justify-content:space-between;align-items:center">دکمه‌ها <span class="lnk" onclick="ed.b.push([nb()]);drawCmd()">+ ردیف</span></label>
+             ${ed.b.length ? ed.b.map((row, ri) => `<div class="brow">${row.map((x, bi) => `<div class="r">
+                  <input class="in" placeholder="متن دکمه" value="${esc(x.text)}" oninput="ed.b[${ri}][${bi}].text=this.value;prev()">
+                  <div class="btype" style="flex:0 0 116px"><button class="${x.t === "cb" ? "on" : ""}" onclick="setBType(${ri},${bi},'cb')">پاسخ</button><button class="${x.t === "url" ? "on" : ""}" onclick="setBType(${ri},${bi},'url')">لینک</button></div>
+                  <span class="del" onclick="rmBtn(${ri},${bi})">${ic("trash")}</span></div>
+                  ${x.t === "url" ? `<div class="r"><input class="in ltr mono" placeholder="https://…" value="${esc(x.url)}" oninput="ed.b[${ri}][${bi}].url=this.value;prev()"></div>`
+                : `<div class="r" style="margin-bottom:0"><input class="in id mono ltr" placeholder="شناسه دکمه" value="${esc(x.id)}" oninput="ed.b[${ri}][${bi}].id=this.value"><span class="del ${x.r ? "on" : ""}" onclick="toggleR(${ri},${bi})">${ic("msg")}</span></div>${x.o ? `<textarea class="in" style="min-height:56px;margin-top:6px" placeholder="پاسخ این دکمه" oninput="ed.b[${ri}][${bi}].r=this.value">${esc(x.r)}</textarea>` : ""}`}`).join("")}${row.length < 3 ? `<span class="lnk" onclick="ed.b[${ri}].push(nb());drawCmd()">+ دکمه</span>` : ""}</div>`).join("") +
+                 `<p style="color:var(--mu);font-size:12.5px;margin-top:4px">«پاسخ» دکمه‌ای است که متن برمی‌گرداند؛ «لینک» کاربر را به آدرس دلخواه می‌برد.</p>`
                : `<p style="color:var(--mu);font-size:13px">دکمه‌ای اضافه نشده.</p>`}
              <details class="med" ${m.url ? "open" : ""}><summary>${ic("image")} رسانه (اختیاری)</summary>
                <div style="display:flex;gap:6px;margin-bottom:8px"><select class="in" style="flex:0 0 96px" onchange="ed.m.type=this.value;prev()">${Object.entries(MT).map(([k, t]) => `<option value="${k}" ${m.type === k ? "selected" : ""}>${t}</option>`).join("")}</select><input class="in mono ltr" placeholder="https://…" value="${esc(m.url)}" oninput="ed.m.url=this.value;prev()"></div>
-               <input type="file" id="mf" hidden onchange="up(this.files[0])"><button class="btn line sm" onclick="$('mf').click()">آپلود فایل</button>
-             </details>
-             ${orph.length ? `<label>پاسخ‌های بدون دکمه</label>${orph.map((id) => `<div class="item" style="cursor:default"><div class="g"><b class="mono ltr" style="text-align:right;font-size:12px">${esc(id)}</b><small>${esc(ed.cb[id])}</small></div><span class="del" onclick="cbDel('${esc(id)}')">${ic("trash")}</span></div>`).join("")}` : ""}
+               <input type="file" id="mf" hidden onchange="up(this.files[0])"><button class="btn line sm" onclick="$('mf').click()">آپلود فایل</button></details>
+             ${orph.length ? `<label>پاسخ‌های بدون دکمه</label>${orph.map((id) => `<div class="item static"><div class="g"><b class="mono ltr" style="text-align:right;font-size:12px">${esc(id)}</b><small>${esc(ed.cb[id])}</small></div><span class="del" onclick="cbDel('${esc(id)}')">${ic("trash")}</span></div>`).join("")}` : ""}
            </div>
-           <div class="sh-f">${canDel ? `<div class="ib red" onclick="delCmd()">${ic("trash")}</div>` : ""}<button class="btn" onclick="saveCmd()">ذخیره</button></div>`;
-        prev();
-        $("shb").scrollTop = top;
+           <div class="sh-f">${canDel ? `<div class="ib" style="width:48px;color:var(--red)" onclick="delCmd()">${ic("trash")}</div>` : ""}<button class="btn" onclick="saveCmd()">ذخیره</button></div>`;
+        prev(); $("shb").scrollTop = top;
       }
-      function toggleR(ri, bi) {
-        const x = ed.b[ri][bi];
-        x.o = x.o ? 0 : 1;
-        if (!x.o) x.r = "";
-        drawCmd();
-      }
+      function toggleR(ri, bi) { const x = ed.b[ri][bi]; x.o = x.o ? 0 : 1; if (!x.o) x.r = ""; drawCmd(); }
       const up = guard(async (f) => {
-        if (!f) return;
-        const fd = new FormData();
-        fd.append("file", f);
-        const h = {};
-        if (token) h.Authorization = "Bearer " + token;
-        if (initData) h["X-Init-Data"] = initData;
+        if (!f) return; const fd = new FormData(); fd.append("file", f);
+        const h = {}; if (token) h.Authorization = "Bearer " + token; if (initData) h["X-Init-Data"] = initData;
         toast("در حال آپلود…");
-        const r = await fetch(API + "/api/upload-media", { method: "POST", headers: h, body: fd });
-        const d = await r.json();
+        const r = await fetch(API + "/api/upload-media", { method: "POST", headers: h, body: fd }); const d = await r.json();
         if (!r.ok) throw new Error(d.error || "خطا در آپلود");
-        ed.m = { type: d.type, url: d.url };
-        drawCmd();
-        toast("آپلود شد");
+        ed.m = { type: d.type, url: d.url }; drawCmd(); toast("آپلود شد");
       });
       const cbUrl = (id) => `/api/bots/${botId}/commands/${ed.name}/callbacks/${encodeURIComponent(id)}`;
       const saveCmd = guard(async () => {
@@ -1497,85 +611,66 @@
         const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length);
         rows.flat().forEach((x) => {
           x.text = x.text.trim();
-          x.id = x.id.trim().replace(/\s+/g, "_") || "btn_" + Math.random().toString(36).slice(2, 8);
+          if (x.t === "url") { x.url = (x.url || "").trim(); if (x.url && !/^https?:\/\//.test(x.url)) x.url = "https://" + x.url; }
+          else { x.id = x.id.trim().replace(/\s+/g, "_") || "btn_" + Math.random().toString(36).slice(2, 8); }
         });
-        const u = (ed.m.url || "").trim(),
-          ok = /^https?:\/\//.test(u);
-        await api(`/api/bots/${botId}/commands/${name}`, {
-          method: "PUT",
-          body: {
-            response: ed.response.trim(),
-            buttons: rows.length ? rows.map((r) => r.map(({ r: _r, o, ...x }) => x)) : null,
-            photo: ok && ed.m.type === "photo" ? u : null,
-            media: ok ? { type: ed.m.type, url: u } : null,
-          },
-        });
+        const u = (ed.m.url || "").trim(), ok = /^https?:\/\//.test(u);
+        const payload = {
+          response: ed.response.trim(), description: ed.description.trim(),
+          buttons: rows.length ? rows.map((r) => r.map((x) => x.t === "url" ? { text: x.text, url: x.url } : { text: x.text, id: x.id })) : null,
+          photo: ok && ed.m.type === "photo" ? u : null, media: ok ? { type: ed.m.type, url: u } : null,
+        };
+        await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: payload });
         ed.name = name;
-        await Promise.all(
-          rows.flat().map((x) => {
-            const v = (x.r || "").trim(),
-              old = ed.cb[x.id];
-            if (v && v !== old) return api(cbUrl(x.id), { method: "PUT", body: { response: v } });
-            if (!v && old !== undefined) return api(cbUrl(x.id), { method: "DELETE" });
-          }),
-        );
-        toast("ذخیره شد");
-        closeSheet();
-        tCmds();
-      });
-      const delCmd = () =>
-        sure("این دستور حذف شود؟", guard(async () => {
-          await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" });
-          toast("حذف شد");
-          closeSheet();
-          tCmds();
+        await Promise.all(rows.flat().filter((x) => x.t !== "url").map((x) => {
+          const v = (x.r || "").trim(), old = ed.cb[x.id];
+          if (v && v !== old) return api(cbUrl(x.id), { method: "PUT", body: { response: v } });
+          if (!v && old !== undefined) return api(cbUrl(x.id), { method: "DELETE" });
         }));
-      const cbDel = guard(async (id) => {
-        await api(cbUrl(id), { method: "DELETE" });
-        delete ed.cb[id];
-        drawCmd();
+        toast("ذخیره شد"); closeSheet();
+        if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} }
         tCmds();
       });
+      const delCmd = () => sure("این دستور حذف شود؟", guard(async () => { await api(`/api/bots/${botId}/commands/${ed.name}`, { method: "DELETE" }); toast("حذف شد"); closeSheet(); tCmds(); }));
+      const cbDel = guard(async (id) => { await api(cbUrl(id), { method: "DELETE" }); delete ed.cb[id]; drawCmd(); tCmds(); });
 
-      /* Profile / Admin */
+      /* ── Profile / Admin ── */
       const vMe = guard(async () => {
         const nm = user.full_name || user.username || String(user.uid);
         let rf = "";
         try {
           const r = await api("/api/coins/referral");
-          rf =
-            `<div class="strip" style="margin:16px 0"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
-             <h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2>
-             <div style="display:flex;gap:8px;align-items:center"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:46px;height:46px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
+          rf = `<div class="strip" style="margin-top:16px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div>
+            <h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2>
+            <div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:48px;height:48px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`;
         } catch (e) {}
+        app().className = "fade";
         app().innerHTML =
-          `<div class="hello" style="margin-bottom:0"><div><b style="font-size:22px">پروفایل</b></div></div>
-           <div class="card" style="display:flex;align-items:center;gap:13px">
-             <span class="ring" style="width:48px;height:48px"><span style="font-size:18px">${esc(nm.charAt(0))}</span></span>
-             <div style="min-width:0"><b style="font-size:16px;font-weight:600">${esc(nm)}</b><div class="mono ltr" style="color:var(--mu);font-size:13px;text-align:right">#${user.uid}</div></div>
-           </div>
+          `<div class="bar"><div><b style="font-size:22px">پروفایل</b></div></div>
+           <div class="card" style="display:flex;align-items:center;gap:13px"><span class="ava">${esc(nm.charAt(0))}</span><div style="min-width:0"><b style="font-size:16px;font-weight:600">${esc(nm)}</b><div class="mono ltr" style="color:var(--mu);font-size:13px;text-align:right">#${user.uid}</div></div></div>
            ${rf}
            <h2>تنظیمات</h2>
            <div class="item" onclick="toggleTheme()"><span class="sq">${ic("moon")}</span><div class="g"><b>تم روشن / تاریک</b></div></div>
            ${user.is_admin ? `<div class="item" onclick="go('admin')"><span class="sq">${ic("shield")}</span><div class="g"><b>آمار سیستم</b></div>${ic("next")}</div>` : ""}
-           <button class="btn red" style="margin-top:16px" onclick="logout()">${ic("logout")} خروج</button>`;
+           <button class="btn red" style="margin-top:18px" onclick="logout()">${ic("logout")} خروج از حساب</button>
+           <p style="color:var(--mu);text-align:center;font-size:12px;margin-top:18px">GramSaz · وب‌اپ</p>`;
       });
       const vAdmin = guard(async () => {
         const d = await api("/api/admin/full-stats");
-        const o = d.overview || {};
-        const g = (d.daily_growth || []).slice(-7);
-        const mx = Math.max(...g.map((x) => x.new_users), 1);
+        const o = d.overview || {}, g = (d.daily_growth || []).slice(-7), mx = Math.max(...g.map((x) => x.new_users), 1);
         const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : `<p style="color:var(--mu);font-size:13px;padding:2px">—</p>`);
+        app().className = "fade";
         app().innerHTML =
-          `<div class="hello" style="margin-bottom:16px"><div class="who"><div class="ib" onclick="go('me')">${ic("back")}</div><div><b style="font-size:20px">آمار سیستم</b></div></div></div>` +
+          `<div class="bar"><div class="idn"><div class="ib" onclick="go('me')">${ic("back")}</div><div><b>آمار سیستم</b></div></div></div>` +
           `<div class="strip"><div class="ac"><b>${n(o.total_users)}</b><span>کاربر</span></div><div><b>${n(o.total_registered)}</b><span>ثبت‌نام</span></div><div><b>${n(o.total_bots)}</b><span>ربات</span></div><div><b>${n(o.total_active_bots)}</b><span>فعال</span></div></div>` +
-          (g.length ? `<h2>رشد ۷ روز اخیر</h2><div class="card">${g.map((x) => `<div style="display:flex;justify-content:space-between;font-size:12.5px"><span class="mono ltr">${esc(x.date)}</span><b>${n(x.new_users)}</b></div><div class="bar"><i style="width:${(x.new_users / mx) * 100}%"></i></div>`).join('<div style="height:9px"></div>')}</div>` : "") +
-          list("برترین ربات‌ها", d.top_bots, (b) => `<div class="item" style="cursor:default"><span class="live ${b.is_active ? "on" : ""}" style="position:static;width:10px;height:10px;flex:none"></span><div class="g"><b class="mono">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`) +
-          list("برترین کاربران", d.top_users, (u) => `<div class="item" style="cursor:default"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} دعوت</small></div><span class="badge">${n(u.coins)} سکه</span></div>`) +
-          list("برترین دعوت‌کننده‌ها", d.top_referrers, (r) => `<div class="item" style="cursor:default"><div class="g"><b>${esc(r.name)}</b><small class="mono">@${esc(r.username || "—")}</small></div><span class="badge">${n(r.referral_count)}</span></div>`);
+          `<div class="strip" style="margin-top:9px"><div><b>${n(o.total_messages_received)}</b><span>دریافتی</span></div><div><b>${n(o.total_messages_sent)}</b><span>ارسالی</span></div><div><b>${n(o.total_coins)}</b><span>سکه</span></div><div><b>${n(o.total_referrals)}</b><span>دعوت</span></div></div>` +
+          (g.length ? `<h2>رشد ۷ روز اخیر</h2><div class="card"><div class="chart">${g.map((x) => `<div class="col"><div class="cbar" style="height:${Math.max(6, (x.new_users / mx) * 100)}%"></div><span class="clab">${x.date.slice(8)}</span></div>`).join("")}</div></div>` : "") +
+          list("برترین ربات‌ها", d.top_bots, (b) => `<div class="item static"><span class="av2" style="width:38px;height:38px">${esc((b.username || "?")[0].toUpperCase())}<i class="live ${b.is_active ? "on" : ""}"></i></span><div class="g"><b class="mono">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر · ${n(b.messages)} پیام</small></div></div>`) +
+          list("برترین کاربران", d.top_users, (u) => `<div class="item static"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} دعوت</small></div><span class="badge">${n(u.coins)} سکه</span></div>`) +
+          list("برترین دعوت‌کننده‌ها", d.top_referrers, (r) => `<div class="item static"><div class="g"><b>${esc(r.name)}</b><small class="mono">@${esc(r.username || "—")}</small></div><span class="badge">${n(r.referral_count)}</span></div>`);
       });
 
-      /* Boot */
+      /* ── Boot ── */
       async function boot(manual) {
         if (tg?.initData) initData = tg.initData;
         if (!initData && !token) return showAuth();
@@ -1588,10 +683,7 @@
           if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth();
         }
       }
-      if (tg) {
-        tg.ready();
-        tg.expand();
-      }
+      if (tg) { tg.ready(); tg.expand(); }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
     </script>
