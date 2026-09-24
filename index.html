@@ -203,6 +203,34 @@
       .plug .p .sq { margin-bottom: 8px; width: 36px; height: 36px; }
       .plug .p b { font-size: 13.5px; display: block; }
       .plug .p small { display: block; color: var(--mu); font-size: 11.5px; margin-top: 2px; line-height: 1.5; }
+
+      /* ══ نسخهٔ ۲ ══ */
+      .skl { height: 66px; border-radius: 14px; background: var(--panel); border: 1px solid var(--hair); margin-bottom: 9px; animation: pl .9s ease-in-out infinite alternate; }
+      @keyframes pl { from { opacity: .35; } }
+      .spo { background: var(--tx); color: transparent; border-radius: 4px; cursor: pointer; } .spo:active { color: var(--bg); }
+      .bub a { color: var(--ac); } .bub code { font-family: var(--mono); font-size: 12.5px; background: var(--hair); padding: 0 5px; border-radius: 5px; }
+      .fmt { display: flex; gap: 5px; overflow-x: auto; margin: 2px 0 8px; padding-bottom: 2px; }
+      .fmt button { flex: none; min-width: 34px; height: 32px; padding: 0 9px; border-radius: 9px; background: var(--panel); border: 1px solid var(--hair); color: var(--mu); font: 600 13px var(--mono); cursor: pointer; }
+      .fmt button:active { color: var(--ac); border-color: var(--ac); } .fmt .sep { flex: none; width: 1px; background: var(--hair); margin: 4px 2px; }
+      .hl { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 13px 14px; margin-bottom: 12px; min-height: 82px; box-shadow: var(--sh); }
+      .hl:empty { border-style: dashed; box-shadow: none; }
+      .hr { position: relative; width: 56px; height: 56px; flex: none; } .hr svg { width: 56px; height: 56px; transform: rotate(-90deg); stroke-width: 5; }
+      .hr .rb { stroke: var(--hair); } .hr .rf { stroke: var(--ac); stroke-linecap: round; transition: stroke-dasharray .8s cubic-bezier(.2,.8,.2,1); }
+      .hr b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 15px var(--mono); }
+      .hl .kw { cursor: pointer; }
+      .phone { background: var(--panel); border: 1px solid var(--hair); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; height: min(66vh, 580px); box-shadow: var(--sh); }
+      .ph-h { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid var(--hair); background: var(--panel2); }
+      .ph-b { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; background: var(--bg); background-image: var(--grid); }
+      .ph-b .m { display: flex; flex-direction: column; align-items: flex-start; animation: fade .25s; }
+      .ph-b .m.usr { align-items: flex-end; } .ph-b .m.usr .bub { background: var(--ac); color: #04121a; border-color: transparent; border-radius: 13px 13px 5px 13px; }
+      .ph-b .m.sys { align-items: center; align-self: center; color: var(--mu); font-size: 11.5px; text-align: center; background: var(--panel); border: 1px solid var(--hair); border-radius: 999px; padding: 3px 12px; }
+      .meta { color: var(--mu); font-size: 10px; margin: 3px 4px 0; }
+      .bubrow i { cursor: pointer; } .bubrow i:active { border-color: var(--ac); }
+      .ph-q { margin: 0; padding: 8px 12px; border-top: 1px solid var(--hair); background: var(--panel); } .ph-q .kw { cursor: pointer; flex: none; }
+      .ph-f { display: flex; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--hair); align-items: center; } .ph-f .in { padding: 10px 12px; }
+      .d { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--mu); margin: 0 2px; animation: pl .5s infinite alternate; }
+      .d:nth-child(2) { animation-delay: .15s; } .d:nth-child(3) { animation-delay: .3s; }
+      .acc { display: flex; gap: 14px; } .accd { width: 34px; height: 34px; border-radius: 11px; background: var(--c); cursor: pointer; outline: 2px solid transparent; outline-offset: 3px; transition: outline-color .15s; } .accd.on { outline-color: var(--tx); }
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     </style>
   </head>
@@ -282,7 +310,7 @@
         document.documentElement.setAttribute("data-theme", t); localStorage.setItem("gs_theme", t);
         $("theme").innerHTML = ic(t === "light" ? "moon" : "sun");
         const c = t === "light" ? "#eef0f2" : "#0b0c0e";
-        document.querySelector('meta[name="theme-color"]').content = c;
+        document.querySelector('meta[name="theme-color"]').content = c; applyAccent();
         try { tg?.setHeaderColor?.(c); tg?.setBackgroundColor?.(c); } catch (e) {}
       }
       function toggleTheme() { applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); hap("light"); }
@@ -310,13 +338,13 @@
         $("nav").innerHTML = TABS.map(([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`).join("");
         $("fab").classList.add("hide");
       }
-      function go(v, a) { chrome(v); scrollTo(0, 0); hap("light"); ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin })[v](a); }
+      function go(v, a) { chrome(v); scrollTo(0, 0); hap("light"); app().className = ""; app().innerHTML = SKL; ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin })[v](a); }
       const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
       const empty = (t, s, btn, icon) => `<div class="empty"><div class="ic">${ic(icon || "bot")}</div><b>${t}</b><div style="margin-top:5px">${s}</div>${btn ? `<div style="margin-top:18px">${btn}</div>` : ""}</div>`;
 
       /* ════ خانه = مسیر آموزشیِ ساخت و فعال‌سازی (Wizard) ════ */
       const TOKEN = /^\d{8,12}:[A-Za-z0-9_-]{30,}$/;
-      const vHome = guard(async () => {
+      const vHomeBase = guard(async () => {
         ({ bots } = await api("/api/bots"));
         const connected = bots.length > 0;
         const active = bots.some((b) => b.is_running);
@@ -376,7 +404,7 @@
       });
 
       /* ════ جزئیات/مدیریت یک ربات ════ */
-      const vBot = guard(async (id) => {
+      const vBotBase = guard(async (id) => {
         if (id) { botId = id; tab = "cmds"; }
         bot = (await api("/api/bots/" + botId)).bot;
         const s = bot.stats || {}, u = bot.bot_username || "";
@@ -384,8 +412,8 @@
         app().className = "fade"; app().innerHTML = `<div class="bar" style="align-items:center"><div class="idn"><div class="ib" onclick="go('dev')">${ic("back")}</div><span class="av2 grad">${esc((u || "?").slice(0, 1).toUpperCase())}<i class="live ${bot.is_running ? "on" : ""}"></i></span><div style="min-width:0"><b class="mono" style="font-size:15px">@${esc(u || "—")}</b><small>${bot.is_running ? "در حال اجرا" : "متوقف"}</small></div></div><div class="sw ${bot.is_running ? "on" : ""}" id="pw" onclick="power()"></div></div>` +
           (u ? `<div style="display:flex;gap:8px;margin-bottom:12px"><a class="btn line sm" style="flex:1" href="https://t.me/${esc(u)}" target="_blank" rel="noopener">${ic("open")} باز کردن</a><button class="btn line sm" onclick="cl('${esc(u)}')">${ic("copy")}</button></div>` : "") +
           `<div class="strip"><div class="ac"><b>${n(s.unique_users)}</b><span>کاربر</span></div><div><b>${n(s.messages_received)}</b><span>دریافتی</span></div><div><b>${n(s.messages_sent)}</b><span>ارسالی</span></div><div><b>${n(s.broadcasts_sent)}</b><span>همگانی</span></div></div>` +
-          `<div class="seg">${[["cmds", "دستورها", "code"], ["plug", "افزونه‌ها", "plug"], ["users", "کاربران", "users"], ["set", "مدیریت", "gear"]].map(([k, t, i]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${ic(i)}${t}</button>`).join("")}</div><div id="tb"></div>`;
-        ({ cmds: tCmds, plug: tPlug, users: tUsers, set: tSet })[tab]();
+          `<div class="seg">${[["cmds", "دستورها", "code"], ["plug", "افزونه‌ها", "plug"], ["users", "کاربران", "users"], ["set", "مدیریت", "gear"], ["sim", "تست", "play"]].map(([k, t, i]) => `<button class="${tab === k ? "on" : ""}" onclick="setTab('${k}')">${ic(i)}${t}</button>`).join("")}</div><div id="tb"></div>`;
+        ({ cmds: tCmds, plug: tPlug, users: tUsers, set: tSet, sim: tSim })[tab]();
       });
       const setTab = (k) => { tab = k; vBot(); };
       const cl = (u) => navigator.clipboard?.writeText("https://t.me/" + u).then(() => toast("لینک کپی شد"));
@@ -393,7 +421,7 @@
 
       /* ── دستورها ── */
       let ck = [];
-      const tCmds = guard(async () => {
+      const tCmdsBase = guard(async () => {
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; ck = Object.keys(cmds);
         const menu = bot.auto_menu !== false;
         $("tb").innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 12px"><span style="color:var(--mu);font-size:13px" class="mono">${n(ck.length)} command</span><button class="btn sm" onclick="openCmd(-1)">${ic("plus")} دستور</button></div>` +
@@ -439,7 +467,7 @@
         $("sheet").innerHTML = `<div class="sh-h"><span>پیام همگانی</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b"><label>متن پیام (HTML مجاز)</label><textarea class="in" id="bc" rows="4" placeholder="سلام! …"></textarea><div class="pv" style="margin-top:12px"><div class="bub" id="bcp">پیش‌نمایش پیام…</div></div></div>
           <div class="sh-f"><button class="btn" onclick="bcast()">${ic("send")} ارسال به ${n(bot.stats?.unique_users)}</button></div>`;
-        const t = $("bc"); t.oninput = () => $("bcp").textContent = t.value || "پیش‌نمایش پیام…";
+        const t = $("bc"); t.oninput = () => $("bcp").innerHTML = tgHtml(t.value) || "پیش‌نمایش پیام…";
         $("scrim").classList.add("on");
       }
 
@@ -453,7 +481,7 @@
         drawRule(); $("scrim").classList.add("on");
       }
       const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
-      function rulePrev() { const p = $("rpv"); if (!p) return; const kw = rd.keywords.split(",").map((x) => x.trim()).filter(Boolean); p.innerHTML = (rd.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[rd.m.type]}</div>` : "") + `<div class="bub">${esc(rd.response) || '<span style="color:var(--mu)">پاسخ…</span>'}</div>` + (kw.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با پیام‌هایی که ${kw.map((k) => `<span class="kw">${esc(k)}</span>`).join(" ")} دارند جواب می‌دهد</div>` : ""); }
+      function rulePrev() { const p = $("rpv"); if (!p) return; const kw = rd.keywords.split(",").map((x) => x.trim()).filter(Boolean); p.innerHTML = (rd.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[rd.m.type]}</div>` : "") + `<div class="bub">${tgHtml(rd.response) || '<span style="color:var(--mu)">پاسخ…</span>'}</div>` + (kw.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با پیام‌هایی که ${kw.map((k) => `<span class="kw">${esc(k)}</span>`).join(" ")} دارند جواب می‌دهد</div>` : ""); }
       function drawRule() {
         const top = $("shb")?.scrollTop || 0; const m = rd.m;
         $("sheet").innerHTML = `<div class="sh-h"><span>${rd.id ? "ویرایش قانون" : "قانون جدید"}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
@@ -496,7 +524,7 @@
       const fu = (q) => { const t = q.trim().toLowerCase(); const list = allUsers.filter((u) => !t || String(u.uid).includes(t) || (u.name || "").toLowerCase().includes(t) || (u.username || "").toLowerCase().includes(t)); $("ul").innerHTML = list.length ? list.map(userRow).join("") : `<div class="empty" style="padding:22px"><div style="color:var(--mu)">موردی یافت نشد.</div></div>`; };
 
       /* ── مدیریت (تنظیمات) ── */
-      const tSet = guard(async () => {
+      const tSetBase = guard(async () => {
         const g = bot.daily_stats || {}; const days = Object.keys(g).sort().slice(-7); const mx = Math.max(...days.map((d) => g[d].new_users || 0), 1);
         const backup = JSON.stringify(bot.commands || {});
         $("tb").innerHTML =
@@ -517,7 +545,7 @@
         ed = { name: k, isNew: i < 0, response: c.response || "", description: c.description || "", cb, m: c.media?.url ? { ...c.media } : c.photo ? { type: "photo", url: c.photo } : { type: "photo", url: "" }, b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, t: x.url ? "url" : "cb", r: cb[x.id] || "", o: 0 }))) };
         drawCmd(); $("scrim").classList.add("on"); }
       const closeSheet = () => $("scrim").classList.remove("on");
-      function prev() { const p = $("pv"); if (!p) return; const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") + `<div class="bub">${esc(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` + rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join(""); }
+      function prev() { const p = $("pv"); if (!p) return; const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") + `<div class="bub">${tgHtml(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` + rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join(""); }
       const rmBtn = (r, b) => { ed.b[r].splice(b, 1); if (!ed.b[r].length) ed.b.splice(r, 1); drawCmd(); };
       function setBType(ri, bi, t) { ed.b[ri][bi].t = t; if (t === "url") ed.b[ri][bi].o = 0; drawCmd(); }
       function drawCmd() { const top = $("shb")?.scrollTop || 0, m = ed.m; const canDel = !ed.isNew && ed.name !== "start"; const orph = Object.keys(ed.cb).filter((id) => !ed.b.flat().some((x) => x.id === id));
@@ -547,10 +575,107 @@
       const cbDel = guard(async (id) => { await api(cbUrl(id), { method: "DELETE" }); delete ed.cb[id]; drawCmd(); tCmds(); });
 
       /* ── پروفایل / پنل ادمین ── */
-      const vMe = guard(async () => { const nm = user.full_name || user.username || String(user.uid); let rf = ""; try { const r = await api("/api/coins/referral"); rf = `<div class="strip" style="margin-top:14px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div><h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2><div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:46px;height:46px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`; } catch (e) {}
+      const vMeBase = guard(async () => { const nm = user.full_name || user.username || String(user.uid); let rf = ""; try { const r = await api("/api/coins/referral"); rf = `<div class="strip" style="margin-top:14px"><div class="ac"><b>${n(r.coins)}</b><span>سکه</span></div><div><b>${n(r.referral_count)}</b><span>دعوت موفق</span></div></div><h2>دعوت دوستان · هر دعوت ۱۰۰ سکه</h2><div style="display:flex;gap:8px"><input class="in ltr mono" id="rl" readonly value="${esc(WEBAPP + "?ref=" + (r.referral_code || ""))}" style="margin:0"><div class="ib" style="width:46px;height:46px" onclick="navigator.clipboard.writeText($('rl').value).then(()=>toast('کپی شد'))">${ic("copy")}</div></div>`; } catch (e) {}
         app().className = "fade"; app().innerHTML = `<div class="bar"><div><b style="font-size:20px">پروفایل</b></div></div><div class="card" style="display:flex;align-items:center;gap:13px"><span class="ava">${esc(nm.charAt(0))}</span><div style="min-width:0"><b style="font-size:16px;font-weight:600">${esc(nm)}</b><div class="mono ltr" style="color:var(--mu);font-size:13px;text-align:right">#${n(user.uid)}</div></div></div>${rf}<h2>تنظیمات</h2><div class="item" onclick="toggleTheme()"><span class="sq">${ic("moon")}</span><div class="g"><b>تم روشن / تاریک</b></div></div>${user.is_admin ? `<div class="item" onclick="go('admin')"><span class="sq">${ic("shield")}</span><div class="g"><b>آمار سیستم</b></div>${ic("next")}</div>` : ""}<button class="btn red" style="margin-top:16px" onclick="logout()">${ic("logout")} خروج از حساب</button><p style="color:var(--mu);text-align:center;font-size:12px;margin-top:16px">ربات‌ساز · استودیو</p>`; });
       const vAdmin = guard(async () => { const d = await api("/api/admin/full-stats"); const o = d.overview || {}, g = (d.daily_growth || []).slice(-7), mx = Math.max(...g.map((x) => x.new_users), 1); const list = (t, a, f) => `<h2>${t}</h2>` + ((a || []).length ? a.map(f).join("") : `<p style="color:var(--mu);font-size:13px;padding:2px">—</p>`);
         app().className = "fade"; app().innerHTML = `<div class="bar"><div class="idn"><div class="ib" onclick="go('me')">${ic("back")}</div><div><b>آمار سیستم</b></div></div></div><div class="strip"><div class="ac"><b>${n(o.total_users)}</b><span>کاربر</span></div><div><b>${n(o.total_registered)}</b><span>ثبت‌نام</span></div><div><b>${n(o.total_bots)}</b><span>ربات</span></div><div><b>${n(o.total_active_bots)}</b><span>فعال</span></div></div><div class="strip" style="margin-top:9px"><div><b>${n(o.total_messages_received)}</b><span>دریافتی</span></div><div><b>${n(o.total_messages_sent)}</b><span>ارسالی</span></div><div><b>${n(o.total_coins)}</b><span>سکه</span></div><div><b>${n(o.total_referrals)}</b><span>دعوت</span></div></div>` + (g.length ? `<h2>رشد ۷ روز اخیر</h2><div class="card"><div class="chart">${g.map((x) => `<div class="col"><div class="cbar" style="height:${Math.max(6, (x.new_users / mx) * 100)}%"></div><span class="clab">${x.date.slice(8)}</span></div>`).join("")}</div></div>` : "") + list("برترین ربات‌ها", d.top_bots, (b) => `<div class="item static"><span class="av2 grad" style="width:36px;height:36px">${esc((b.username || "?").slice(0, 1).toUpperCase())}<i class="live ${b.is_active ? "on" : ""}"></i></span><div class="g"><b class="mono">@${esc(b.username || "—")}</b><small>${esc(b.owner_name || "")} · ${n(b.users)} کاربر</small></div></div>`) + list("برترین کاربران", d.top_users, (u) => `<div class="item static"><div class="g"><b>${esc(u.name !== "—" ? u.name : u.username || "—")}</b><small>${n(u.bots_count)} ربات · ${n(u.referrals)} دعوت</small></div><span class="badge">${n(u.coins)} سکه</span></div>`) + list("برترین دعوت‌کننده‌ها", d.top_referrers, (r) => `<div class="item static"><div class="g"><b>${esc(r.name)}</b><small class="mono">@${esc(r.username || "—")}</small></div><span class="badge">${n(r.referral_count)}</span></div>`); });
+
+
+      /* ══════════ نسخهٔ ۲ — لایهٔ افزوده روی همان منطق و همان API (هیچ endpoint تازه‌ای لازم نیست) ══════════ */
+      Object.assign(I, { play: '<path d="M7 4l13 8-13 8z"/>' });
+      const SKL = '<div class="skl"></div>'.repeat(4);
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /* پیش‌نمایش HTML تلگرام: b i u s code pre a spoiler */
+      const tgHtml = (s) => esc(s)
+        .replace(/&lt;(\/?)(b|i|u|s|em|strong|code|pre)&gt;/g, "<$1$2>")
+        .replace(/&lt;a href=&quot;(https?:\/\/.*?)&quot;&gt;/g, '<a href="$1" target="_blank" rel="noopener">').replace(/&lt;\/a&gt;/g, "</a>")
+        .replace(/&lt;tg-spoiler&gt;/g, '<span class="spo">').replace(/&lt;\/tg-spoiler&gt;/g, "</span>");
+
+      /* رنگ پنل */
+      const ACC = [["فیروزه", "#57c8c1", "#159e97"], ["آبی", "#6ea8ff", "#2f6fe0"], ["کهربایی", "#e2b24d", "#a86f0a"], ["سبز", "#62d18c", "#168a4a"], ["مرجانی", "#f2877b", "#c4472f"]];
+      function applyAccent() { const a = ACC[+localStorage.gs_acc || 0] || ACC[0], v = document.documentElement.getAttribute("data-theme") === "light" ? a[2] : a[1], st = document.documentElement.style; st.setProperty("--ac", v); st.setProperty("--ac2", v); }
+      const setAcc = (i) => { localStorage.gs_acc = i; applyAccent(); hap("light"); document.querySelectorAll(".accd").forEach((d, k) => d.classList.toggle("on", k === i)); };
+      const vMe = guard(async () => { await vMeBase(); app().insertAdjacentHTML("beforeend", `<h2>رنگ پنل</h2><div class="card acc">${ACC.map((a, i) => `<span class="accd ${(+localStorage.gs_acc || 0) === i ? "on" : ""}" style="--c:${a[1]}" title="${a[0]}" onclick="setAcc(${i})"></span>`).join("")}</div>`); });
+
+      /* خانه: نوار پیشرفت راه‌اندازی */
+      const vHome = guard(async () => { await vHomeBase(); const d = document.querySelectorAll(".step .num svg").length, ph = document.querySelector(".panel-h");
+        if (ph) ph.insertAdjacentHTML("beforeend", `<div class="mono" style="margin-top:14px;font-size:11.5px;color:var(--mu);display:flex;justify-content:space-between"><span>پیشرفت راه‌اندازی</span><span>${d}/4</span></div><div class="bar2"><i style="width:${d * 25}%"></i></div>`); });
+
+      /* نوار قالب‌بندی + ایموجی روی هر فیلد متن پاسخ */
+      const FMT = [["b", "B"], ["i", "I"], ["u", "U"], ["s", "S"], ["code", "‹›"], ["a", "🔗"], ["tg-spoiler", "◼"]];
+      function addTb() { const ta = document.querySelector("#sheet textarea.in"); if (!ta || ta.previousElementSibling?.classList.contains("fmt")) return;
+        const nd = 'onmousedown="event.preventDefault()"';
+        ta.insertAdjacentHTML("beforebegin", `<div class="fmt">${FMT.map(([t, l]) => `<button ${nd} onclick="fmt('${t}')">${l}</button>`).join("")}<span class="sep"></span>${["✅", "🔥", "💰", "🎁", "⭐", "📞", "👇", "❤️"].map((e) => `<button ${nd} onclick="ins('${e}')">${e}</button>`).join("")}</div>`); }
+      function fmt(t) { const ta = document.querySelector("#sheet textarea.in"); if (!ta) return; const a = ta.selectionStart, b = ta.selectionEnd, sel = ta.value.slice(a, b) || "متن"; let o = `<${t}>`;
+        if (t === "a") { const u = prompt("لینک (https://…)"); if (!u) return; o = `<a href="${u}">`; }
+        ta.value = ta.value.slice(0, a) + o + sel + `</${t === "a" ? "a" : t}>` + ta.value.slice(b); ta.focus(); ta.setSelectionRange(a + o.length, a + o.length + sel.length); ta.dispatchEvent(new Event("input", { bubbles: true })); hap("light"); }
+      function ins(e) { const ta = document.querySelector("#sheet textarea.in"); if (!ta) return; const a = ta.selectionStart; ta.value = ta.value.slice(0, a) + e + ta.value.slice(ta.selectionEnd); ta.focus(); ta.setSelectionRange(a + e.length, a + e.length); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      ["drawCmd", "drawRule", "openBroadcast", "openCfg"].forEach((k) => { const o = window[k]; window[k] = function (...a) { const r = o.apply(this, a); addTb(); return r; }; });
+
+      /* سلامت ربات: امتیاز + پیشنهادهای یک‌لمسی */
+      const hgo = (k) => (k === "power" ? power() : setTab(k));
+      async function health(id0) {
+        try { rules = (await api(`/api/bots/${id0}/rules`)).rules || []; } catch (e) { rules = []; }
+        const box = $("hl"); if (!box || id0 !== botId) return;
+        const c = bot.commands || {}, k = Object.keys(c);
+        const chk = [["دستور /start", !!c.start?.response, "cmds"], ["حداقل ۳ دستور", k.length >= 3, "cmds"], ["دکمهٔ شیشه‌ای", k.some((x) => (c[x].buttons || []).length), "cmds"],
+          ["پیام خوش‌آمد", !!bot.welcome_message, "plug"], ["پاسخ ناشناخته", !!bot.unknown_reply, "plug"], ["قانون کلیدواژه", rules.length > 0, "plug"], ["ربات روشن", !!bot.is_running, "power"]];
+        const ok = chk.filter((x) => x[1]).length, p = Math.round((ok / chk.length) * 100), C = 2 * Math.PI * 26, miss = chk.filter((x) => !x[1]);
+        box.innerHTML = `<div class="hr"><svg viewBox="0 0 64 64"><circle class="rb" cx="32" cy="32" r="26"/><circle class="rf" cx="32" cy="32" r="26" style="stroke-dasharray:0 ${C}"/></svg><b>${p}</b></div>
+          <div style="flex:1;min-width:0"><b style="display:block">سلامت ربات</b><small style="color:var(--mu);font-size:12px">${miss.length ? n(miss.length) + " مورد تا ربات کامل" : "همه‌چیز کامل است ✓"}</small></div>
+          ${miss.length ? `<div class="chips" style="width:100%;margin:0">${miss.map((x) => `<span class="kw" onclick="hgo('${x[2]}')">+ ${x[0]}</span>`).join("")}</div>` : ""}`;
+        requestAnimationFrame(() => requestAnimationFrame(() => { const f = box.querySelector(".rf"); f && (f.style.strokeDasharray = `${(C * p) / 100} ${C}`); }));
+      }
+      const vBot = guard(async (id) => { await vBotBase(id); const sg = app().querySelector(".seg"); if (!sg) return; sg.insertAdjacentHTML("beforebegin", '<div class="hl" id="hl"></div>'); health(botId); });
+
+      /* قالب‌های آماده برای دستورها */
+      const TPL = {
+        help: { n: "راهنما", d: "راهنمای ربات", r: "📖 <b>راهنما</b>\nاز دکمه‌های زیر استفاده کن یا سؤالت را بنویس.", b: [[["❓ سؤالات متداول", "faq"], ["📞 پشتیبانی", "sup"]]], cb: { faq: "❓ <b>سؤالات متداول</b>\n۱) …\n۲) …", sup: "📞 پیامت را همین‌جا بنویس؛ به‌زودی پاسخ می‌دهیم." } },
+        about: { n: "درباره ما", d: "دربارهٔ ما", r: "ℹ️ <b>دربارهٔ ما</b>\nمعرفی کوتاه کسب‌وکارت را اینجا بنویس.", b: null, cb: {} },
+        price: { n: "قیمت‌ها", d: "لیست قیمت", r: "💰 <b>لیست قیمت</b>\nیک پلن انتخاب کن:", b: [[["🥉 پایه", "p_basic"], ["🥇 حرفه‌ای", "p_pro"]]], cb: { p_basic: "🥉 <b>پلن پایه</b>\nقیمت: …", p_pro: "🥇 <b>پلن حرفه‌ای</b>\nقیمت: …" } },
+        rules: { n: "قوانین", d: "قوانین", r: "📜 <b>قوانین</b>\n۱) احترام به همه\n۲) …", b: null, cb: {} },
+        contact: { n: "تماس", d: "تماس با ما", r: "📞 <b>تماس با ما</b>\nراه‌های ارتباطی را اینجا بنویس.", b: null, cb: {} },
+      };
+      const applyTpl = guard(async (k) => { const t = TPL[k];
+        await api(`/api/bots/${botId}/commands/${k}`, { method: "PUT", body: { response: t.r, description: t.d, buttons: t.b ? t.b.map((r) => r.map(([text, id]) => ({ text, id }))) : null, photo: null, media: null } });
+        for (const [id, r] of Object.entries(t.cb)) await api(`/api/bots/${botId}/commands/${k}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: r } });
+        toast("دستور /" + k + " ساخته شد"); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } vBot(); });
+      const tCmds = guard(async () => { await tCmdsBase(); const left = Object.keys(TPL).filter((k) => !(k in cmds)); if (!left.length || !$("tb")) return;
+        $("tb").insertAdjacentHTML("afterbegin", `<h2 style="margin-top:0">قالب‌های آماده · یک‌لمسی</h2><div class="sk">${left.map((k) => `<div class="item" onclick="applyTpl('${k}')"><span class="sq mono">+</span><b>${TPL[k].n}</b></div>`).join("")}</div>`); });
+
+      /* بینش‌ها: نمودار نرم + شاخص‌های تعامل */
+      function spark(v, d) { const W = 300, H = 84, P = 8, mx = Math.max(...v, 1), x = (i) => P + (i * (W - 2 * P)) / (v.length - 1), y = (a) => H - P - (a / mx) * (H - 2 * P - 6), pt = v.map((a, i) => [x(i), y(a)]);
+        let p = `M${pt[0]}`; for (let i = 1; i < pt.length; i++) { const a = pt[i - 1], b = pt[i], m = (a[0] + b[0]) / 2; p += ` C${m},${a[1]} ${m},${b[1]} ${b[0]},${b[1]}`; } const L = pt[pt.length - 1];
+        return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible"><path d="${p} L${L[0]},${H - P} L${pt[0][0]},${H - P}Z" fill="var(--ac)" opacity=".12" stroke="none"/><path d="${p}" fill="none" stroke="var(--ac)" stroke-width="2.2"/><circle cx="${L[0]}" cy="${L[1]}" r="4" fill="var(--ac)" stroke="none"/></svg><div class="clab mono" style="display:flex;justify-content:space-between;margin-top:6px">${d.map((z) => `<span>${z.slice(8)}</span>`).join("")}</div>`; }
+      const tSet = guard(async () => { await tSetBase(); const tb = $("tb"); if (!tb) return; const g = bot.daily_stats || {}, days = Object.keys(g).sort().slice(-7), s = bot.stats || {}, nu = days.map((d) => g[d].new_users || 0), w = nu.reduce((a, b) => a + b, 0), u = s.unique_users || 0, rx = s.messages_received || 0, tx = s.messages_sent || 0;
+        const card = tb.querySelector(".chart")?.closest(".card"); if (card && nu.length > 1) card.innerHTML = spark(nu, days);
+        const kp = [[u ? (rx / u).toFixed(1) : "0", "پیام به‌ازای کاربر"], [rx ? Math.min(100, Math.round((tx / rx) * 100)) + "%" : "0%", "نرخ پاسخ"], ["+" + n(w), "کاربر جدید ۷ روز"]];
+        tb.insertAdjacentHTML("afterbegin", `<div class="strip" style="margin-bottom:6px">${kp.map(([a, b], i) => `<div class="${i ? "" : "ac"}"><b>${a}</b><span>${b}</span></div>`).join("")}</div>`); });
+
+      /* ★ شبیه‌ساز گفتگو: ربات را همین‌جا، بدون ارسال واقعی، امتحان کن ★ */
+      let sim = { seen: false };
+      const simMatch = (r, t) => (r.keywords || []).some((k) => { k = String(k); const q = k.toLowerCase(); if (r.mode === "exact") return t.trim().toLowerCase() === q.trim(); if (r.mode === "regex") { try { return new RegExp(k, "i").test(t); } catch (e) { return false; } } return t.toLowerCase().includes(q); });
+      const simAdd = (h) => { const l = $("slog"); if (!l) return; l.insertAdjacentHTML("beforeend", h); l.scrollTop = l.scrollHeight; };
+      const simNote = (t) => simAdd(`<div class="m sys">${t}</div>`);
+      const simU = (t) => simAdd(`<div class="m usr"><div class="bub">${esc(t)}</div></div>`);
+      function simBot(html, btns, meta) { simAdd(`<div class="m bot"><div class="bub">${html}</div>${(btns || []).map((r) => `<div class="bubrow">${r.map((x) => `<i ${x.url ? `data-u="${esc(x.url)}"` : `data-id="${esc(x.id)}"`}>${x.url ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join("")}${meta ? `<small class="meta mono">${esc(meta)}</small>` : ""}</div>`); }
+      async function simReply(fn) { simAdd('<div class="m bot ty"><div class="bub"><span class="d"></span><span class="d"></span><span class="d"></span></div></div>'); await sleep(450); $("slog")?.querySelector(".ty")?.remove(); fn(); }
+      function simSend(t) { const inp = $("sin"); if (!inp) return; t = (t ?? inp.value).trim(); if (!t) return; inp.value = ""; simU(t); hap("light");
+        if (t[0] === "/") { const k = t.slice(1).split(/[\s@]/)[0].toLowerCase(), c = cmds[k];
+          if (c) return simReply(() => { if (k === "start" && !sim.seen && bot.welcome_message) simBot(tgHtml(bot.welcome_message), null, "welcome · first /start"); if (k === "start") sim.seen = true; simBot(tgHtml(c.response) || "…", c.buttons, "/" + k + (c.media?.url ? " · " + c.media.type : "")); }); }
+        else { const r = rules.find((r) => simMatch(r, t)); if (r) return simReply(() => simBot(tgHtml(r.response) || "🖼", null, "rule · " + (r.mode || "contains"))); }
+        simReply(() => (bot.unknown_reply ? simBot(tgHtml(bot.unknown_reply), null, "unknown reply") : simNote("ربات پاسخی ندارد — «پاسخ ناشناخته» را از افزونه‌ها فعال کن"))); }
+      function simBtn(id, label) { simNote("کلیک: " + esc(label)); const k = Object.keys(cmds).find((x) => cmds[x].callbacks?.[id] !== undefined);
+        simReply(() => (k ? simBot(tgHtml(cmds[k].callbacks[id]), null, "callback · " + id) : simNote("برای این دکمه پاسخی تعریف نشده"))); }
+      const tSim = guard(async () => {
+        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; try { rules = (await api(`/api/bots/${botId}/rules`)).rules || []; } catch (e) { rules = []; } sim = { seen: false };
+        $("tb").innerHTML = `<div class="phone"><div class="ph-h"><span class="av2 grad" style="width:34px;height:34px;font-size:14px">${esc((bot.bot_username || "?")[0].toUpperCase())}</span><div><b class="mono" style="font-size:13.5px">@${esc(bot.bot_username || "")}</b><small style="display:block;color:var(--mu);font-size:11px">شبیه‌ساز · پیامی واقعاً ارسال نمی‌شود</small></div><span class="ib" style="margin-inline-start:auto" onclick="tSim()" title="شروع دوباره">${ic("sync")}</span></div>
+          <div class="ph-b" id="slog"></div><div class="sk ph-q">${Object.keys(cmds).map((k) => `<span class="kw" onclick="simSend('/${esc(k)}')">/${esc(k)}</span>`).join("")}</div>
+          <div class="ph-f"><input class="in" id="sin" placeholder="پیام تست…" onkeydown="event.key==='Enter'&&simSend()"><div class="ib" style="background:var(--ac);color:#04121a;border:0" onclick="simSend()">${ic("send")}</div></div></div>`;
+        $("slog").onclick = (e) => { const i = e.target.closest("i[data-id],i[data-u]"); if (!i) return; i.dataset.u ? window.open(i.dataset.u, "_blank") : simBtn(i.dataset.id, i.textContent); };
+        if (bot.force_join_channel) simNote("عضویت اجباری فعال است: @" + esc(bot.force_join_channel.replace("@", "")));
+        cmds.start ? simSend("/start") : simNote("دستور /start نداری؛ یک پیام یا دستور بفرست"); });
 
       async function boot(manual) { if (tg?.initData) initData = tg.initData; if (!initData && !token) return showAuth(); try { user = await api(manual ? "/api/auth/me" : initData ? "/api/me" : "/api/auth/me"); go("home"); } catch (e) { if (!token && !initData) return; toast("خطا: " + e.message, 1); if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth(); } }
       if (tg) { tg.ready(); tg.expand(); }
