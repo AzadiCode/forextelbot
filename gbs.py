@@ -17,7 +17,7 @@ import urllib.parse
 from flask import Flask, request, jsonify, g
 
 # ── python-telegram-bot ──
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo, BotCommand
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -239,6 +239,10 @@ class Storage:
         })
         b.setdefault("force_join_channel", None)
         b.setdefault("bot_users", [])
+        # ── تنظیمات جدید (سازگار با ربات‌های قبلی) ──
+        b.setdefault("welcome_message", "")   # پیام خوش‌آمد برای عضو جدید
+        b.setdefault("unknown_reply", "")      # پاسخ خودکار به دستور ناشناخته
+        b.setdefault("auto_menu", True)        # همگام‌سازی منوی تلگرام
         b.setdefault("stats", {
             "messages_received": 0,
             "messages_sent": 0,
@@ -327,9 +331,9 @@ class Storage:
             self._bots.update_one({"bot_id": bot_id}, {"$set": {"bot_username": username}})
 
     def set_command(self, bot_id: str, cmd_name: str, response: str,
-                    buttons=None, photo=None, media=None):
-        """ذخیره دستور با پشتیبانی از media جدید و photo قدیمی"""
-        
+                    buttons=None, photo=None, media=None, description: str = ""):
+        """ذخیره دستور با پشتیبانی از media جدید و photo قدیمی + توضیح"""
+
         # اگر photo قدیمی ارسال شد و media نبود، تبدیل کنیم
         if photo and not media:
             media = {"type": "photo", "url": photo}
@@ -339,7 +343,7 @@ class Storage:
         elif media and photo:
             # هر دو ارسال شده، media اولویت دارد
             pass
-        
+
         if self._is_memory:
             bot = self._bots.get(bot_id)
             if bot:
@@ -352,6 +356,7 @@ class Storage:
                     "photo": photo if photo is not None else existing.get("photo"),
                     "media": media if media is not None else existing.get("media"),
                     "callbacks": existing.get("callbacks", {}),
+                    "description": description if description != "" else existing.get("description", ""),
                 }
         else:
             doc = self._bots.find_one({"bot_id": bot_id}, {f"commands.{cmd_name}": 1})
@@ -364,8 +369,36 @@ class Storage:
                 "photo": photo if photo is not None else existing.get("photo"),
                 "media": media if media is not None else existing.get("media"),
                 "callbacks": existing.get("callbacks", {}),
+                "description": description if description != "" else existing.get("description", ""),
             }
             self._bots.update_one({"bot_id": bot_id}, {"$set": {f"commands.{cmd_name}": new_cmd}})
+
+    def set_bot_config(self, bot_id: str, cfg: dict):
+        """تنظیمات عمومی ربات: welcome_message / unknown_reply / auto_menu"""
+        allowed = ("welcome_message", "unknown_reply", "auto_menu")
+        patch = {k: cfg[k] for k in allowed if k in cfg}
+        if not patch:
+            return
+        if self._is_memory:
+            if bot_id in self._bots:
+                self._bots[bot_id].update(patch)
+        else:
+            self._bots.update_one({"bot_id": bot_id}, {"$set": patch})
+
+    def record_daily(self, bot_id: str, key: str, amount: int = 1):
+        """ثبت آمار روزانه: new_users / messages_in / messages_out"""
+        day = now_ir().strftime("%Y-%m-%d")
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if not bot: return
+            ds = bot.setdefault("daily_stats", {})
+            day_data = ds.setdefault(day, {})
+            day_data[key] = day_data.get(key, 0) + amount
+        else:
+            self._bots.update_one(
+                {"bot_id": bot_id},
+                {"$inc": {f"daily_stats.{day}.{key}": amount}}
+            )
 
     def delete_command(self, bot_id: str, cmd_name: str):
         if self._is_memory:
@@ -405,6 +438,9 @@ class Storage:
             if uid in bot.get("bot_users", []): return False
             bot.setdefault("bot_users", []).append(uid)
             bot.setdefault("stats", {})["unique_users"] = bot["stats"].get("unique_users", 0) + 1
+            day = now_ir().strftime("%Y-%m-%d")
+            dd = bot.setdefault("daily_stats", {}).setdefault(day, {})
+            dd["new_users"] = dd.get("new_users", 0) + 1
             bot["last_activity"] = now_ir().isoformat()
             return True
             
@@ -812,10 +848,19 @@ mother_bot_loop = None
 def _build_inline(buttons) -> Optional[InlineKeyboardMarkup]:
     if not buttons:
         return None
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(btn["text"], callback_data=btn["id"]) for btn in row]
-        for row in buttons
-    ])
+    rows = []
+    for row in buttons:
+        rrow = []
+        for btn in row:
+            url = btn.get("url")
+            if url:
+                # دکمهٔ لینک — بدون callback
+                rrow.append(InlineKeyboardButton(btn["text"], url=url))
+            else:
+                rrow.append(InlineKeyboardButton(
+                    btn["text"], callback_data=btn.get("id") or btn["text"]))
+        rows.append(rrow)
+    return InlineKeyboardMarkup(rows)
 
 
 async def _send_media(bot, chat_id, media, caption, kb):
@@ -883,20 +928,28 @@ async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: 
     b = storage.get_bot(bot_id)
     if not b:
         return
-    storage.add_bot_user(bot_id, uid)
+    is_new = storage.add_bot_user(bot_id, uid)
     storage.update_bot_stats(bot_id, received=1)
+    storage.record_daily(bot_id, "messages_in", 1)
 
     cmd      = b.get("commands", {}).get("start", {})
     response = cmd.get("response", "سلام 👋")
     buttons  = cmd.get("buttons")
     photo    = cmd.get("photo")  # backward compat
     media    = cmd.get("media")  # سیستم جدید
-    
+
     log.info(f"📩 /start ساب‌بات {bot_id}: media={media}, photo={photo}, buttons={bool(buttons)}")
-    
+
     kb = _build_inline(buttons)
 
     try:
+        # پیام خوش‌آمد مخصوص عضو جدید (قبل از پاسخ /start)
+        if is_new and b.get("welcome_message"):
+            await ctx.bot.send_message(
+                update.effective_chat.id, b["welcome_message"],
+                parse_mode=ParseMode.HTML)
+            storage.update_bot_stats(bot_id, sent=1)
+
         # اولویت: media جدید، سپس photo قدیمی
         sent = False
         if media and media.get("url"):
@@ -905,12 +958,12 @@ async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: 
             # backward compat
             legacy_media = {"type": "photo", "url": photo}
             sent = await _send_media(ctx.bot, update.effective_chat.id, legacy_media, response, kb)
-        
+
         if not sent:
             # fallback به متن ساده
             await update.effective_message.reply_text(
                 response, reply_markup=kb, parse_mode=ParseMode.HTML)
-        
+
         storage.update_bot_stats(bot_id, sent=1)
     except Exception as e:
         log.error(f"❌ خطا در /start ساب‌بات {bot_id}: {e}")
@@ -929,17 +982,29 @@ async def _subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id
         return
     storage.add_bot_user(bot_id, uid)
     storage.update_bot_stats(bot_id, received=1)
+    storage.record_daily(bot_id, "messages_in", 1)
 
     cmd_name = text.lstrip("/").split()[0].lower() if text.startswith("/") else ""
     cmd = b.get("commands", {}).get(cmd_name)
     if not cmd:
+        # پاسخ خودکار به دستور ناشناخته
+        if cmd_name:
+            unknown = (b.get("unknown_reply") or "").strip()
+            if unknown:
+                try:
+                    await update.effective_message.reply_text(
+                        unknown, parse_mode=ParseMode.HTML)
+                    storage.update_bot_stats(bot_id, sent=1)
+                    storage.record_daily(bot_id, "messages_out", 1)
+                except Exception as e:
+                    log.error(f"❌ خطا در unknown_reply {bot_id}: {e}")
         return
 
     kb       = _build_inline(cmd.get("buttons"))
     photo    = cmd.get("photo")
     media    = cmd.get("media")
     response = cmd.get("response", "")
-    
+
     log.info(f"📩 /{cmd_name} ساب‌بات {bot_id}: media={media}, photo={photo}")
 
     try:
@@ -949,12 +1014,13 @@ async def _subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id
         elif photo:
             legacy_media = {"type": "photo", "url": photo}
             sent = await _send_media(ctx.bot, update.effective_chat.id, legacy_media, response, kb)
-        
+
         if not sent:
             await update.effective_message.reply_text(
                 response, reply_markup=kb, parse_mode=ParseMode.HTML)
-        
+
         storage.update_bot_stats(bot_id, sent=1)
+        storage.record_daily(bot_id, "messages_out", 1)
     except Exception as e:
         log.error(f"❌ خطا در /{cmd_name} ساب‌بات {bot_id}: {e}")
         try:
@@ -1341,10 +1407,11 @@ def api_set_command(bot_id, cmd_name):
     buttons  = data.get("buttons")
     photo    = data.get("photo")
     media    = data.get("media")  # ✅ سیستم جدید
-    
+    description = data.get("description", "")  # توضیح برای منوی تلگرام
+
     log.info(f"💾 ذخیره دستور /{cmd_name} برای {bot_id}: media={media}, photo={bool(photo)}, buttons={bool(buttons)}")
-    
-    storage.set_command(bot_id, cmd_name, response, buttons, photo, media)
+
+    storage.set_command(bot_id, cmd_name, response, buttons, photo, media, description)
     return jsonify({"message": f"دستور /{cmd_name} ذخیره شد"})
 
 @flask_app.route("/api/bots/<bot_id>/commands/<cmd_name>", methods=["DELETE"])
@@ -1409,17 +1476,77 @@ def api_broadcast(bot_id):
         for uid in users:
             try:
                 fut = asyncio.run_coroutine_threadsafe(
-                    sub_bot.send_message(uid, text), loop)
+                    sub_bot.send_message(uid, text, parse_mode=ParseMode.HTML), loop)
                 fut.result(timeout=10)
                 sent += 1
             except Exception:
-                failed += 1
+                # در صورت خطای فرمت، بدون HTML امتحان کن
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        sub_bot.send_message(uid, text), loop)
+                    fut.result(timeout=10)
+                    sent += 1
+                except Exception:
+                    failed += 1
             time.sleep(0.05)
         storage.record_broadcast(bot_id, sent)
         log.info(f"📢 broadcast {bot_id}: ✅{sent} ❌{failed}")
 
     threading.Thread(target=do_broadcast, daemon=True).start()
     return jsonify({"message": f"پیام برای {len(users)} کاربر در صف ارسال قرار گرفت"})
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /api/bots/<bot_id>/config  — خوش‌آمد، پاسخ ناشناخته، منوی خودکار
+# ──────────────────────────────────────────────────────────────────────
+@flask_app.route("/api/bots/<bot_id>/config", methods=["PATCH"])
+@auth_required
+def api_bot_config(bot_id):
+    _, err = get_owned_bot(bot_id)
+    if err: return err
+    data = request.get_json(force=True) or {}
+    patch = {}
+    for k in ("welcome_message", "unknown_reply", "auto_menu"):
+        if k in data:
+            patch[k] = data[k]
+    storage.set_bot_config(bot_id, patch)
+    b, _ = get_owned_bot(bot_id)
+    return jsonify({
+        "welcome_message": b.get("welcome_message", ""),
+        "unknown_reply": b.get("unknown_reply", ""),
+        "auto_menu": b.get("auto_menu", True),
+        "message": "تنظیمات ذخیره شد",
+    })
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /api/bots/<bot_id>/sync-menu — همگام‌سازی دستورها با منوی تلگرام
+# ──────────────────────────────────────────────────────────────────────
+@flask_app.post("/api/bots/<bot_id>/sync-menu")
+@auth_required
+def api_sync_menu(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err: return err
+    sub_bot = factory.get_bot_instance(bot_id)
+    if not sub_bot:
+        return jsonify({"error": "ربات خاموش است — اول روشنش کن"}), 400
+    cmds = b.get("commands", {})
+    menu = []
+    for name, cmd in cmds.items():
+        desc = (cmd.get("description") or "").strip() or name
+        menu.append(BotCommand(command=name[:32], description=desc[:48]))
+    runner = factory._runners.get(bot_id)
+    try:
+        loop = runner._loop if runner else None
+        if loop:
+            fut = asyncio.run_coroutine_threadsafe(sub_bot.set_my_commands(menu), loop)
+            fut.result(timeout=15)
+        else:
+            sub_bot.set_my_commands(menu)
+        return jsonify({"message": f"منوی تلگرام با {len(menu)} دستور همگام شد", "count": len(menu)})
+    except Exception as e:
+        log.error(f"❌ خطا در sync-menu {bot_id}: {e}")
+        return jsonify({"error": f"خطا در همگام‌سازی منو: {e}"}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════
