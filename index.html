@@ -32,8 +32,10 @@
         --sh: 0 1px 0 rgba(255,255,255,.5), 0 8px 20px -16px rgba(20,23,28,.25);
       }
       * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-      html, body { background: var(--bg); color: var(--tx); font: 14.5px/1.7 Vazirmatn, system-ui, sans-serif; min-height: 100vh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+      html, body { background: var(--bg); color: var(--tx); font: 14.5px/1.7 Vazirmatn, system-ui, sans-serif; min-height: 100vh; min-height: 100dvh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
       button, input, textarea, select { font: inherit; color: inherit; border: 0; outline: 0; background: none; }
+      /* رفع باگ زوم خودکار سافاری/iOS: اگر فونت اینپوت زیر ۱۶px باشد، هنگام فوکوس صفحه زوم و بدریخت می‌شود */
+      @media (pointer: coarse) { input, textarea, select { font-size: 16px !important; } }
       a { color: inherit; text-decoration: none; }
       svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
       .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }        /* اعداد انگلیسی */
@@ -209,7 +211,7 @@
       .flow-toolbar .tb-title { font-size: 12.5px; color: var(--mu); flex: 1; min-width: 0; }
       .flow-toolbar .tb-title b { color: var(--tx); font-family: var(--mono); }
       .flow-canvas {
-        position: relative; overflow: hidden; height: calc(100vh - 250px); min-height: 420px; direction: ltr;
+        position: relative; overflow: hidden; height: calc(100vh - 250px); height: calc(100dvh - 250px); min-height: 420px; direction: ltr;
         background:
           radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ac) 5%, transparent) 0%, transparent 60%),
           var(--bg);
@@ -248,10 +250,13 @@
       .node .nt { color: var(--mu); font-size: 11.5px; line-height: 1.5; max-height: 48px; overflow: hidden; padding-inline-start: 30px; margin-bottom: 6px; }
       .node .nb { display: flex; align-items: center; justify-content: space-between; padding-inline-start: 30px; }
       .node .nb .acts { display: flex; gap: 4px; }
-      .node .nib { width: 26px; height: 26px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--hair); color: var(--mu); display: grid; place-items: center; cursor: pointer; }
+      .node .nib { position: relative; width: 26px; height: 26px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--hair); color: var(--mu); display: grid; place-items: center; cursor: pointer; }
+      /* بزرگ‌کردن نامرئیِ ناحیهٔ لمس تا حداقل ۴۰px، بدون تغییر شکل ظاهری دکمه — رفع باگ «دکمه‌های ریز روی گوشی لمس نمی‌شوند» */
+      .node .nib::after { content: ""; position: absolute; inset: -7px; }
       .node .nib.on { color: var(--ac); border-color: var(--ac); background: color-mix(in srgb, var(--ac) 14%, transparent); }
       .node .nib svg { width: 14px; height: 14px; }
       .node .nib:active { transform: scale(.93); }
+      .node .nb .acts { gap: 8px; }
       .node .nicon { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; }
       .node.cmd .nicon { background: color-mix(in srgb, var(--ac) 18%, transparent); color: var(--ac); }
       .node.img .nicon { background: color-mix(in srgb, #d97706 18%, transparent); color: #d97706; }
@@ -1348,6 +1353,12 @@
           STG.nodes = STG.nodes.filter((x) => !st.sel.includes(x.id));
           STG.edges = STG.edges.filter((e) => !st.sel.includes(e.from) && !st.sel.includes(e.to));
           st.sel = []; stRender(); hap("light"); toast("حذف شد");
+          /* حذف باید فوری روی ربات زنده هم اعمال شود، نه فقط پیش‌نویس محلی —
+             وگرنه کارت از نقشه پاک می‌شود ولی ربات همچنان به دستور/دکمهٔ قدیمی جواب می‌دهد
+             و به نظر می‌رسد «دکمهٔ حذف کار نمی‌کند». اگر نقشه بعد از حذف خطای جدی نداشته باشد،
+             بی‌صدا اعمال می‌شود؛ در غیر این صورت به‌صورت پیش‌نویس می‌ماند تا کاربر خودش تصمیم بگیرد. */
+          const iss = stValidate();
+          if (!iss.some((i) => i.lv === "err")) stPersist(true);
         });
       }
       function stDup(id) {
@@ -1877,7 +1888,12 @@
       window.addEventListener("beforeunload", (e) => { if (STG && st.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
       async function boot(manual) { if (tg?.initData) initData = tg.initData; if (!initData && !token) return showAuth(); try { user = await api(manual ? "/api/auth/me" : initData ? "/api/me" : "/api/auth/me"); go("home"); } catch (e) { if (!token && !initData) return; toast("خطا: " + e.message, 1); if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth(); } }
-      if (tg) { tg.ready(); tg.expand(); }
+      if (tg) {
+        tg.ready(); tg.expand();
+        /* وقتی صفحه‌کلید تلگرام باز/بسته می‌شود یا viewport تغییر می‌کند، چیدمان را دوباره بکش
+           تا نقشهٔ جریان و شیت‌های ویرایش روی گوشی بدریخت/بریده نشوند */
+        tg.onEvent && tg.onEvent("viewportChanged", () => { if (STG && $("fc")) stRender(); });
+      }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
     </script>
