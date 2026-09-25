@@ -155,7 +155,7 @@
       .mark { width: 54px; height: 54px; border-radius: 15px; background: var(--ac); color: #04121a; display: grid; place-items: center; margin-bottom: 24px; }
       .mark svg { width: 30px; height: 30px; stroke-width: 1.9; }
       .word { position: fixed; top: 20px; right: 20px; font: 600 11px var(--mono); letter-spacing: 2px; color: var(--mu); }
-      #theme { position: fixed; top: 15px; left: 15px; width: 40px; height: 40px; border-radius: 12px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); z-index: 70; }
+      #theme { display: none; }
       .field { margin-bottom: 12px; }
       .err { color: var(--red); font-size: 12px; margin: 6px 3px 0; min-height: 1px; }
       .err.good { color: var(--ok); }
@@ -233,6 +233,9 @@
       .flow-svg path.wire { fill: none; stroke: var(--hair2); stroke-width: 2; }
       .flow-svg path.wire.on { stroke: var(--ac); stroke-width: 2.4; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ac) 60%, transparent)); }
       .flow-svg path.wire.draft { stroke: var(--ac); stroke-dasharray: 5 4; }
+      /* مسیر نامرئیِ پهن برای اینکه لمسِ سیم راحت باشد و با یک ضربه قطع شود */
+      .flow-svg path.wire-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: pointer; }
+      .flow-svg path.wire-hit:hover { stroke: color-mix(in srgb, var(--red) 22%, transparent); }
       .node {
         position: absolute; left: 0; top: 0; width: 200px; min-height: 74px; z-index: 2; direction: rtl;
         background: var(--panel); border: 1px solid var(--hair2); border-radius: 14px; padding: 10px 11px 9px;
@@ -303,8 +306,6 @@
       .st-pal .pal.on { border-color: var(--ac); color: var(--ac); background: var(--ac-soft); }
       .st-pal .pal.on .pal-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
       .st-pal .pal.on .pal-i svg { color: var(--ac); }
-      .st-pal .pal-sep { width: 1px; height: 22px; background: var(--hair); margin: 0 2px; flex: none; }
-      .st-pal .pal[data-a] { padding: 0; width: 40px; justify-content: center; }
       /* پهنهٔ نقشه */
       .st-canvas { flex: 1 1 auto; height: auto !important; min-height: 0; border: 0; border-radius: 0; position: relative; }
       .st-canvas.selmode { cursor: crosshair; }
@@ -322,18 +323,19 @@
       .st-mini rect.d-ticket { fill: #ef4444; }
       .st-mini rect.d-trigger { fill: #6366f1; }
       .st-mini rect.vp { fill: color-mix(in srgb, var(--ac) 16%, transparent); stroke: var(--ac); stroke-width: .8; }
-      /* زوم شناور: بالا-راست، سه دکمهٔ عمودی */
-      .st-zoom { position: absolute; z-index: 7; top: 9px; right: 9px; display: flex; flex-direction: column; gap: 4px; }
-      .st-zoom button { width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--hair); color: var(--tx); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh); transition: .12s; }
-      .st-zoom button:active { transform: scale(.92); border-color: var(--ac); }
-      .st-zoom button svg { width: 16px; height: 16px; color: var(--tx); }
-      .st-zoom .st-zoom-fit { margin-top: 4px; border-color: color-mix(in srgb, var(--ac) 40%, var(--hair)); color: var(--ac); }
-      /* نوار پایین: ستون فقرات تجربهٔ موبایل */
-      .st-foot { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; padding: 9px 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); box-shadow: 0 -10px 22px -16px rgba(0,0,0,.55); }
-      .st-foot .ft-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; padding: 4px 2px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 11px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
+      /* ابزار شناور: بالا-راست، کنار مینی‌مپ. بازگشت / دوباره / انتخاب. */
+      .st-tools { position: absolute; z-index: 7; top: 9px; right: 9px; display: flex; gap: 5px; }
+      .st-tool { width: 38px; height: 38px; border-radius: 11px; background: color-mix(in srgb, var(--panel) 90%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--hair); color: var(--tx); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh); transition: .12s; }
+      .st-tool:active { transform: scale(.9); }
+      .st-tool svg { width: 17px; height: 17px; color: var(--mu); }
+      .st-tool.on { border-color: var(--ac); background: var(--ac-soft); }
+      .st-tool.on svg { color: var(--ac); }
+      /* نوار پایین: ظریف و کوچک‌تر از نوار اصلی، تمایز بصری واضح */
+      .st-foot { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); }
+      .st-foot .ft-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 46px; padding: 3px 2px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 10px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
       .st-foot .ft-btn:active { transform: scale(.95); border-color: var(--ac); }
-      .st-foot .ft-btn .ft-i { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--panel); }
-      .st-foot .ft-btn .ft-i svg { width: 14px; height: 14px; color: var(--mu); }
+      .st-foot .ft-btn .ft-i { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--panel); }
+      .st-foot .ft-btn .ft-i svg { width: 13px; height: 13px; color: var(--mu); }
       .st-foot .ft-btn.ft-ac { border-color: color-mix(in srgb, var(--ac) 50%, var(--hair)); color: var(--ac); background: var(--ac-soft); }
       .st-foot .ft-btn.ft-ac .ft-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
       .st-foot .ft-btn.ft-ac .ft-i svg { color: var(--ac); }
@@ -344,8 +346,7 @@
       .st-foot .ft-btn.ft-edit .ft-i { background: color-mix(in srgb, var(--amber) 16%, transparent); }
       .st-foot .ft-btn.ft-edit .ft-i svg { color: var(--amber); }
       .st-foot .ft-btn.ft-cnt { background: var(--ac-soft); border-color: var(--ac); color: var(--ac); }
-      .st-foot .ft-cnt-n { font: 700 17px/1 var(--mono); }
-      @media (max-width: 380px) { .st-foot .ft-btn span:not(.ft-i):not(.ft-cnt-n) { font-size: 10.5px; } }
+      .st-foot .ft-cnt-n { font: 700 15px/1 var(--mono); }
       /* کارت‌های استودیو */
       .node.grp { border-style: dashed; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
       .node.grp .nicon { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
@@ -390,7 +391,7 @@
   </head>
   <body>
     <div id="auth"><div id="authbox"></div></div>
-    <button id="theme" onclick="toggleTheme()"></button>
+    <button id="theme" hidden></button>
     <div id="app"></div>
     <div id="fab" class="hide" onclick="openCmd(-1)"></div>
     <nav id="nav"></nav>
@@ -1078,21 +1079,16 @@
           </div>
           <div class="st-pal" id="stPal">
             ${Object.entries(ST_KIND).map(([k, v]) => `<button class="pal" data-k="${k}"><span class="pal-i">${ic(v.ic)}</span><span>${v.t}</span></button>`).join("")}
-            <span class="pal-sep"></span>
-            <button class="pal mode ${st.mode === "select" ? "on" : ""}" data-m="1" id="stSel"><span class="pal-i">${ic("cursor")}</span><span>انتخاب</span></button>
-            <button class="pal" data-a="fit" title="چیدن در صفحه"><span class="pal-i">${ic("fit")}</span></button>
-            <button class="pal" data-a="zoom-" title="کوچک‌نمایی"><span class="pal-i">${ic("zoomout")}</span></button>
-            <button class="pal" data-a="zoom+" title="بزرگ‌نمایی"><span class="pal-i">${ic("zoomin")}</span></button>
           </div>
           <div class="flow-canvas st-canvas" id="fc">
             <div class="flow-world" id="fw"></div>
             <div class="st-band" id="stBand" style="display:none"></div>
             <div class="flow-hint" id="fhint"></div>
             <div class="st-mini" id="stMini" title="نمای کلی"></div>
-            <div class="st-zoom">
-              <button onclick="stZoomAt(1.25)" aria-label="بزرگ‌نمایی">${ic("plus")}</button>
-              <button onclick="stZoomAt(0.8)" aria-label="کوچک‌نمایی">${ic("minus")}</button>
-              <button onclick="stFit()" aria-label="چیدن در صفحه" class="st-zoom-fit">${ic("fit")}</button>
+            <div class="st-tools">
+              <button class="st-tool" data-t="undo" title="بازگشت">${ic("undo")}</button>
+              <button class="st-tool" data-t="redo" title="دوباره">${ic("redo")}</button>
+              <button class="st-tool st-sel ${st.mode === "select" ? "on" : ""}" data-t="sel" id="stSel" title="حالت انتخاب">${ic("cursor")}</button>
             </div>
           </div>
           <div class="st-foot" id="stFoot"></div>`;
@@ -1103,13 +1099,22 @@
         c.addEventListener("pointerup", stUp);
         c.addEventListener("pointercancel", stUp);
         c.addEventListener("wheel", stWheel, { passive: false });
+        document.querySelectorAll(".st-tool").forEach((b) => {
+          b.onclick = () => {
+            if (b.dataset.t === "undo") return stUndo();
+            if (b.dataset.t === "redo") return stRedo();
+            if (b.dataset.t === "sel") {
+              st.mode = st.mode === "select" ? "link" : "select";
+              b.classList.toggle("on", st.mode === "select");
+              $("fc").classList.toggle("selmode", st.mode === "select");
+              toast(st.mode === "select" ? "حالت انتخاب: روی کارت بزن، یا دورش کادر بکش" : "حالت اتصال: از نقطهٔ کارت مبدأ بکش و روی مقصد رها کن");
+              return;
+            }
+          };
+        });
         $("stPal").querySelectorAll("button").forEach((b) => {
           b.onclick = () => {
             if (b.dataset.k) { hap("light"); stEdit(null, b.dataset.k); return; }
-            if (b.dataset.m) { st.mode = st.mode === "select" ? "link" : "select"; $("stSel").classList.toggle("on", st.mode === "select"); $("fc").classList.toggle("selmode", st.mode === "select"); toast(st.mode === "select" ? "حالت انتخاب: روی کارت بزن، یا دورش کادر بکش" : "حالت اتصال: از نقطهٔ کارت مبدأ بکش و روی مقصد رها کن"); return; }
-            if (b.dataset.a === "fit") { stFit(); return; }
-            if (b.dataset.a === "zoom+") { stZoomAt(1.25); return; }
-            if (b.dataset.a === "zoom-") { stZoomAt(0.8); return; }
           };
         });
         requestAnimationFrame(() => { stFit(); stRender(); });
@@ -1167,7 +1172,9 @@
           const hot = st.sel.includes(a.id) || st.sel.includes(b.id);
           const bad = !canSend(a) || !canRecv(b);
           const cls = (bad ? "bad" : hot ? "hot" : "") + (isGroup(a) || isGroup(b) ? " grp" : "");
-          return `<path class="wire ${cls}" d="M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>` +
+          const d = `M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+          return `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
+            `<path class="wire ${cls}" d="${d}"/>` +
             `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
         }).join("");
         const d = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
@@ -1307,6 +1314,7 @@
         const map = (st.ps || (st.ps = new Map()));
         map.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (map.size >= 2) {                                  /* دو انگشت = زوم و جابه‌جایی */
+          st._wireCut = null;
           const p = [...map.values()];
           st.pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, cx: (p[0].x + p[1].x) / 2, cy: (p[0].y + p[1].y) / 2, vx: STG.view.x, vy: STG.view.y };
           st.act = null;
@@ -1315,8 +1323,17 @@
           return;
         }
         const band = $("stBand");
+        /* لمس مستقیم سیم = قطع آن؛ اقدام در stUp تا اگر کاربر دو انگشتی زد و زوم شد، لغو گردد. */
+        const hit = e.target.closest(".wire-hit");
+        if (hit && STG) {
+          const a = hit.dataset.from, b = hit.dataset.to;
+          if (STG.edges.some((x) => x.from === a && x.to === b)) {
+            st._wireCut = { from: a, to: b, sx: e.clientX, sy: e.clientY, id: e.pointerId };
+            return;
+          }
+        }
         const nib = e.target.closest(".port.in");
-        if (nib) { const id = nib.dataset.port.slice(3); st.sel = [id]; const src = inOf(id); if (!src.length) return toast("این کارت ورودی ندارد", 1); const which = src[src.length - 1]; sure(`اتصال ورودیِ این کارت قطع شود؟\n${stTitle(nSt(which.id) || which)}`, () => stUnlink(which.id, id)); return; }
+        if (nib) { const id = nib.dataset.port.slice(3); st.sel = [id]; const src = inOf(id); if (!src.length) return toast("این کارت ورودی ندارد", 1); stUnlink(src[src.length - 1].id, id); return; }
         const outP = e.target.closest(".port.out");
         if (outP) {                                           /* شروع سیم */
           const nd = nSt(outP.dataset.port); if (!nd) return;
@@ -1377,6 +1394,14 @@
         if (!st.ps) return;
         st.ps.delete(e.pointerId);
         if (st.ps.size < 2) st.pinch = null;
+        /* اجرای قطع سیم: فقط اگر انگشت زیاد جابه‌جا نشده باشد (وگرنه pan/زوم بوده) */
+        if (st._wireCut) {
+          const wc = st._wireCut; st._wireCut = null;
+          if (wc.id === e.pointerId && Math.abs(e.clientX - wc.sx) + Math.abs(e.clientY - wc.sy) < 14 && STG) {
+            if (STG.edges.some((x) => x.from === wc.from && x.to === wc.to)) { stUnlink(wc.from, wc.to); hap("medium"); }
+          }
+          return;
+        }
         const a = st.act;
         if (!a || !STG) { st.act = null; return; }
         st.act = null;
