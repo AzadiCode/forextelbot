@@ -47,7 +47,7 @@ log = logging.getLogger("GramSazWA")
 # ══════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════
-PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "").strip()
+PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "8710240249:AAH3e0apc50IvtkfH1F98D6DWahu-TRUWFw").strip()
 MONGODB_URI        = os.getenv("MONGODB_URI", "").strip()
 WEBAPP_URL         = os.getenv("WEBAPP_URL", "https://botsazgram.onrender.com").strip().rstrip("/")
 WEBHOOK_URL        = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
