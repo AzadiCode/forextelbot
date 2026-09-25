@@ -858,7 +858,7 @@
         stStatus(); stRender();
       });
       function exportGraph(g) {
-        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "keywords", "mode", "words", "var_name", "value", "operator", "target_var", "type", "validation", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null && nd[k] !== "") o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to, label: e.label || "" })), view: stView(g.view) };
+        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "keywords", "mode", "words", "var_name", "value", "operator", "target_var", "type", "validation", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null && nd[k] !== "") o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to, label: e.label || "" })), view: stView(g.view) };}
       /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
       function stParts(nd, depth) {
         const btns = [], urls = []; let media = null;
