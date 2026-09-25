@@ -247,16 +247,11 @@
       .node .nh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
       .node .nh .badge { height: 22px; font-size: 10.5px; padding: 0 7px; }
       .node .nh b { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--tx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .node .nt { color: var(--mu); font-size: 11.5px; line-height: 1.5; max-height: 48px; overflow: hidden; padding-inline-start: 30px; margin-bottom: 6px; }
-      .node .nb { display: flex; align-items: center; justify-content: space-between; padding-inline-start: 30px; }
-      .node .nb .acts { display: flex; gap: 4px; }
-      .node .nib { position: relative; width: 26px; height: 26px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--hair); color: var(--mu); display: grid; place-items: center; cursor: pointer; }
-      /* بزرگ‌کردن نامرئیِ ناحیهٔ لمس تا حداقل ۴۰px، بدون تغییر شکل ظاهری دکمه — رفع باگ «دکمه‌های ریز روی گوشی لمس نمی‌شوند» */
-      .node .nib::after { content: ""; position: absolute; inset: -7px; }
-      .node .nib.on { color: var(--ac); border-color: var(--ac); background: color-mix(in srgb, var(--ac) 14%, transparent); }
-      .node .nib svg { width: 14px; height: 14px; }
-      .node .nib:active { transform: scale(.93); }
-      .node .nb .acts { gap: 8px; }
+      .node .nt { color: var(--mu); font-size: 11.5px; line-height: 1.5; max-height: 48px; overflow: hidden; padding-inline-start: 30px; margin-bottom: 2px; }
+      /* دکمه‌های ریز روی خودِ کارت (ویرایش/کپی/حذف) عمداً حذف شدند — روی گوشی همیشه گم می‌شدند.
+         حالا کارت فقط برای انتخاب/جابه‌جایی/باز‌کردن ویرایشگر است؛ کارهای مخرب (حذف/کپی/گروه)
+         فقط از نوار بزرگِ پایین (.st-insp) که هنگام انتخاب ظاهر می‌شود انجام می‌شود — یک‌جا، بزرگ، بدون خطای لمسی. */
+      .node .nb { display: flex; align-items: center; padding-inline-start: 30px; min-height: 4px; }
       .node .nicon { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; }
       .node.cmd .nicon { background: color-mix(in srgb, var(--ac) 18%, transparent); color: var(--ac); }
       .node.img .nicon { background: color-mix(in srgb, #d97706 18%, transparent); color: #d97706; }
@@ -285,7 +280,7 @@
       .st-bar .idn { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
       .st-bar b { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .st-bar small { display: block; color: var(--mu); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .st-bar .ib { width: 34px; height: 34px; border-radius: 10px; }
+      .st-bar .ib { width: 38px; height: 38px; border-radius: 11px; }
       .st-bar .ib svg { width: 17px; height: 17px; }
       .st-status { display: inline-flex; align-items: center; gap: 5px; font: 600 10.5px var(--mono); color: var(--mu); padding: 4px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--hair); white-space: nowrap; max-width: 33vw; overflow: hidden; }
       .st-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -296,7 +291,7 @@
       @keyframes pulse { 50% { opacity: .25; } }
       .st-pal { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: none; padding: 9px 11px; background: var(--bg); border-bottom: 1px solid var(--hair); }
       .st-pal::-webkit-scrollbar { display: none; }
-      .st-pal .pal { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--hair); color: var(--tx); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: .14s; }
+      .st-pal .pal { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 13px; border-radius: 10px; background: var(--panel); border: 1px solid var(--hair); color: var(--tx); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: .14s; }
       .st-pal .pal svg { width: 15px; height: 15px; color: var(--mu); }
       .st-pal .pal:active { transform: scale(.94); border-color: var(--ac); }
       .st-pal .pal.on { border-color: var(--ac); color: var(--ac); background: var(--ac-soft); }
@@ -316,12 +311,13 @@
       .st-mini rect.d-ticket { fill: #ef4444; }
       .st-mini rect.d-trigger { fill: #6366f1; }
       .st-mini rect.vp { fill: color-mix(in srgb, var(--ac) 16%, transparent); stroke: var(--ac); stroke-width: .8; }
-      .st-insp { flex: none; display: flex; align-items: center; gap: 7px; padding: 9px 11px; background: var(--panel); border-top: 1px solid var(--hair); }
-      .st-insp .cnt { font: 700 12px var(--mono); color: var(--ac); background: var(--ac-soft); border-radius: 8px; padding: 4px 9px; }
-      .st-insp .st-kind { color: var(--mu); font-size: 11px; }
-      .st-insp .btn { width: auto; height: 34px; padding: 0 12px; font-size: 12.5px; }
-      .st-insp .btn svg { width: 15px; height: 15px; }
-      .st-insp .ib { width: 34px; height: 34px; }
+      .st-insp { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); box-shadow: 0 -8px 20px -14px rgba(0,0,0,.5); }
+      .st-insp .cnt { font: 700 12.5px var(--mono); color: var(--ac); background: var(--ac-soft); border-radius: 10px; padding: 7px 10px; flex: none; }
+      .st-insp .st-kind { color: var(--mu); font-size: 11px; display: none; }
+      .st-insp .btn { width: auto; height: 44px; padding: 0 14px; font-size: 13px; }
+      .st-insp .btn svg { width: 16px; height: 16px; }
+      .st-insp .ib { width: 44px; height: 44px; }
+      @media (min-width: 380px) { .st-insp .st-kind { display: inline; } }
       /* کارت‌های استودیو */
       .node.grp { border-style: dashed; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
       .node.grp .nicon { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
@@ -335,8 +331,6 @@
       .node .nchips span.u { color: var(--amber); }
       .node .nchips span.m { color: var(--ac); }
       .node .nchips span.i { color: var(--ok); }
-      .node .nib.d { color: var(--mu); }
-      .node .nib.d:active { color: var(--red); border-color: var(--red); }
       .node .nh b { letter-spacing: -.2px; }
       .flow-svg path.wire.hot { stroke: var(--ac); stroke-width: 2.6; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ac) 60%, transparent)); }
       .flow-svg path.wire.bad { stroke: var(--red); stroke-dasharray: 4 4; }
@@ -1103,7 +1097,7 @@
             (canRecv(nd) ? `<i class="port in" data-port="in:${nd.id}"></i>` : "") +
             `<div class="nh"><span class="nicon">${ic(s.icon)}</span><b>${esc(s.title)}</b><span class="badge">${esc(String(s.badge))}</span></div>` +
             `<div class="nt">${esc(String(s.sub).replace(/\s+/g, " ").slice(0, 90))}</div>` +
-            `<div class="nb"><span class="nchips">${chips.join("")}</span><div class="acts"><div class="nib" data-act="edit">${ic("gear")}</div><div class="nib" data-act="dup">${ic("copy")}</div><div class="nib d" data-act="del">${ic("trash")}</div></div></div></div>`;
+            `<div class="nb"><span class="nchips">${chips.join("")}</span></div></div>`;
         }).join("") + (STG.nodes.length ? "" : `<div class="flow-empty"><div class="big">${ic("map")}</div><b style="display:block;margin-top:10px;color:var(--tx)">نقشه خالی است</b><div style="margin-top:5px;font-size:12px">از نوار بالا یک کارت اضافه کن: دستور، پاسخ، رسانه، پیوند، تیکت یا کلیدواژه.</div></div>`);
         stWires(); stMini(); stInspector(); stStatus();
         const h = $("fhint"); if (h) h.innerHTML = `${n(STG.nodes.length)} کارت · ${n(STG.edges.length)} اتصال · <kbd>${Math.round(z * 100)}%</kbd>` + (stIssues.length ? ` · <b style="color:var(--amber)">${n(stIssues.length)} نکته</b>` : "");
@@ -1239,12 +1233,6 @@
           return;
         }
         const band = $("stBand");
-        const act = e.target.closest("[data-act]");
-        if (act) {                                            /* دکمه‌های روی کارت */
-          const id = act.closest(".node").dataset.id, k = act.dataset.act;
-          if (k === "edit") stEdit(id); else if (k === "del") { st.sel = [id]; stDelSel(); } else if (k === "dup") stDup(id);
-          return;
-        }
         const nib = e.target.closest(".port.in");
         if (nib) { const id = nib.dataset.port.slice(3); st.sel = [id]; const src = inOf(id); if (!src.length) return toast("این کارت ورودی ندارد", 1); stUnlink(src[src.length - 1].id, id); return; }
         const outP = e.target.closest(".port.out");
