@@ -11,14 +11,19 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from functools import wraps
+from html import escape as h_escape
 import urllib.parse
 
 # ── Flask ──
 from flask import Flask, request, jsonify, g
 
+# ── HTTP client ──
+import requests as req_lib
+
 # ── python-telegram-bot ──
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo, BotCommand
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, MessageHandler, filters,
@@ -42,7 +47,7 @@ log = logging.getLogger("GramSazWA")
 # ══════════════════════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════════════════════
-PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "8710240249:AAH3e0apc50IvtkfH1F98D6DWahu-TRUWFw").strip()
+PLATFORM_BOT_TOKEN = os.getenv("PLATFORM_BOT_TOKEN", "").strip()
 MONGODB_URI        = os.getenv("MONGODB_URI", "").strip()
 WEBAPP_URL         = os.getenv("WEBAPP_URL", "https://botsazgram.onrender.com").strip().rstrip("/")
 WEBHOOK_URL        = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
@@ -55,6 +60,13 @@ ADMIN_IDS = {
 }
 
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+INIT_DATA_MAX_AGE = int(os.getenv("INIT_DATA_MAX_AGE", "86400"))
+
+# ربات مادر — بعداً در thread خودش راه‌اندازی می‌شود
+mother_bot_instance = None
+mother_bot_loop = None
+
+MEDIA_TYPES = ("photo", "video", "audio", "animation", "document")
 
 if not PLATFORM_BOT_TOKEN:
     log.critical("PLATFORM_BOT_TOKEN تنظیم نشده!")
@@ -83,6 +95,15 @@ def verify_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict]:
             log.warning("❌ Hash در initData یافت نشد")
             return None
             
+        auth_date = parsed.get("auth_date")
+        if auth_date:
+            try:
+                if time.time() - int(auth_date) > INIT_DATA_MAX_AGE:
+                    log.warning("❌ initData قدیمی است — دوباره پنل را باز کنید")
+                    return None
+            except (TypeError, ValueError):
+                return None
+
         data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         expected_hash = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
@@ -244,6 +265,10 @@ class Storage:
         b.setdefault("unknown_reply", "")      # پاسخ خودکار به دستور ناشناخته
         b.setdefault("auto_menu", True)        # همگام‌سازی منوی تلگرام
         b.setdefault("rules", [])              # قوانین پاسخ خودکار با کلمه کلیدی
+        b.setdefault("flow", None)             # گراف جریان (نودها + سیم‌ها) — موتور واقعی
+        b.setdefault("ticket_admins", [])      # پذیرندگان تیکت (UID)
+        b.setdefault("pending_tickets", {})    # uid -> {node, expires, admin_input}
+        b.setdefault("tickets", {})            # tid  -> {uid, at, text}
         b.setdefault("bot_user_info", {})      # uid -> {name, username, joined}
         b.setdefault("stats", {
             "messages_received": 0,
@@ -377,7 +402,8 @@ class Storage:
 
     def set_bot_config(self, bot_id: str, cfg: dict):
         """تنظیمات عمومی ربات: welcome_message / unknown_reply / auto_menu / rules"""
-        allowed = ("welcome_message", "unknown_reply", "auto_menu", "rules")
+        allowed = ("welcome_message", "unknown_reply", "auto_menu", "rules",
+                   "flow", "ticket_admins")
         patch = {k: cfg[k] for k in allowed if k in cfg}
         if not patch:
             return
@@ -497,6 +523,81 @@ class Storage:
         else:
             field = f"commands.{cmd_name}.callbacks.{cb_id}"
             self._bots.update_one({"bot_id": bot_id}, {"$unset": {field: ""}})
+
+    # ── موتور جریان (Flow) و تیکت پشتیبانی ─────────────────────────
+    def set_flow(self, bot_id: str, flow: Optional[dict]):
+        if self._is_memory:
+            if bot_id in self._bots:
+                self._bots[bot_id]["flow"] = flow
+        else:
+            self._bots.update_one({"bot_id": bot_id}, {"$set": {"flow": flow}})
+
+    def ticket_set_pending(self, bot_id: str, uid: int, node_id: str, ttl: int = 900):
+        key = str(uid)
+        entry = {"node": node_id, "expires": time.time() + ttl}
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if bot:
+                bot.setdefault("pending_tickets", {})[key] = entry
+        else:
+            self._bots.update_one({"bot_id": bot_id},
+                                  {"$set": {f"pending_tickets.{key}": entry}})
+
+    def ticket_pop_pending(self, bot_id: str, uid: int) -> Optional[dict]:
+        key = str(uid)
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            p = (bot or {}).get("pending_tickets", {}).pop(key, None)
+            return p if p and p.get("expires", 0) > time.time() else None
+        doc = self._bots.find_one_and_update(
+            {"bot_id": bot_id}, {"$unset": {f"pending_tickets.{key}": ""}},
+            projection={f"pending_tickets.{key}": 1},
+        )
+        p = (doc or {}).get("pending_tickets", {}).get(key)
+        return p if p and p.get("expires", 0) > time.time() else None
+
+    def ticket_add(self, bot_id: str, tid: str, rec: dict):
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if bot:
+                tk = bot.setdefault("tickets", {})
+                tk[tid] = rec
+                if len(tk) > 200:
+                    for old in sorted(tk, key=lambda k: tk[k].get("t", 0))[:-200]:
+                        del tk[old]
+        else:
+            self._bots.update_one({"bot_id": bot_id}, {"$set": {f"tickets.{tid}": rec}})
+
+    def ticket_list(self, bot_id: str, limit: int = 50) -> list:
+        if self._is_memory:
+            tks = list(self._bots.get(bot_id, {}).get("tickets", {}).values())
+        else:
+            doc = self._bots.find_one({"bot_id": bot_id}, {"tickets": 1}) or {}
+            tks = list(doc.get("tickets", {}).values())
+        tks.sort(key=lambda t: t.get("t", 0), reverse=True)
+        return tks[:limit]
+
+    def ticket_reply(self, bot_id: str, tid: str, text: str) -> bool:
+        stamp = now_ir().isoformat()
+        if self._is_memory:
+            tk = self._bots.get(bot_id, {}).get("tickets", {}).get(tid)
+            if not tk:
+                return False
+            tk["reply"] = text
+            tk["reply_at"] = stamp
+            return True
+        res = self._bots.update_one(
+            {"bot_id": bot_id, f"tickets.{tid}": {"$exists": True}},
+            {"$set": {f"tickets.{tid}.reply": text, f"tickets.{tid}.reply_at": stamp}},
+        )
+        return res.modified_count > 0
+
+    def set_ticket_admins(self, bot_id: str, uids: list):
+        if self._is_memory:
+            if bot_id in self._bots:
+                self._bots[bot_id]["ticket_admins"] = uids
+        else:
+            self._bots.update_one({"bot_id": bot_id}, {"$set": {"ticket_admins": uids}})
 
     # ── آمار ──────────────────────────────────────────────────────────
     def add_bot_user(self, bot_id: str, uid: int) -> bool:
@@ -652,6 +753,23 @@ class Storage:
     # ══════════════════════════════════════════════════════════════════
     # سیستم Auth
     # ══════════════════════════════════════════════════════════════════
+    @staticmethod
+    def _hash_pw(password: str, salt: str = None) -> str:
+        salt = salt or secrets.token_hex(16)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
+        return f"pbkdf2${salt}${dk.hex()}"
+
+    @classmethod
+    def _verify_pw(cls, password: str, stored: str) -> bool:
+        if not stored:
+            return False
+        if stored.startswith("pbkdf2$"):
+            _, salt, digest = stored.split("$", 2)
+            cand = cls._hash_pw(password, salt)
+            return hmac.compare_digest(cand, stored)
+        # هش قدیمی (sha256 ساده) — مقایسه و اجازهٔ ارتقا
+        return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
+
     def register_user(self, username: str, password: str, full_name: str = "", 
                       referral_code: str = None, 
                       ip: str = "", device_id: str = "") -> tuple:
@@ -671,9 +789,11 @@ class Storage:
             all_uids = [u["uid"] for u in self._users.values()]
             uid = max(all_uids) + 1 if all_uids else 1000000
         else:
-            uid = self._users.count_documents({}) + 1000000
+            top = self._users.find_one(sort=[("uid", -1)], projection={"uid": 1})
+            uid = max(int((top or {}).get("uid") or 1000000),
+                      self._users.count_documents({}) + 1000000) + 1
         
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        password_hash = self._hash_pw(password)
         token = secrets.token_urlsafe(32)
         user_referral_code = secrets.token_urlsafe(8)
         initial_coins = 50 if referrer_uid else 0
@@ -728,22 +848,21 @@ class Storage:
         if not user:
             raise ValueError("نام کاربری یا رمز عبور اشتباه است")
         
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if user.get("password_hash") != password_hash:
+        if not self._verify_pw(password, user.get("password_hash") or ""):
             raise ValueError("نام کاربری یا رمز عبور اشتباه است")
         
         if user.get("is_banned"):
             raise ValueError("حساب شما مسدود شده است")
         
         token = secrets.token_urlsafe(32)
-        
+
+        patch = {"auth_token": token}
+        if not (user.get("password_hash") or "").startswith("pbkdf2$"):
+            patch["password_hash"] = self._hash_pw(password)   # ارتقا خاموش هش قدیمی
         if self._is_memory:
-            self._users[user["uid"]]["auth_token"] = token
+            self._users[user["uid"]].update(patch)
         else:
-            self._users.update_one(
-                {"uid": user["uid"]},
-                {"$set": {"auth_token": token}}
-            )
+            self._users.update_one({"uid": user["uid"]}, {"$set": patch})
         
         user_copy = copy.deepcopy(user)
         user_copy["auth_token"] = token
@@ -907,16 +1026,478 @@ class BotFactory:
 factory = BotFactory()
 
 # ══════════════════════════════════════════════════════════════════════
-# متغیرهای global برای ربات مادر
+# موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
 # ══════════════════════════════════════════════════════════════════════
-mother_bot_instance = None
-mother_bot_loop = None
+FLOW_VERSION = 2
+TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
+CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
+KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger"}
+
+
+def _html(t: str) -> str:
+    """متن کاربر را امن می‌کند؛ اگر تگ معتبر داشته باشد دست نمی‌زند"""
+    t = t or ""
+    if re.search(r"</?[a-zA-Z][^>]*>", t):
+        return t
+    return h_escape(t)
+
+
+class Flow:
+    """نمای امن و سریعِ گراف جریان یک ربات"""
+
+    def __init__(self, raw):
+        raw = raw if isinstance(raw, dict) else {}
+        self.nodes = {}
+        for nd in raw.get("nodes") or []:
+            if isinstance(nd, dict) and nd.get("id") and nd.get("kind") in KINDS:
+                self.nodes[str(nd["id"])] = nd
+        self.edges = []
+        for e in raw.get("edges") or []:
+            if isinstance(e, dict):
+                f, t = str(e.get("from") or ""), str(e.get("to") or "")
+                if f in self.nodes and t in self.nodes and f != t:
+                    self.edges.append({"from": f, "to": t})
+        self._out, self._in = {}, {}
+        for e in self.edges:
+            self._out.setdefault(e["from"], []).append(e["to"])
+            self._in.setdefault(e["to"], []).append(e["from"])
+
+    # ── دسترسی ───────────────────────────────────────────────────────
+    def node(self, nid):
+        return self.nodes.get(str(nid)) if nid is not None else None
+
+    def outs(self, nid):
+        return [self.nodes[i] for i in self._out.get(str(nid), [])]
+
+    def ins(self, nid):
+        return [self.nodes[i] for i in self._in.get(str(nid), [])]
+
+    def edge(self, src_id, tgt_id):
+        for e in self.edges:
+            if e["from"] == str(src_id) and e["to"] == str(tgt_id):
+                return e
+        return None
+
+    # ── شناسهٔ دکمه‌ها ────────────────────────────────────────────────
+    @staticmethod
+    def cid(act, src, tgt=None):
+        sid = src["id"] if isinstance(src, dict) else (src or "_")
+        tid = tgt["id"] if isinstance(tgt, dict) else (tgt or "")
+        return f"{CB_PREFIX}{act}:{sid}:{tid}"[:64]
+
+    def parse(self, data):
+        """callback_data → {act, src, tgt, raw} | None  (اعتبارسنجی با گراف زنده)"""
+        s = str(data or "")
+        if not s.startswith(CB_PREFIX):
+            return None
+        parts = s[len(CB_PREFIX):].split(":", 2)
+        if not parts or not parts[0]:
+            return None
+        act = parts[0]
+        src = self.node(parts[1]) if len(parts) > 1 and parts[1] else None
+        if src is None:
+            return None
+        raw = parts[2] if len(parts) > 2 else ""
+        tgt = self.node(raw) if raw else None
+        return {"act": act, "src": src, "tgt": tgt, "raw": raw}
+
+    # ── ورودی‌ها ──────────────────────────────────────────────────────
+    def cmd_nodes(self):
+        return [n for n in self.nodes.values() if n.get("kind") == "cmd"]
+
+    def entry_for(self, name):
+        name = (name or "").strip().lstrip("/").lower()
+        for n in self.cmd_nodes():
+            if (n.get("name") or "").strip().lstrip("/").lower() == name:
+                return n
+        return None
+
+    def keyword_nodes(self):
+        return [n for n in self.nodes.values() if n.get("kind") == "trigger"]
+
+    def match_keyword(self, text):
+        t = (text or "").strip().lower()
+        if not t:
+            return None
+        for n in self.keyword_nodes():
+            mode = n.get("mode") or "contains"
+            for kw in n.get("keywords") or []:
+                k = str(kw).strip().lower()
+                if not k:
+                    continue
+                if mode == "exact" and t == k:
+                    return n
+                if mode == "contains" and k in t:
+                    return n
+                if mode == "regex":
+                    try:
+                        if re.search(str(kw), text or "", re.IGNORECASE):
+                            return n
+                    except re.error:
+                        pass
+        return None
+
+    # ── رندر: نود + سیم‌های خروجی‌اش → پیام آمادهٔ ارسال ───────────────
+    def parts(self, nd, depth=0):
+        """سیم‌های خروجی یک نود = محتوای همان پیام: دکمه/لینک/رسانه.
+        نود reply با role=group مثل پوشش عمل می‌کند: عضوهایش به پیام والد اضافه می‌شوند."""
+        btns, urls, media = [], [], None
+        for t in self.outs(nd["id"]):
+            k = t.get("kind")
+            if k == "link" and t.get("url"):
+                urls.append(t)
+            elif k == "image" and t.get("url") and media is None:
+                media = t
+            elif k == "reply" and t.get("role") == "group" and depth < 3:
+                sub_b, sub_u, sub_m = self.parts(t, depth + 1)
+                btns.extend(sub_b)
+                urls.extend(sub_u)
+                if media is None and sub_m:
+                    media = sub_m
+            elif k in ("reply", "cmd", "ticket", "trigger"):
+                btns.append(t)
+        return btns, urls, media
+
+    def render(self, nd, chain=None):
+        """نود → پیام رندرشده. سیم خروجی = دکمه/لینک/رسانهٔ همان پیام."""
+        if not nd:
+            return None
+        kind = nd.get("kind")
+        if kind not in ("cmd", "reply", "image", "ticket", "trigger"):
+            return None
+        chain = chain or set()
+        if nd["id"] in chain:
+            return None
+        chain = chain | {nd["id"]}
+        btns, urls, media = self.parts(nd)
+
+        if kind == "image":
+            if not nd.get("url"):
+                return None
+            return {"mtype": nd.get("mediaType") or "photo", "url": nd["url"],
+                    "text": _html(nd.get("caption") or ""), "cb": [], "urlb": []}
+
+        if kind == "ticket":
+            words = [str(w).strip() for w in (nd.get("words") or []) if str(w).strip()]
+            cb = [{"text": "🎟 ثبت تیکت", "data": self.cid("tk", nd)}]
+            for i, w in enumerate(words):
+                cb.append({"text": f"🔑 {w[:18]}", "data": self.cid("tka", nd,
+                                                                  {"id": f"w{i}"})})
+            return {"mtype": None, "url": None, "ready": True,
+                    "text": _html(nd.get("text") or "متن تیکت خود را بنویسید."),
+                    "cb": cb, "urlb": urls, "words": words}
+
+        text = _html(nd.get("text") or nd.get("response") or "")
+        cb = []
+        for t in btns:
+            label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
+            label = str(label).strip().splitlines()[0][:64] or "ادامه"
+            cb.append({"text": label, "data": self.cid("go", nd, t)})
+        return {"mtype": (media or {}).get("mediaType") or "photo",
+                "url": (media or {}).get("url"), "text": text,
+                "cb": cb, "urlb": urls, "ready": True}
+
+    def rows(self, msg):
+        """دکمه‌های رندرشده → سطرها اینلاین (لینک‌ها هرکدام یک ردیف)"""
+        out = []
+        for u in msg.get("urlb") or []:
+            out.append([InlineKeyboardButton((u.get("text") or "لینک").strip()[:64] or "لینک",
+                                             url=u["url"])])
+        cbs = msg.get("cb") or []
+        for i in range(0, len(cbs), 3):
+            out.append([InlineKeyboardButton(b["text"], callback_data=b["data"])
+                        for b in cbs[i:i + 3]])
+        return out[:10]
+
+    def markup(self, msg):
+        rows = self.rows(msg)
+        return InlineKeyboardMarkup(rows) if rows else None
+
+    # ── سازگاری رو به پایین: گراف → commands/callbacks قدیمی ──────────
+    def compile_commands(self):
+        """گراف را به ساختار commands/callbacks نسخهٔ ۱ تبدیل می‌کند (برای export/بک‌آپ)"""
+        result = {}
+        for nd in self.cmd_nodes():
+            name = (nd.get("name") or "start").strip().lstrip("/").lower() or "start"
+            r = self.render(nd)
+            if not r:
+                continue
+            btns = [{"text": b["text"], "id": b["data"]} for b in r["cb"]]
+            urls = [{"text": (u.get("text") or "لینک"), "url": u["url"]} for u in r["urlb"]]
+            rows = [btns[i:i + 3] for i in range(0, len(btns), 3)]
+            for u in urls:
+                rows.append([u])
+            callbacks = {}
+            for b in r["cb"]:
+                tgt = self.node(b["data"].split(":", 2)[2])
+                callbacks[b["data"]] = ((tgt or {}).get("text") or
+                                        (tgt or {}).get("response") or "")
+            result[name] = {
+                "response": nd.get("text") or nd.get("response") or "",
+                "description": nd.get("description") or "",
+                "buttons": rows or None,
+                "media": {"type": r["mtype"], "url": r["url"]} if r["url"] else None,
+                "photo": None,
+                "callbacks": callbacks,
+            }
+        return result
+
+    def stats(self):
+        c = {}
+        for nd in self.nodes.values():
+            c[nd.get("kind")] = c.get(nd.get("kind"), 0) + 1
+        return {"nodes": len(self.nodes), "edges": len(self.edges), "by_kind": c}
+
+
+def flow_from(bot: dict) -> Flow:
+    raw = bot.get("flow")
+    if isinstance(raw, dict) and raw.get("nodes"):
+        return Flow(raw)
+    return Flow(legacy_to_graph(bot))
+
+
+def _short_id(prefix: str, name: str) -> str:
+    slug = re.sub(r"[^a-z0-9_]", "", (name or "").lower())[:16] or "x"
+    nid = f"{prefix}_{slug}"
+    if len(nid) > 24:
+        nid = nid[:16] + hashlib.sha1(nid.encode()).hexdigest()[:6]
+    return nid
+
+
+def legacy_to_graph(bot: dict) -> dict:
+    """ربات‌های قدیمی (commands + callbacks) را به گراف تبدیل می‌کند — بدون از دست رفتن داده.
+    قرارداد یال: مبدأ = پیام‌دهنده، مقصد = محتوای پیام (دکمه/لینک/رسانه)."""
+    nodes, edges = [], []
+    cmds = bot.get("commands") or {}
+    for name, c in cmds.items():
+        nid = _short_id("c", str(name))
+        nodes.append({"id": nid, "kind": "cmd", "name": str(name).lower(),
+                      "text": c.get("response") or "",
+                      "description": c.get("description") or ""})
+        m = c.get("media") or ({"type": "photo", "url": c["photo"]} if c.get("photo") else None)
+        if m and m.get("url"):
+            mid = _short_id("i", f"{name}_m")
+            nodes.append({"id": mid, "kind": "image", "url": m["url"],
+                          "mediaType": m.get("type") or "photo", "text": ""})
+            edges.append({"from": nid, "to": mid})
+        for row in c.get("buttons") or []:
+            for idx, b in enumerate(row or []):
+                if not isinstance(b, dict):
+                    continue
+                txt = (b.get("text") or "").strip()
+                if not txt:
+                    continue
+                if b.get("url"):
+                    lid = "l_" + hashlib.sha1(f"{name}{txt}{b['url']}".encode()).hexdigest()[:10]
+                    if not any(n["id"] == lid for n in nodes):
+                        nodes.append({"id": lid, "kind": "link", "text": txt, "url": b["url"]})
+                    edges.append({"from": nid, "to": lid})
+                else:
+                    cbid = str(b.get("id") or txt)
+                    resp = (c.get("callbacks") or {}).get(cbid, "")
+                    rid = "r_" + hashlib.sha1(f"{name}{cbid}{resp}".encode()).hexdigest()[:14]
+                    nodes.append({"id": rid, "kind": "reply", "label": txt, "text": resp})
+                    edges.append({"from": nid, "to": rid})
+    return {"version": FLOW_VERSION, "nodes": nodes, "edges": edges}
+
+
+class Engine:
+    """اجرای گراف: دستور / متن / دکمه → پیام یا اقدام"""
+
+    def __init__(self, bot_rec: dict):
+        self.bot_id = bot_rec["bot_id"]
+        self.bot = bot_rec
+        self.flow = flow_from(bot_rec)
+
+    # ── ارسال ─────────────────────────────────────────────────────────
+    async def deliver(self, ctx, chat_id, msg, message=None):
+        if not msg:
+            return False
+        kb = self.flow.markup(msg)
+        text = msg.get("text") or ""
+        try:
+            if msg.get("url"):
+                fn = {"video": ctx.bot.send_video, "audio": ctx.bot.send_audio,
+                      "animation": ctx.bot.send_animation,
+                      "document": ctx.bot.send_document}.get(msg["mtype"], ctx.bot.send_photo)
+                await fn(chat_id, msg["url"], caption=text or None,
+                         reply_markup=kb, parse_mode=ParseMode.HTML)
+            elif message is not None:
+                await message.edit_text(text or "…", reply_markup=kb, parse_mode=ParseMode.HTML)
+            else:
+                await ctx.bot.send_message(chat_id, text or "…",
+                                           reply_markup=kb, parse_mode=ParseMode.HTML)
+            storage.update_bot_stats(self.bot_id, sent=1)
+            storage.record_daily(self.bot_id, "messages_out", 1)
+            return True
+        except BadRequest as e:
+            if message is not None and "text was not changed" in str(e).lower():
+                return True
+            if msg.get("url") and text:
+                try:
+                    await ctx.bot.send_message(chat_id, text, reply_markup=kb,
+                                               parse_mode=ParseMode.HTML)
+                    storage.update_bot_stats(self.bot_id, sent=1)
+                    return True
+                except Exception:
+                    pass
+            log.error(f"❌ deliver {self.bot_id}: {e}")
+            return False
+        except Exception as e:
+            log.error(f"❌ deliver {self.bot_id}: {e}")
+            return False
+
+    # ── ورودی‌ها ──────────────────────────────────────────────────────
+    async def on_command(self, ctx, chat_id, cmd_name):
+        nd = self.flow.entry_for(cmd_name)
+        if not nd:
+            return False
+        await self.deliver(ctx, chat_id, self.flow.render(nd))
+        return True
+
+    async def on_keyword(self, ctx, chat_id, text):
+        nd = self.flow.match_keyword(text)
+        if not nd:
+            return False
+        await self.deliver(ctx, chat_id, self.flow.render(nd))
+        return True
+
+    async def on_callback(self, ctx, chat_id, data, message, user_id=None):
+        """'done' = جریان هندل کرد | 'legacy' = به منطق قدیمی (callbacks ذخیره‌شده) بسپار"""
+        p = self.flow.parse(data)
+        if not p:
+            return "legacy"
+        act, src = p["act"], p["src"]
+
+        if act == "tk":
+            await self._ticket_open(ctx, chat_id, src)
+            return "done"
+
+        if act == "tka":
+            return await self._ticket_toggle(ctx, chat_id, src,
+                                             str(p.get("raw") or ""), user_id or chat_id)
+
+        if act == "go":
+            tgt = p["tgt"]
+            if tgt is None:
+                return "legacy"
+            msg = self.flow.render(tgt)
+            if not msg or not msg.get("ready"):
+                # نود مقصد محتوایی ندارد → متن سادهٔ خودِ نود را نشان بده
+                txt = _html(tgt.get("text") or tgt.get("response") or tgt.get("caption") or "")
+                if not txt:
+                    return "legacy"
+                msg = {"mtype": None, "url": None, "text": txt, "cb": [], "urlb": [],
+                       "ready": True}
+            await self.deliver(ctx, chat_id, msg)
+            return "done"
+        return "legacy"
+
+    # ── تیکت پشتیبانی ─────────────────────────────────────────────────
+    def ticket_admins(self):
+        admins = {int(x) for x in (self.bot.get("ticket_admins") or [])
+                  if str(x).lstrip("-").isdigit()}
+        if self.bot.get("owner_uid"):
+            admins.add(int(self.bot["owner_uid"]))
+        return admins | set(ADMIN_IDS)
+
+    async def _ticket_open(self, ctx, chat_id, nd):
+        storage.ticket_set_pending(self.bot_id, chat_id, str(nd["id"]), TICKET_TTL)
+        await self.deliver(ctx, chat_id, self.flow.render(nd))
+
+    async def _ticket_toggle(self, ctx, chat_id, nd, raw, who):
+        """پذیرندهٔ تیکت با زدن دکمهٔ 🔑، همان کلمهٔ عبور را برداشتن/گذاشتن می‌کند"""
+        m = re.fullmatch(r"w(\d{1,3})", raw or "")
+        if not m:
+            return "done"
+        words = [str(w) for w in (nd.get("words") or [])]
+        i = int(m.group(1))
+        if i >= len(words):
+            return "done"
+        if who not in self.ticket_admins():
+            try:
+                await ctx.bot.send_message(chat_id,
+                                           "فقط پذیرندهٔ تیکت‌ها می‌تواند کلمات عبور را تغییر دهد.")
+            except Exception:
+                pass
+            return "done"
+        words.pop(i)
+        nd["words"] = words
+        self.save()
+        await self.deliver(ctx, chat_id, self.flow.render(nd))
+        return "done"
+
+    async def _alert_admins(self, text: str):
+        """تیکت را با ربات مادر برای پذیرنده‌ها می‌فرستد (آن‌ها ممکن است ساب‌بات را استارت نکرده باشند)"""
+        targets = sorted(self.ticket_admins())
+        if mother_bot_instance and mother_bot_loop and mother_bot_loop.is_running():
+            for uid in targets:
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        mother_bot_instance.send_message(uid, text, parse_mode=ParseMode.HTML),
+                        mother_bot_loop)
+                    fut.result(timeout=10)
+                except Exception:
+                    pass
+            return
+        for uid in targets:
+            try:
+                await self._bot.send_message(uid, text, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+
+    async def on_ticket_text(self, ctx, chat_id, text, bot_ref=None):
+        self._bot = ctx.bot
+        pend = storage.ticket_pop_pending(self.bot_id, chat_id)
+        if not pend:
+            return False
+        nd = self.flow.node(pend["node"])
+        words = [str(w).strip() for w in ((nd or {}).get("words") or []) if str(w).strip()]
+        body = (text or "").strip()
+        if words and not any(body.lower().startswith(w.lower()) for w in words):
+            await ctx.bot.send_message(
+                chat_id,
+                f"❌ پیام باید با یکی از این کلمه‌ها شروع شود: " + " / ".join(words),
+                parse_mode=ParseMode.HTML)
+            storage.ticket_set_pending(self.bot_id, chat_id, pend["node"], TICKET_TTL)
+            return True
+        tid = secrets.token_hex(4).upper()
+        meta = {}
+        try:
+            u = await ctx.bot.get_chat(chat_id)
+            meta = {"name": u.full_name or "", "username": u.username or ""}
+        except Exception:
+            pass
+        storage.ticket_add(self.bot_id, tid, {
+            "id": tid, "uid": chat_id, "node": pend["node"], "t": time.time(),
+            "text": body[:4000], "status": "new", **meta})
+        await ctx.bot.send_message(
+            chat_id,
+            f"🎟 <b>تیکت ثبت شد</b>\nکد پیگیری: <code>{tid}</code>\n"
+            f"پاسخ را از همین ربات دریافت می‌کنید.",
+            parse_mode=ParseMode.HTML)
+        alert = (f"🎯 <b>تیکت جدید — {tid}</b>\n"
+                 f"👤 {h_escape(meta.get('name') or '—')}\n"
+                 f"🆔 <code>{chat_id}</code>\n"
+                 f"📝\n{h_escape(body[:1500])}\n\n"
+                 f" برای پاسخ، کد تیکت را در پنل بفرستید یا در تلگرام:\n"
+                 f"<code>/reply {tid} متن پاسخ</code>")
+        await self._alert_admins(alert)
+        return True
+
+    def save(self):
+        storage.set_flow(self.bot_id, {
+            "version": FLOW_VERSION,
+            "nodes": list(self.flow.nodes.values()),
+            "edges": self.flow.edges,
+        })
 
 
 # ══════════════════════════════════════════════════════════════════════
-# هندلرهای ساب‌بات
+# هندلرهای ساب‌بات — همه از طریق موتور جریان (Engine) اجرا می‌شوند
 # ══════════════════════════════════════════════════════════════════════
 def _build_inline(buttons) -> Optional[InlineKeyboardMarkup]:
+    """سازگار با نسخهٔ قدیمی (commands.buttons)"""
     if not buttons:
         return None
     rows = []
@@ -925,73 +1506,89 @@ def _build_inline(buttons) -> Optional[InlineKeyboardMarkup]:
         for btn in row:
             url = btn.get("url")
             if url:
-                # دکمهٔ لینک — بدون callback
                 rrow.append(InlineKeyboardButton(btn["text"], url=url))
             else:
                 rrow.append(InlineKeyboardButton(
                     btn["text"], callback_data=btn.get("id") or btn["text"]))
         rows.append(rrow)
-    return InlineKeyboardMarkup(rows)
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 async def _send_media(bot, chat_id, media, caption, kb):
-    """ارسال رسانه بر اساس نوع"""
     if not media or not media.get("url"):
         return False
-    
     media_type = media.get("type", "photo")
     url = media["url"]
-    
     try:
-        if media_type == "photo":
-            await bot.send_photo(
-                chat_id, url, 
-                caption=caption, 
-                reply_markup=kb, 
-                parse_mode=ParseMode.HTML
-            )
-        elif media_type == "video":
-            await bot.send_video(
-                chat_id, url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode=ParseMode.HTML,
-                supports_streaming=True
-            )
-        elif media_type == "audio":
-            await bot.send_audio(
-                chat_id, url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode=ParseMode.HTML
-            )
-        elif media_type == "animation":
-            await bot.send_animation(
-                chat_id, url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode=ParseMode.HTML
-            )
-        elif media_type == "document":
-            # برای document، caption را جدا بفرست
-            await bot.send_document(
-                chat_id, url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            # fallback به photo
-            await bot.send_photo(
-                chat_id, url,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode=ParseMode.HTML
-            )
+        fn = {"photo": bot.send_photo, "video": bot.send_video,
+              "audio": bot.send_audio, "animation": bot.send_animation,
+              "document": bot.send_document}.get(media_type, bot.send_photo)
+        await fn(chat_id, url, caption=caption, reply_markup=kb,
+                 parse_mode=ParseMode.HTML)
         return True
     except Exception as e:
         log.error(f"❌ خطا در ارسال {media_type}: {e}")
         return False
+
+
+async def _reply_menu(bot, chat_id, bot_rec: dict):
+    """منوی اینلاین دستورها — فقط اگر کاربر خودش فعالش کرده باشد"""
+    cmds = bot_rec.get("commands", {})
+    rows = [[InlineKeyboardButton(f"/{n} — {(c.get('description') or '').strip()[:22] or n}",
+                                 callback_data=f"cmd:{n}")]
+            for n, c in list(cmds.items()) if n != "start"]
+    if not rows:
+        return
+    try:
+        await bot.send_message(chat_id, "☰ منوی دستورهای ربات:",
+                               reply_markup=InlineKeyboardMarkup(rows[:12]))
+    except Exception:
+        pass
+
+
+async def _check_force_join(ctx, bot_id, b, update) -> bool:
+    """True اگر کاربر عضو کانال است یا اجباری نیست. در غیر این صورت پیام joining می‌فرستد."""
+    ch = (b.get("force_join_channel") or "").strip()
+    if not ch:
+        return True
+    uid = update.effective_user.id
+    try:
+        member = await ctx.bot.get_chat_member(ch, uid)
+        if member.status in ("creator", "administrator", "member"):
+            return True
+    except BadRequest:
+        return True     # کانال اشتباه/دسترس‌ناپذیر → ربات قفل نشود
+    except Exception:
+        return True
+    disp = ch if ch.startswith("@") else ch
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 عضو شدن", url=f"https://t.me/{disp.lstrip('@')}")],
+        [InlineKeyboardButton("✅ عضو شدم — بررسی مجدد", callback_data="fj:check")]])
+    try:
+        await update.effective_message.reply_text(
+            f"🔒 برای استفاده از ربات اول در {disp} عضو شوید.", reply_markup=kb)
+    except Exception:
+        pass
+    return False
+
+
+async def _legacy_callback(b, data, ctx, chat_id):
+    """پاسخ‌های دکمهٔ ساختهِ نسخهٔ قدیمی (commands.callbacks)"""
+    for cmd_name, cmd in b.get("commands", {}).items():
+        if data in cmd.get("callbacks", {}):
+            resp = cmd["callbacks"][data] or ""
+            media = cmd.get("media")
+            try:
+                await ctx.bot.send_message(chat_id, resp, parse_mode=ParseMode.HTML)
+                storage.update_bot_stats(b["bot_id"], sent=1)
+            except Exception:
+                try:
+                    await ctx.bot.send_message(chat_id, resp)
+                    storage.update_bot_stats(b["bot_id"], sent=1)
+                except Exception:
+                    pass
+            return True
+    return False
 
 
 async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
@@ -1006,44 +1603,36 @@ async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: 
     storage.update_bot_stats(bot_id, received=1)
     storage.record_daily(bot_id, "messages_in", 1)
 
-    cmd      = b.get("commands", {}).get("start", {})
-    response = cmd.get("response", "سلام 👋")
-    buttons  = cmd.get("buttons")
-    photo    = cmd.get("photo")  # backward compat
-    media    = cmd.get("media")  # سیستم جدید
+    if not await _check_force_join(ctx, bot_id, b, update):
+        return
 
-    log.info(f"📩 /start ساب‌بات {bot_id}: media={media}, photo={photo}, buttons={bool(buttons)}")
-
-    kb = _build_inline(buttons)
-
+    chat_id = update.effective_chat.id
     try:
-        # پیام خوش‌آمد مخصوص عضو جدید (قبل از پاسخ /start)
         if is_new and b.get("welcome_message"):
-            await ctx.bot.send_message(
-                update.effective_chat.id, b["welcome_message"],
-                parse_mode=ParseMode.HTML)
+            await ctx.bot.send_message(chat_id, b["welcome_message"],
+                                       parse_mode=ParseMode.HTML)
             storage.update_bot_stats(bot_id, sent=1)
 
-        # اولویت: media جدید، سپس photo قدیمی
-        sent = False
-        if media and media.get("url"):
-            sent = await _send_media(ctx.bot, update.effective_chat.id, media, response, kb)
-        elif photo:
-            # backward compat
-            legacy_media = {"type": "photo", "url": photo}
-            sent = await _send_media(ctx.bot, update.effective_chat.id, legacy_media, response, kb)
+        eng = Engine(b)
+        if not await eng.on_command(ctx, chat_id, "start"):
+            # نود /start وجود ندارد → پاسخ ذخیره‌شدهٔ قدیمی
+            cmd = b.get("commands", {}).get("start", {})
+            response = cmd.get("response", "سلام 👋")
+            kb = _build_inline(cmd.get("buttons"))
+            media = cmd.get("media") or ({"type": "photo", "url": cmd["photo"]}
+                                         if cmd.get("photo") else None)
+            sent = bool(media and await _send_media(ctx.bot, chat_id, media, response, kb))
+            if not sent:
+                await update.effective_message.reply_text(
+                    response, reply_markup=kb, parse_mode=ParseMode.HTML)
+            storage.update_bot_stats(bot_id, sent=1)
 
-        if not sent:
-            # fallback به متن ساده
-            await update.effective_message.reply_text(
-                response, reply_markup=kb, parse_mode=ParseMode.HTML)
-
-        storage.update_bot_stats(bot_id, sent=1)
+        if bool(b.get("menu_command")):
+            await _reply_menu(ctx.bot, chat_id, b)
     except Exception as e:
         log.error(f"❌ خطا در /start ساب‌بات {bot_id}: {e}")
         try:
-            await update.effective_message.reply_text(response, reply_markup=kb)
-            storage.update_bot_stats(bot_id, sent=1)
+            await update.effective_message.reply_text("🤖 ربات موقتاً خطا دارد.")
         except Exception:
             pass
 
@@ -1061,54 +1650,38 @@ async def _subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id
     storage.update_bot_stats(bot_id, received=1)
     storage.record_daily(bot_id, "messages_in", 1)
 
-    cmd_name = text.lstrip("/").split()[0].lower() if text.startswith("/") else ""
-    cmd = b.get("commands", {}).get(cmd_name)
-    if not cmd:
-        # پاسخ خودکار به دستور ناشناخته
-        if cmd_name:
-            unknown = (b.get("unknown_reply") or "").strip()
-            if unknown:
-                try:
-                    await update.effective_message.reply_text(
-                        unknown, parse_mode=ParseMode.HTML)
-                    storage.update_bot_stats(bot_id, sent=1)
-                    storage.record_daily(bot_id, "messages_out", 1)
-                except Exception as e:
-                    log.error(f"❌ خطا در unknown_reply {bot_id}: {e}")
+    if not await _check_force_join(ctx, bot_id, b, update):
         return
 
-    kb       = _build_inline(cmd.get("buttons"))
-    photo    = cmd.get("photo")
-    media    = cmd.get("media")
-    response = cmd.get("response", "")
-
-    log.info(f"📩 /{cmd_name} ساب‌بات {bot_id}: media={media}, photo={photo}")
-
+    cmd_name = text.lstrip("/").split(maxsplit=1)[0].lower() if text.startswith("/") else ""
+    chat_id = update.effective_chat.id
     try:
-        sent = False
-        if media and media.get("url"):
-            sent = await _send_media(ctx.bot, update.effective_chat.id, media, response, kb)
-        elif photo:
-            legacy_media = {"type": "photo", "url": photo}
-            sent = await _send_media(ctx.bot, update.effective_chat.id, legacy_media, response, kb)
-
+        if await Engine(b).on_command(ctx, chat_id, cmd_name):
+            return
+        cmd = b.get("commands", {}).get(cmd_name)
+        if not cmd:
+            unknown = (b.get("unknown_reply") or "").strip()
+            if unknown and cmd_name:
+                await update.effective_message.reply_text(unknown, parse_mode=ParseMode.HTML)
+                storage.update_bot_stats(bot_id, sent=1)
+            return
+        # پاسخ نسخهٔ قدیمی
+        kb = _build_inline(cmd.get("buttons"))
+        media = cmd.get("media") or ({"type": "photo", "url": cmd["photo"]}
+                                     if cmd.get("photo") else None)
+        response = cmd.get("response", "")
+        sent = bool(media and await _send_media(ctx.bot, chat_id, media, response, kb))
         if not sent:
             await update.effective_message.reply_text(
                 response, reply_markup=kb, parse_mode=ParseMode.HTML)
-
         storage.update_bot_stats(bot_id, sent=1)
         storage.record_daily(bot_id, "messages_out", 1)
     except Exception as e:
         log.error(f"❌ خطا در /{cmd_name} ساب‌بات {bot_id}: {e}")
-        try:
-            await update.effective_message.reply_text(response, reply_markup=kb)
-            storage.update_bot_stats(bot_id, sent=1)
-        except Exception:
-            pass
 
 
 async def _subbot_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
-    """موتور پاسخ خودکار با کلمه کلیدی — پیام‌های متنی غیر‌دستوری"""
+    """ترتیب اولویت: تیکت در انتظار → کلیدواژهٔ نقشه → قوانین قدیمی → پاسخ ناشناخته"""
     uid  = update.effective_user.id
     text = (update.effective_message.text or "").strip()
     b    = storage.get_bot(bot_id)
@@ -1121,49 +1694,197 @@ async def _subbot_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: s
     storage.update_bot_stats(bot_id, received=1)
     storage.record_daily(bot_id, "messages_in", 1)
 
-    rule  = Storage.match_rule(b.get("rules", []), text)
-    reply = (rule.get("response") if rule else None) or (b.get("unknown_reply") or "").strip()
-    if not reply and not (rule and rule.get("media")):
+    if not await _check_force_join(ctx, bot_id, b, update):
         return
 
-    kb    = _build_inline(rule.get("buttons")) if rule else None
-    media = rule.get("media") if rule else None
+    chat_id = update.effective_chat.id
     try:
-        sent = False
-        if media and media.get("url"):
-            sent = await _send_media(ctx.bot, update.effective_chat.id, media, reply, kb)
+        eng = Engine(b)
+        if await eng.on_ticket_text(ctx, chat_id, text):
+            return
+        if await eng.on_keyword(ctx, chat_id, text):
+            return
+
+        rule = Storage.match_rule(b.get("rules", []), text)
+        reply = (rule.get("response") if rule else None) or (b.get("unknown_reply") or "").strip()
+        if not reply and not (rule and rule.get("media")):
+            return
+        kb = _build_inline(rule.get("buttons")) if rule else None
+        media = rule.get("media") if rule else None
+        sent = bool(media and await _send_media(ctx.bot, chat_id, media, reply, kb))
         if not sent:
             await update.effective_message.reply_text(
                 reply, reply_markup=kb, parse_mode=ParseMode.HTML)
         storage.update_bot_stats(bot_id, sent=1)
         storage.record_daily(bot_id, "messages_out", 1)
-    except Exception:
-        try:
-            await update.effective_message.reply_text(reply, reply_markup=kb)
-            storage.update_bot_stats(bot_id, sent=1)
-        except Exception:
-            pass
+    except Exception as e:
+        log.error(f"❌ خطا در متن ساب‌بات {bot_id}: {e}")
 
 
 async def _subbot_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: str):
     q    = update.callback_query
     data = q.data or ""
-    await q.answer()
-
     b = storage.get_bot(bot_id)
     if not b:
+        await q.answer()
         return
 
-    for cmd_name, cmd in b.get("commands", {}).items():
-        if data in cmd.get("callbacks", {}):
-            resp = cmd["callbacks"][data]
-            await q.message.reply_text(resp)
-            storage.update_bot_stats(bot_id, sent=1)
-            return
+    chat_id = update.effective_chat.id
+    uid = update.effective_user.id
+
+    if data == "fj:check":
+        ok = await _check_force_join(ctx, bot_id, b, update)
+        await q.answer("✅ عضویت تأیید شد" if ok else "❌ هنوز عضو نشده‌اید",
+                       show_alert=True)
+        if ok:
+            await _subbot_start(update, ctx, bot_id)
+        return
+
+    if data.startswith("cmd:"):
+        name = data[4:16]
+        try:
+            handled = await Engine(b).on_command(ctx, chat_id, name)
+            if not handled:
+                await _legacy_command_send(b, name, ctx, chat_id)
+            await q.answer()
+        except Exception as e:
+            log.error(f"❌ menu {bot_id}: {e}")
+            await q.answer()
+        return
+
+    try:
+        state = await Engine(b).on_callback(ctx, chat_id, data, q.message, user_id=uid)
+        if state == "legacy":
+            await _legacy_callback(b, data, ctx, chat_id)
+        await q.answer()
+    except Exception as e:
+        log.error(f"❌ callback {bot_id}: {e}")
+        await q.answer("خطا در پردازش دکمه", show_alert=True)
+
+
+async def _legacy_command_send(b, cmd_name, ctx, chat_id):
+    cmd = b.get("commands", {}).get(cmd_name)
+    if not cmd:
+        return
+    kb = _build_inline(cmd.get("buttons"))
+    media = cmd.get("media") or ({"type": "photo", "url": cmd["photo"]}
+                                 if cmd.get("photo") else None)
+    sent = bool(media and await _send_media(ctx.bot, chat_id, media, cmd.get("response", ""), kb))
+    if not sent:
+        try:
+            await ctx.bot.send_message(chat_id, cmd.get("response", ""),
+                                       reply_markup=kb, parse_mode=ParseMode.HTML)
+        except Exception:
+            await ctx.bot.send_message(chat_id, cmd.get("response", ""),
+                                       reply_markup=kb)
+    storage.update_bot_stats(b["bot_id"], sent=1)
 
 
 # ══════════════════════════════════════════════════════════════════════
 # ربات مادر
+async def mother_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id) and not storage.get_user(update.effective_user.id):
+        return
+    await update.effective_message.reply_text(
+        "🤖 <b>دستورهای ربات مادر</b>\n\n"
+        "<code>/start</code> — باز کردن پنل\n"
+        "<code>/mybots</code> — ربات‌های من\n"
+        "<code>/tickets &lt;bot_id&gt;</code> — آخرین تیکت‌ها\n"
+        "<code>/reply &lt;کد&gt; متن</code> — پاسخ به یک تیکت\n\n"
+        "💡 برای مدیریت کامل نقشه و تیکت‌ها، دکمهٔ پنل را بزنید.",
+        parse_mode=ParseMode.HTML)
+
+
+async def mother_my_bots(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    bots = storage.get_user_bots(uid) if storage.get_user(uid) else []
+    if is_admin(uid):
+        bots = bots or storage.get_all_bots()[:20]
+    if not bots:
+        await update.effective_message.reply_text("ربتی به حساب شما متصل نیست.")
+        return
+    lines = []
+    for b in bots[:30]:
+        state = "🟢" if factory.is_running(b["bot_id"]) else "⚪"
+        lines.append(f"{state} <code>@{h_escape(b.get('bot_username') or '—')}</code> · "
+                     f"<code>{b['bot_id']}</code>")
+    await update.effective_message.reply_text(
+        "🤖 <b>ربات‌ها</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def mother_list_tickets(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    bot_id = (update.effective_message.text or "").split(maxsplit=1)
+    bot_id = bot_id[1].strip() if len(bot_id) > 1 else ""
+    b = storage.get_bot(bot_id) if bot_id else None
+    if not b:
+        mine = [x for x in storage.get_user_bots(update.effective_user.id)] \
+            if storage.get_user(update.effective_user.id) else []
+        if len(mine) == 1:
+            b = mine[0]
+        else:
+            await update.effective_message.reply_text(
+                "شناسهٔ ربات را بدهید:\n<code>/tickets &lt;bot_id&gt;</code>",
+                parse_mode=ParseMode.HTML)
+            return
+    if update.effective_user.id not in {int(b.get("owner_uid") or 0)} | set(ADMIN_IDS):
+        await update.effective_message.reply_text("🚫 این ربات مال شما نیست.")
+        return
+    tks = storage.ticket_list(b["bot_id"], 10)
+    if not tks:
+        await update.effective_message.reply_text("تیکتی ثبت نشده است.")
+        return
+    out = [f"🎟 <b>تیکت‌های @{h_escape(b.get('bot_username') or '')}</b>"]
+    for t in tks:
+        st = "✅" if t.get("reply") else "🔵"
+        out.append(f"{st} <code>{t['id']}</code> — {h_escape((t.get('text') or '')[:60])}")
+    out.append(f"\nبرای پاسخ: <code>/reply {tks[0]['id']} متن شما</code>")
+    await update.effective_message.reply_text("\n".join(out), parse_mode=ParseMode.HTML)
+
+
+async def mother_reply_ticket(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    parts = (update.effective_message.text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        await update.effective_message.reply_text(
+            "قالب: <code>/reply &lt;کد تیکت&gt; &lt;متن پاسخ&gt;</code>",
+            parse_mode=ParseMode.HTML)
+        return
+    tid, text = parts[1].strip().upper(), parts[2].strip()
+    uid = update.effective_user.id
+
+    target = None
+    for b in storage.get_all_bots():
+        if uid in {int(x) for x in (b.get("ticket_admins") or [])
+                   if str(x).lstrip("-").isdigit()} | {int(b.get("owner_uid") or 0)} | set(ADMIN_IDS):
+            if any(t.get("id") == tid for t in storage.ticket_list(b["bot_id"], 200)):
+                target = b
+                break
+    if not target:
+        await update.effective_message.reply_text(f"تیکت <code>{tid}</code> نیافتم.",
+                                                  parse_mode=ParseMode.HTML)
+        return
+    if not storage.ticket_reply(target["bot_id"], tid, text[:4000]):
+        await update.effective_message.reply_text("ثبت پاسخ ناموفق بود.")
+        return
+
+    tk = next((t for t in storage.ticket_list(target["bot_id"], 200) if t.get("id") == tid), None)
+    sub = factory.get_bot_instance(target["bot_id"])
+    runner = factory._runners.get(target["bot_id"])
+    if sub and runner and runner._loop and tk:
+        try:
+            fut = asyncio.run_coroutine_threadsafe(
+                sub.send_message(tk["uid"],
+                                 f"🎟 <b>پاسخ تیکت {tid}</b>\n\n{_html(text)}",
+                                 parse_mode=ParseMode.HTML),
+                runner._loop)
+            await asyncio.wrap_future(fut)
+            await update.effective_message.reply_text(f"✅ پاسخ تیکت {tid} ارسال شد.")
+            return
+        except Exception as e:
+            log.warning(f"mother reply {tid}: {e}")
+    await update.effective_message.reply_text(
+        f"پاسخ ذخیره شد، اما ارسال نشد (ربات خاموش است؟) — از پنل دوباره بفرستید.")
+
+
 # ══════════════════════════════════════════════════════════════════════
 async def mother_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     global mother_bot_instance, mother_bot_loop
@@ -1289,12 +2010,29 @@ def run_mother_bot():
     asyncio.set_event_loop(loop)
 
     async def _run():
+        global mother_bot_instance, mother_bot_loop
         app = Application.builder().token(PLATFORM_BOT_TOKEN).build()
         app.add_handler(CommandHandler("start", mother_start))
+        app.add_handler(CommandHandler("mybots", mother_my_bots))
+        app.add_handler(CommandHandler("tickets", mother_list_tickets))
+        app.add_handler(CommandHandler("reply", mother_reply_ticket))
+        app.add_handler(CommandHandler("help", mother_help))
         app.add_handler(CallbackQueryHandler(mother_callback))
         log.info("🤖 ربات مادر شروع به polling کرد")
         await app.initialize()
         await app.start()
+        mother_bot_instance = app.bot
+        mother_bot_loop = asyncio.get_running_loop()
+        try:
+            await app.bot.set_my_commands([
+                BotCommand("start", "باز کردن پنل مدیریت"),
+                BotCommand("mybots", "ربات‌های من"),
+                BotCommand("tickets", "تیکت‌های ربات"),
+                BotCommand("reply", "پاسخ به یک تیکت"),
+                BotCommand("help", "راهنما"),
+            ])
+        except Exception:
+            pass
         await app.updater.start_polling(drop_pending_updates=True)
         try:
             while True:
@@ -1315,6 +2053,15 @@ def run_mother_bot():
 flask_app = Flask(__name__)
 
 
+def _public_user(u: dict) -> dict:
+    """برداشتن فیلدهای حساس از کاربر پیش از بازگشت در API"""
+    if not isinstance(u, dict):
+        return u
+    for k in ("password_hash", "auth_token", "_id", "registration_ip", "device_id"):
+        u.pop(k, None)
+    return u
+
+
 def get_current_user():
     init_data = request.headers.get("X-Init-Data", "")
     if init_data:
@@ -1328,7 +2075,7 @@ def get_current_user():
                         int(uid), user.get("username", ""), user.get("first_name", "")
                     )
                 if not db_user.get("is_banned"):
-                    return db_user, None
+                    return _public_user(db_user), None
         return None, (jsonify({"error": "initData نامعتبر است"}), 401)
     
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -1336,7 +2083,7 @@ def get_current_user():
         user = storage.get_user_by_token(token)
         if user:
             if not user.get("is_banned"):
-                return user, None
+                return _public_user(user), None
         return None, (jsonify({"error": "توکن نامعتبر یا منقضی شده"}), 401)
     
     return None, (jsonify({"error": "احراز هویت نشده"}), 401)
@@ -1527,6 +2274,7 @@ def api_set_command(bot_id, cmd_name):
     log.info(f"💾 ذخیره دستور /{cmd_name} برای {bot_id}: media={media}, photo={bool(photo)}, buttons={bool(buttons)}")
 
     storage.set_command(bot_id, cmd_name, response, buttons, photo, media, description)
+    _mirror_cmd_in_flow(bot_id, cmd_name)
     return jsonify({"message": f"دستور /{cmd_name} ذخیره شد"})
 
 @flask_app.route("/api/bots/<bot_id>/commands/<cmd_name>", methods=["DELETE"])
@@ -1537,6 +2285,7 @@ def api_delete_command(bot_id, cmd_name):
     _, err = get_owned_bot(bot_id)
     if err: return err
     storage.delete_command(bot_id, cmd_name)
+    _mirror_cmd_in_flow(bot_id, cmd_name, removed=True)
     return jsonify({"message": f"دستور /{cmd_name} حذف شد"})
 
 
@@ -1766,6 +2515,422 @@ def api_sync_menu(bot_id):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# /api/bots/<bot_id>/flow — موتور جریان: ذخیره، اعمال، تست، تیکت‌ها
+# ══════════════════════════════════════════════════════════════════════
+MAX_NODES = 400
+MAX_EDGES = 800
+NODE_KINDS = ("cmd", "reply", "image", "link", "ticket", "trigger")
+
+
+def _clean_flow(raw):
+    """اعتبارسنجی سخت‌گیرانهٔ گراف پیش از ذخیره"""
+    if not isinstance(raw, dict):
+        return None, "قالب نقشه نامعتبر است"
+    nodes_raw, edges_raw = raw.get("nodes"), raw.get("edges") or []
+    if not isinstance(nodes_raw, list) or not isinstance(edges_raw, list):
+        return None, "کارت‌ها و سیم‌ها باید فهرست باشند"
+    if len(nodes_raw) > MAX_NODES:
+        return None, f"حداکثر {MAX_NODES} کارت مجاز است"
+    if len(edges_raw) > MAX_EDGES:
+        return None, f"حداکثر {MAX_EDGES} اتصال مجاز است"
+
+    def s(v, n):
+        return str(v if v is not None else "")[:n]
+
+    nodes, seen_cmd = {}, set()
+    for nd in nodes_raw:
+        if not isinstance(nd, dict):
+            return None, "هر کارت باید شیء باشد"
+        nid = s(nd.get("id"), 24).strip()
+        kind = s(nd.get("kind"), 16)
+        if not re.fullmatch(r"[A-Za-z0-9_\-]{2,24}", nid):
+            return None, f"شناسهٔ کارت نامعتبر است (۲ تا ۲۴ نویسه): {nid!r}"
+        if kind not in NODE_KINDS:
+            return None, f"نوع کارت نامعتبر است: {kind}"
+        try:
+            x, y = int(float(nd.get("x") or 0)), int(float(nd.get("y") or 0))
+        except (TypeError, ValueError):
+            x = y = 0
+        clean = {"id": nid, "kind": kind,
+                 "x": max(-20000, min(20000, x)), "y": max(-20000, min(20000, y))}
+
+        if kind == "cmd":
+            name = re.sub(r"[^a-z0-9_]", "", s(nd.get("name"), 32).strip().lstrip("/").lower())
+            if not name:
+                return None, "کارت دستور نام ندارد"
+            if name in seen_cmd:
+                return None, f"دستور تکراری: /{name}"
+            seen_cmd.add(name)
+            clean.update({"name": name,
+                          "text": s(nd.get("text") or nd.get("response"), 4000),
+                          "description": s(nd.get("description"), 60)})
+        elif kind == "reply":
+            clean["text"] = s(nd.get("text"), 4000)
+            clean["label"] = s(nd.get("label"), 64)
+            if nd.get("role") == "group":
+                clean["role"] = "group"
+        elif kind == "trigger":
+            kws = nd.get("keywords")
+            if not isinstance(kws, list) or not [k for k in kws if str(k).strip()]:
+                return None, f"کارت «{nid}»: حداقل یک کلیدواژه لازم است"
+            mode = s(nd.get("mode"), 12) or "contains"
+            if mode not in VALID_MODES:
+                return None, f"کارت «{nid}»: نوع تطبیق نامعتبر است"
+            for k in kws:
+                if mode == "regex":
+                    try:
+                        re.compile(str(k))
+                    except re.error as e:
+                        return None, f"کارت «{nid}»: الگوی نامعتبر ({e})"
+            clean["keywords"] = [s(k, 60).strip() for k in kws if str(k).strip()][:20]
+            clean["mode"] = mode
+            clean["label"] = s(nd.get("label"), 64)
+            clean["text"] = s(nd.get("text") or nd.get("response"), 4000)
+        elif kind in ("image", "link"):
+            url = s(nd.get("url"), 500).strip()
+            if url and not url.startswith(("http://", "https://")):
+                return None, f"کارت «{nid}»: پیوند باید با http شروع شود"
+            clean["url"] = url
+            clean["text"] = s(nd.get("text") or nd.get("caption"), 1024)
+            clean["caption"] = clean["text"]
+            if kind == "image":
+                mt = s(nd.get("mediaType"), 12) or "photo"
+                clean["mediaType"] = mt if mt in MEDIA_TYPES else "photo"
+        elif kind == "ticket":
+            clean["text"] = s(nd.get("text"), 2000)
+            words = nd.get("words")
+            if words is not None and not isinstance(words, list):
+                return None, f"کارت «{nid}»: کلمات عبور نامعتبر است"
+            clean["words"] = [s(w, 30).strip() for w in (words or []) if str(w).strip()][:12]
+        nodes[nid] = clean
+
+    edges, seen_edge = [], set()
+    for e in edges_raw:
+        if not isinstance(e, dict):
+            continue
+        f, t = s(e.get("from"), 24), s(e.get("to"), 24)
+        if f not in nodes or t not in nodes or f == t or (f, t) in seen_edge:
+            continue
+        seen_edge.add((f, t))
+        edges.append({"from": f, "to": t})
+
+    # عمق تودرتویی گروه‌ها: موتور فقط ۳ سطح را باز می‌کند، سطح چهارم دور ریخته می‌شود
+    kids = {}
+    for e in edges:
+        f, t = e["from"], e["to"]
+        if nodes[f].get("role") == "group" and nodes[t].get("role") == "group":
+            kids.setdefault(f, []).append(t)
+
+    def _depth(i, trail):
+        best = 0
+        for j in kids.get(i, ()):
+            if j in trail:
+                continue
+            best = max(best, 1 + _depth(j, trail | {j}))
+        return best
+
+    for nid_ in nodes:
+        if nodes[nid_].get("role") == "group" and _depth(nid_, {nid_}) > 2:
+            return None, f"گروه «{nid_}» بیش از ۳ سطح تودرتو است — ساده‌اش کن"
+
+    return {"version": FLOW_VERSION, "nodes": list(nodes.values()), "edges": edges}, None
+
+
+def _sync_commands_from_flow(bot_id: str, graph: dict) -> int:
+    """گراف را به ساختار commands نسخهٔ قدیمی هم می‌نویسد تا هیچ نقطه‌ای از پنل نشکند"""
+    comp = Flow(graph).compile_commands()
+    b = storage.get_bot(bot_id) or {}
+    old = b.get("commands", {})
+    for name, c in comp.items():
+        storage.set_command(bot_id, name, c["response"], c["buttons"],
+                            c["photo"], c["media"], c["description"])
+        new_cb = c["callbacks"]
+        prev_cb = (old.get(name) or {}).get("callbacks") or {}
+        for cid, resp in new_cb.items():
+            if prev_cb.get(cid) != resp:
+                storage.set_command_callback(bot_id, name, cid, resp)
+        for cid in prev_cb:
+            if cid not in new_cb:
+                storage.delete_command_callback(bot_id, name, cid)
+    for name in old:
+        if name not in comp and name != "start":
+            storage.delete_command(bot_id, name)
+    return len(comp)
+
+
+def _mirror_cmd_in_flow(bot_id: str, cmd_name: str, removed: bool = False):
+    """تغییر دستور از پنل کلاسیک را در گرافِ ذخیره‌شده هم منعکس می‌کند"""
+    b = storage.get_bot(bot_id) or {}
+    raw = b.get("flow")
+    if not (isinstance(raw, dict) and raw.get("nodes")):
+        return                                   # هنوز گراف واقعی‌ای ساخته نشده
+    nodes, edges = list(raw["nodes"]), list(raw["edges"])
+    name = str(cmd_name).lstrip("/").lower()
+    hit = next((n for n in nodes
+                if isinstance(n, dict) and n.get("kind") == "cmd"
+                and str(n.get("name") or "").lstrip("/").lower() == name), None)
+    if removed:
+        if not hit:
+            return
+        nid_ = str(hit["id"])
+        nodes = [n for n in nodes if str(n.get("id")) != nid_]
+        edges = [e for e in edges if e.get("from") != nid_ and e.get("to") != nid_]
+    else:
+        c = (b.get("commands") or {}).get(name) or {}
+        if hit:
+            hit = dict(hit)
+            hit["text"] = str(c.get("response") or "")[:4000]
+            hit["description"] = str(c.get("description") or "")[:60]
+            nodes = [hit if str(n.get("id")) == str(hit["id"]) else n for n in nodes]
+        else:
+            nodes.append({"id": _short_id("c", name), "kind": "cmd", "name": name,
+                          "text": str(c.get("response") or "")[:4000],
+                          "description": str(c.get("description") or "")[:60],
+                          "x": 40, "y": 40 + 130 * len(nodes)})
+    cleaned, verr = _clean_flow({"nodes": nodes, "edges": edges})
+    if not verr and cleaned:
+        storage.set_flow(bot_id, cleaned)
+
+
+@flask_app.route("/api/bots/<bot_id>/flow", methods=["GET", "PUT"])
+@auth_required
+def api_flow(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err:
+        return err
+
+    if request.method == "GET":
+        graph = b.get("flow")
+        derived = not (isinstance(graph, dict) and graph.get("nodes"))
+        if derived:
+            graph = legacy_to_graph(b)
+        return jsonify({"flow": graph, "derived": derived,
+                        "stats": Flow(graph).stats()})
+
+    data = request.get_json(force=True) or {}
+    cleaned, verr = _clean_flow(data.get("flow"))
+    if verr:
+        return jsonify({"error": verr}), 400
+    storage.set_flow(bot_id, cleaned)
+    out = {"flow": cleaned, "stats": Flow(cleaned).stats(), "message": "نقشه ذخیره شد"}
+    if data.get("apply"):
+        out["synced"] = _sync_commands_from_flow(bot_id, cleaned)
+        out["message"] = "نقشه ذخیره و روی ربات اعمال شد"
+    return jsonify(out)
+
+
+@flask_app.post("/api/bots/<bot_id>/flow/apply")
+@auth_required
+def api_flow_apply(bot_id):
+    _, err = get_owned_bot(bot_id)
+    if err:
+        return err
+    b = storage.get_bot(bot_id)
+    graph = b.get("flow")
+    if not (isinstance(graph, dict) and graph.get("nodes")):
+        graph = legacy_to_graph(b)
+    n = _sync_commands_from_flow(bot_id, graph)
+    msg = f"نقشه با {n} دستور روی ربات اعمال شد"
+    data = request.get_json(silent=True) or {}
+    if data.get("sync_menu", True) and b.get("auto_menu", True):
+        sub_bot = factory.get_bot_instance(bot_id)
+        runner = factory._runners.get(bot_id)
+        if sub_bot and runner and runner._loop:
+            try:
+                cmds = storage.get_bot(bot_id).get("commands", {})
+                menu = [BotCommand(command=k[:32],
+                                   description=((v or {}).get("description") or k)[:48])
+                        for k, v in cmds.items()]
+                asyncio.run_coroutine_threadsafe(
+                    sub_bot.set_my_commands(menu), runner._loop).result(timeout=15)
+                msg += " و منوی تلگرام همگام شد"
+            except Exception as e:
+                log.warning(f"sync-menu پس از apply {bot_id}: {e}")
+    return jsonify({"message": msg, "count": n})
+
+
+@flask_app.post("/api/bots/<bot_id>/flow/test")
+@auth_required
+def api_flow_test(bot_id):
+    """یک ورودی (دستور / متن کلیدواژه / callback دکمه) را روی گراف اجرا می‌کند — بدون ارسال پیام"""
+    b, err = get_owned_bot(bot_id)
+    if err:
+        return err
+    data = request.get_json(force=True) or {}
+    what = str(data.get("input") or "").strip()
+    if not what:
+        return jsonify({"error": "ورودی خالی است"}), 400
+
+    graph = data.get("flow")
+    if isinstance(graph, dict) and graph.get("nodes"):
+        cleaned, verr = _clean_flow(graph)
+        if verr:
+            return jsonify({"error": verr}), 400
+        flow = Flow(cleaned)
+    else:
+        flow = flow_from(b)
+
+    kind = data.get("as") or ("cmd" if what.startswith("/") else
+                              "callback" if what.startswith(CB_PREFIX) else "text")
+    if kind == "cmd":
+        nd = flow.entry_for(what.lstrip("/").split(maxsplit=1)[0])
+    elif kind == "callback":
+        p = flow.parse(what)
+        nd = (p or {}).get("tgt") or (p or {}).get("src")
+    else:
+        nd = flow.match_keyword(what)
+
+    if not nd:
+        return jsonify({"matched": False, "result": None,
+                        "hint": "هیچ کارتی با این ورودی مطابقت نکرد"})
+    msg = flow.render(nd)
+    if not msg:
+        return jsonify({"matched": True, "result": None,
+                        "hint": "کارت پیدا شد ولی محتوای قابل‌ارسال ندارد"})
+    btn_rows = []
+    for u in msg["urlb"]:
+        btn_rows.append([{"text": (u.get("text") or "لینک")[:64], "url": u["url"]}])
+    cbs = msg["cb"]
+    for i in range(0, len(cbs), 3):
+        btn_rows.append([{"text": x["text"], "callback_data": x["data"]} for x in cbs[i:i + 3]])
+    return jsonify({
+        "matched": True,
+        "node": {"id": nd["id"], "kind": nd["kind"],
+                 "label": nd.get("name") or nd.get("label") or ""},
+        "result": {
+            "text": msg["text"],
+            "media": {"type": msg["mtype"], "url": msg["url"]} if msg.get("url") else None,
+            "buttons": btn_rows,
+        },
+    })
+
+
+# ── بک‌آپ / بازگردانی کامل (دستورها + نقشه + قوانین + تنظیمات) ───────
+@flask_app.get("/api/bots/<bot_id>/backup")
+@auth_required
+def api_backup(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err:
+        return err
+    return jsonify({"backup": {
+        "version": 3,
+        "exported_at": now_ir().isoformat(),
+        "bot_username": b.get("bot_username", ""),
+        "commands": b.get("commands", {}),
+        "flow": b.get("flow") or legacy_to_graph(b),
+        "rules": b.get("rules", []),
+        "settings": {k: b.get(k) for k in
+                     ("welcome_message", "unknown_reply", "auto_menu",
+                      "force_join_channel", "ticket_admins")},
+    }})
+
+
+@flask_app.post("/api/bots/<bot_id>/restore")
+@auth_required
+def api_restore(bot_id):
+    _, err = get_owned_bot(bot_id)
+    if err:
+        return err
+    payload = request.get_json(force=True) or {}
+    bk = payload.get("backup") if isinstance(payload.get("backup"), dict) else payload
+    done = []
+
+    cmds = bk.get("commands")
+    if isinstance(cmds, dict):
+        for name, c in cmds.items():
+            if not isinstance(c, dict):
+                continue
+            nm = re.sub(r"[^a-z0-9_]", "", str(name).lstrip("/").lower())
+            if not nm:
+                continue
+            storage.set_command(bot_id, nm, str(c.get("response") or "")[:4000],
+                                c.get("buttons"), c.get("photo"), c.get("media"),
+                                str(c.get("description") or "")[:60])
+            for cid, resp in (c.get("callbacks") or {}).items():
+                storage.set_command_callback(bot_id, nm, str(cid)[:64], str(resp)[:4000])
+        done.append("دستورها")
+
+    # نقشه بعد از دستورها می‌آید؛ منبع حقیقت است و باید برنده باشد
+    if isinstance(bk.get("flow"), dict) and bk["flow"].get("nodes"):
+        cleaned, verr = _clean_flow(bk["flow"])
+        if verr:
+            return jsonify({"error": f"نقشهٔ بک‌آپ: {verr}"}), 400
+        storage.set_flow(bot_id, cleaned)
+        _sync_commands_from_flow(bot_id, cleaned)
+        done.append("نقشه")
+
+    if isinstance(bk.get("rules"), list):
+        cleaned, verr = _clean_rules(bk["rules"])
+        if not verr:
+            storage.set_bot_config(bot_id, {"rules": cleaned})
+            done.append("قوانین")
+
+    st = bk.get("settings")
+    if isinstance(st, dict):
+        storage.set_bot_config(bot_id, {k: st[k] for k in
+                                        ("welcome_message", "unknown_reply", "auto_menu")
+                                        if k in st})
+        if "force_join_channel" in st:
+            storage.set_force_join(bot_id, st["force_join_channel"] or None)
+        if isinstance(st.get("ticket_admins"), list):
+            storage.set_ticket_admins(bot_id, [int(x) for x in st["ticket_admins"]
+                                               if str(x).lstrip("-").isdigit()][:20])
+        done.append("تنظیمات")
+
+    if not done:
+        return jsonify({"error": "چیزی برای بازگردانی پیدا نشد"}), 400
+    return jsonify({"message": "بازگردانی شد: " + " · ".join(done), "restored": done})
+
+
+# ── صندوق تیکت‌ها ────────────────────────────────────────────────────
+@flask_app.route("/api/bots/<bot_id>/tickets", methods=["GET", "POST"])
+@auth_required
+def api_tickets(bot_id):
+    b, err = get_owned_bot(bot_id)
+    if err:
+        return err
+
+    if request.method == "GET":
+        return jsonify({"tickets": storage.ticket_list(bot_id, 100),
+                        "admins": b.get("ticket_admins", [])})
+
+    data = request.get_json(force=True) or {}
+
+    if "admins" in data:
+        uids = list(dict.fromkeys(int(x) for x in (data.get("admins") or [])
+                                  if str(x).lstrip("-").isdigit()))[:20]
+        storage.set_ticket_admins(bot_id, uids)
+        return jsonify({"admins": uids, "message": "پذیرنده‌ها ذخیره شدند"})
+
+    tid = str(data.get("id") or "").strip()
+    text = str(data.get("reply") or "").strip()
+    if not tid or not text:
+        return jsonify({"error": "کد تیکت و متن پاسخ لازم است"}), 400
+    if not storage.ticket_reply(bot_id, tid, text[:4000]):
+        return jsonify({"error": "تیکت یافت نشد"}), 404
+
+    sent = False
+    sub_bot = factory.get_bot_instance(bot_id)
+    runner = factory._runners.get(bot_id)
+    tk = next((t for t in storage.ticket_list(bot_id, 200) if t.get("id") == tid), None)
+    if sub_bot and runner and runner._loop and tk:
+        try:
+            asyncio.run_coroutine_threadsafe(
+                sub_bot.send_message(
+                    tk["uid"],
+                    f"🎟 <b>پاسخ تیکت {tid}</b>\n\n{_html(text)}",
+                    parse_mode=ParseMode.HTML),
+                runner._loop).result(timeout=10)
+            sent = True
+        except Exception as e:
+            log.warning(f"ارسال پاسخ تیکت {tid}: {e}")
+    return jsonify({"delivered": sent,
+                    "message": "پاسخ ارسال شد" if sent else
+                               "پاسخ ذخیره شد — برای ارسال، ربات باید روشن باشد"})
+
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Endpoint ارسال کد تایید (تلگرام)
 # ══════════════════════════════════════════════════════════════════════
 @flask_app.post("/api/auth/send-code")
@@ -1812,8 +2977,12 @@ def api_send_code():
         
         if not hasattr(storage, '_verification_codes'):
             storage._verification_codes = {}
-        
-        storage._verification_codes[telegram_username] = {
+        vc = storage._verification_codes
+        if len(vc) > 500:
+            for k in [k for k, v in vc.items() if v.get("expires", 0) < time.time()]:
+                vc.pop(k, None)
+
+        vc[telegram_username] = {
             "code": code,
             "user_id": user_id,
             "expires": time.time() + 600,
@@ -1932,7 +3101,7 @@ def api_register():
         
         return jsonify({
             "message": message,
-            "user": user,
+            "user": _public_user(user),
             "token": token
         }), 201
     except ValueError as e:
@@ -1955,7 +3124,7 @@ def api_login():
         user, token = storage.login_user(username, password)
         return jsonify({
             "message": "ورود موفق",
-            "user": user,
+            "user": _public_user(user),
             "token": token
         })
     except ValueError as e:
@@ -1982,8 +3151,8 @@ def api_auth_me():
     user = storage.get_user_by_token(token)
     if not user:
         return jsonify({"error": "توکن نامعتبر"}), 401
-    
-    return jsonify(user)
+
+    return jsonify(_public_user(user))
 
 
 # ══════════════════════════════════════════════════════════════════════
