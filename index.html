@@ -1196,29 +1196,31 @@
         const h = $("fhint"); if (h) h.innerHTML = `${n(STG.nodes.length)} کارت · ${n(STG.edges.length)} اتصال · <kbd>${Math.round(z * 100)}%</kbd>` + (stIssues.length ? ` · <b style="color:var(--amber)">${n(stIssues.length)} نکته</b>` : "");
       }
       function stWires() {
-        const svg = $("fs"); if (!svg) return;
-        const w = 200;
-        const mid = (nd) => nd.y + nodeH(nd) / 2;
-        const paths = STG.edges.map((e) => {
-          const a = nSt(e.from), b = nSt(e.to); if (!a || !b) return "";
-          const x1 = a.x + w, y1 = mid(a), x2 = b.x, y2 = mid(b);
-          const dx = Math.max(36, Math.abs(x2 - x1) * 0.45);
-          const hot = st.sel.includes(a.id) || st.sel.includes(b.id);
-          const bad = !canSend(a) || !canRecv(b);
-          const cls = (bad ? "bad" : hot ? "hot" : "") + (isGroup(a) || isGroup(b) ? " grp" : "");
-          const d = `M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
-          return `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
-            `<path class="wire ${cls}" d="${d}"/>` +
-            `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
-        }).join("");
-        // بعد از رسم path سیم، این را اضافه کنید:
+      const svg = $("fs"); if (!svg) return;
+      const w = 200;
+      const mid = (nd) => nd.y + nodeH(nd) / 2;
+      let paths = "";
+      STG.edges.forEach((e) => {
+        const a = nSt(e.from), b = nSt(e.to);
+        if (!a || !b) return;
+        const x1 = a.x + w, y1 = mid(a), x2 = b.x, y2 = mid(b);
+        const dx = Math.max(36, Math.abs(x2 - x1) * 0.45);
+        const hot = st.sel.includes(a.id) || st.sel.includes(b.id);
+        const bad = !canSend(a) || !canRecv(b);
+        const cls = (bad ? "bad" : hot ? "hot" : "") + (isGroup(a) || isGroup(b) ? " grp" : "");
+        const d = `M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+        paths += `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
+          `<path class="wire ${cls}" d="${d}"/>` +
+          `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
+        // برچسب سیم (فقط برای نود شرط)
         const lbl = stEdgeLabel(e);
         if (lbl) {
           const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-          svg += `<text x="${mx}" y="${my}" text-anchor="middle" fill="var(--ac)" font-size="11" style="cursor:pointer" onclick="stEditEdgeLabel('${e.from}','${e.to}')">${esc(lbl)}</text>`;
-        }        
-        const d = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
-        svg.innerHTML = paths + d;
+          paths += `<text x="${mx}" y="${my}" text-anchor="middle" fill="var(--ac)" font-size="11" style="cursor:pointer" onclick="stEditEdgeLabel('${e.from}','${e.to}')">${esc(lbl)}</text>`;
+        }
+      });
+      const draft = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
+      svg.innerHTML = paths + draft;
       }
 
       function stEdgeLabel(e) {
@@ -2149,17 +2151,11 @@
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
 
-      // آیکون‌های نودهای منطقی جدید
-      const IC_NEW = {
-        save: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
-        branch: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
-        ask: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-        webhook: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
-      };
-
-      // Override ic function for new icons
-      const _origIc = ic;
-      ic = (name) => IC_NEW[name] || _origIc(name);
+      // آیکون‌های نودهای منطقی جدید — اضافه به آبجکت I
+      I.save = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>';
+      I.branch = '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>';
+      I.ask = '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+      I.webhook = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>';
     }
     </script>
   </body>
