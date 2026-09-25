@@ -277,6 +277,8 @@
       .flow-palette button:active { transform: scale(.95); background: var(--panel2); border-color: var(--ac); color: var(--ac); }
       .flow-palette button svg { width: 14px; height: 14px; }
 
+
+      
       /* ════ استودیوی جریان — تمام‌صفحه ════ */
       #app.full { max-width: none; padding: 0; height: calc(100dvh - max(14px, env(safe-area-inset-bottom)) - 66px); display: flex; flex-direction: column; overflow: hidden; }
       /* ─ استودیو: چیدمان موبایل‌اول. سه نوار افقی باریک در بالا و پایین، پالت
@@ -387,6 +389,30 @@
       #app.full ~ #fab { display: none; }
 
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+      .node.var { --tone: #22c55e; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.var .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.cond { --tone: #f59e0b; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.cond .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.input { --tone: #3b82f6; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.input .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.api { --tone: #a855f7; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.api .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+
+      .edge-label {
+        position: absolute;
+        background: var(--panel);
+        border: 1px solid var(--hair);
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: var(--ac);
+        cursor: pointer;
+        user-select: none;
+      }
+      .edge-label:hover { background: var(--panel2); }
+
+
     </style>
   </head>
   <body>
@@ -701,16 +727,20 @@
          ══════════════════════════════════════════════════════════════════ */
       const ST_LIM = { nodes: 400, edges: 800, label: 64, text: 4000, url: 500, kw: 20 };
       const ST_KIND = {
-        cmd:     { t: "دستور",   ic: "code",  d: "ورودی ربات مثل ‎/start" },
-        reply:   { t: "پاسخ",    ic: "msg",   d: "متن و دکمهٔ پیام" },
-        group:   { t: "گروه",    ic: "folder", d: "دستهٔ دکمه‌ها و پیوندها" },
-        image:   { t: "رسانه",   ic: "image", d: "عکس، ویدیو، صوت، فایل" },
-        link:    { t: "پیوند",   ic: "link",  d: "دکمهٔ لینک‌دار" },
-        ticket:  { t: "تیکت",    ic: "ticket", d: "دریافت پیام کاربر و alert ادمین" },
-        trigger: { t: "کلیدواژه", ic: "spark", d: "پاسخ خودکار به متن کاربر" },
+        cmd:       { t: "دستور",     ic: "code",     d: "ورودی ربات مثل ‎/start" },
+        reply:     { t: "پاسخ",      ic: "msg",      d: "متن و دکمهٔ پیام" },
+        group:     { t: "گروه",      ic: "folder",   d: "دستهٔ دکمه‌ها و پیوندها" },
+        image:     { t: "رسانه",     ic: "image",    d: "عکس، ویدیو، صوت، فایل" },
+        link:      { t: "پیوند",     ic: "link",     d: "دکمهٔ لینک‌دار" },
+        ticket:    { t: "تیکت",      ic: "ticket",   d: "دریافت پیام کاربر و alert ادمین" },
+        trigger:   { t: "کلیدواژه",  ic: "spark",    d: "پاسخ خودکار به متن کاربر" },
+        variable:  { t: "متغیر",     ic: "save",     d: "ذخیره مقدار در متغیر" },
+        condition: { t: "شرط",       ic: "branch",   d: "شاخه‌بندی بر اساس متغیر" },
+        input:     { t: "دریافت",    ic: "ask",      d: "سوال و ذخیره پاسخ کاربر" },
+        api:       { t: "API",       ic: "webhook",  d: "فراخوانی آدرس بیرونی" },
       };
-      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1 };
-      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1 };
+      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, variable: 1, condition: 1, input: 1, api: 1 };
+      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, variable: 1, condition: 1, input: 1, api: 1 };
       const isGroup = (nd) => !!nd && nd.kind === "reply" && nd.role === "group";
       const canSend = (nd) => !!nd && (ST_SEND[nd.kind] || isGroup(nd) ? 1 : 0);
       /* گروه هم مبدأ است هم مقصد: به پیام والد وصل می‌شود و عضوهایش را باز می‌کند */
@@ -828,8 +858,7 @@
         stStatus(); stRender();
       });
       function exportGraph(g) {
-        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "keywords", "words"].forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
-      }
+        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "keywords", "mode", "words", "var_name", "value", "operator", "target_var", "type", "validation", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null && nd[k] !== "") o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to, label: e.label || "" })), view: stView(g.view) };
       /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
       function stParts(nd, depth) {
         const btns = [], urls = []; let media = null;
@@ -1133,7 +1162,12 @@
         if (nd.kind === "link") return { title: nd.text || "پیوند", sub: nd.url || "بی‌آدرس", badge: "url", icon: "link", tone: "url" };
         if (nd.kind === "image") return { title: ({ photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" })[nd.mediaType] || "رسانه", sub: nd.caption || (nd.url || "").replace(/^https?:\/\//, "").slice(0, 38) || "بی‌فایل", badge: nd.mediaType || "photo", icon: "image", tone: "img" };
         if (nd.kind === "ticket") return { title: "تیکت", sub: nd.text || "دریافت پیام کاربر", badge: (nd.words || []).length ? `pass ${n(nd.words.length)}` : "ticket", icon: "ticket", tone: "ticket" };
+        if (nd.kind === "variable") return { title: "متغیر", sub: nd.var_name ? `${nd.var_name} = ${nd.value || "…"}` : "بدون نام", badge: "var", icon: "save", tone: "var" };
+        if (nd.kind === "condition") return { title: "شرط", sub: nd.var_name ? `${nd.var_name} ${nd.operator || "=="} ${nd.value || "…"}` : "بدون متغیر", badge: "if", icon: "branch", tone: "cond" };
+        if (nd.kind === "input") return { title: "دریافت", sub: nd.text || "سوال از کاربر", badge: "ask", icon: "ask", tone: "input" };
+        if (nd.kind === "api") return { title: "API", sub: nd.url ? `${nd.method || "GET"} ${nd.url.slice(0, 40)}…` : "بدون آدرس", badge: "api", icon: "webhook", tone: "api" };
         return { title: "کلیدواژه", sub: (nd.keywords || []).slice(0, 3).join("، ") || "بدون کلیدواژه", badge: nd.mode || "kw", icon: "spark", tone: "trg" };
+
       }
       function nodeH(nd) { const el = $("fw") && $("fw").querySelector(`.node[data-id="${CSS.escape(nd.id)}"]`); return (el && el.offsetHeight) || 76; }
       function stRender() {
@@ -1177,9 +1211,34 @@
             `<path class="wire ${cls}" d="${d}"/>` +
             `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
         }).join("");
+        // بعد از رسم path سیم، این را اضافه کنید:
+        const lbl = stEdgeLabel(e);
+        if (lbl) {
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          svg += `<text x="${mx}" y="${my}" text-anchor="middle" fill="var(--ac)" font-size="11" style="cursor:pointer" onclick="stEditEdgeLabel('${e.from}','${e.to}')">${esc(lbl)}</text>`;
+        }        
         const d = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
         svg.innerHTML = paths + d;
       }
+
+      function stEdgeLabel(e) {
+        // فقط برای سیم‌های خروجی از نود شرط، برچسب قابل ویرایش بگذار
+        const src = nSt(e.from);
+        if (!src || src.kind !== "condition") return "";
+        return e.label || "";
+      }
+
+      function stEditEdgeLabel(from, to) {
+        const e = STG.edges.find((x) => x.from === from && x.to === to);
+        if (!e) return;
+        const label = prompt("برچسب سیم (مثلاً: بله، خیر، true، false):", e.label || "");
+        if (label !== null) {
+          e.label = label.trim().slice(0, 20);
+          stDirty(1);
+          stRender();
+        }
+      }      
+
       function stMini() {
         const m = $("stMini"); if (!m || !STG) return;
         if (!STG.nodes.length) { m.innerHTML = ""; return; }
@@ -1533,7 +1592,45 @@
           body = stField("کلیدواژه‌ها (با ویرگول)", `<input class="in" id="eKw" value="${esc((nd.keywords || []).join("، "))}" placeholder="قیمت، تعرفه، هزینه" oninput="st.editing.nd.keywords=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean);stUpdPrev()">`)
             + stField("نوع تطبیق", `<div class="btype" style="max-width:260px">${[["contains", "شامل"], ["exact", "دقیق"], ["regex", "الگو"]].map(([k, t]) => `<button class="${(nd.mode || "contains") === k ? "on" : ""}" onclick="st.editing.nd.mode='${k}';stDrawEdit()">${t}</button>`).join("")}</div>`)
             + stField("متن پاسخ", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`);
+
+        } else if (K === "variable") {
+          body = stField("نام متغیر", `<input class="in mono ltr" id="eVarName" value="${esc(nd.var_name || "")}" placeholder="user_name" oninput="st.editing.nd.var_name=this.value;stUpdPrev()">`)
+            + stField("مقدار", `<textarea class="in" id="eVarVal" rows="2" oninput="st.editing.nd.value=this.value;stUpdPrev()" placeholder="مثلاً: {{name}} یا مقدار ثابت">${esc(nd.value || "")}</textarea>`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">💡 از <code>{{var_name}}</code> در متن پیام‌ها استفاده کنید. متغیرها برای هر کاربر ذخیره می‌شوند.</p>`;
+        } else if (K === "condition") {
+          body = stField("متغیر مورد بررسی", `<input class="in mono ltr" id="eCondVar" value="${esc(nd.var_name || "")}" placeholder="age" oninput="st.editing.nd.var_name=this.value;stUpdPrev()">`)
+            + stField("عملگر", `<select class="in" id="eCondOp" onchange="st.editing.nd.operator=this.value;stUpdPrev()">
+                <option value="==" ${nd.operator==='=='?'selected':''}>برابر است با (==)</option>
+                <option value="!=" ${nd.operator==='!='?'selected':''}>برابر نیست با (!=)</option>
+                <option value="contains" ${nd.operator==='contains'?'selected':''}>شامل است (contains)</option>
+                <option value=">" ${nd.operator==='>'?'selected':''}>بزرگتر از (>)</option>
+                <option value="<" ${nd.operator==='<'?'selected':''}>کوچکتر از (<)</option>
+              </select>`)
+            + stField("مقدار مقایسه", `<input class="in" id="eCondVal" value="${esc(nd.value || "")}" placeholder="18" oninput="st.editing.nd.value=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">🔀 از این نود دو سیم بکشید: یکی با برچسب <b>بله</b> و دیگری با برچسب <b>خیر</b>.</p>`;
+        } else if (K === "input") {
+          body = stField("سوال از کاربر", `<textarea class="in" id="eInputText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="نام خود را وارد کنید…">${esc(nd.text || "")}</textarea>`)
+            + stField("ذخیره در متغیر", `<input class="in mono ltr" id="eInputVar" value="${esc(nd.target_var || "")}" placeholder="user_name" oninput="st.editing.nd.target_var=this.value;stUpdPrev()">`)
+            + stField("نوع ورودی", `<select class="in" id="eInputType" onchange="st.editing.nd.type=this.value;stUpdPrev()">
+                <option value="text" ${nd.type==='text'?'selected':''}>متن آزاد</option>
+                <option value="number" ${nd.type==='number'?'selected':''}>فقط عدد</option>
+                <option value="phone" ${nd.type==='phone'?'selected':''}>شماره تلفن</option>
+                <option value="email" ${nd.type==='email'?'selected':''}>ایمیل</option>
+                <option value="regex" ${nd.type==='regex'?'selected':''}>الگوی سفارشی (regex)</option>
+              </select>`)
+            + (nd.type === "regex" ? stField("الگوی اعتبارسنجی", `<input class="in mono ltr" id="eInputVal" value="${esc(nd.validation || "")}" placeholder="^[a-z]+$" oninput="st.editing.nd.validation=this.value;stUpdPrev()">`) : "")
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">⏳ ربات منتظر پاسخ کاربر می‌ماند و آن را در متغیر ذخیره می‌کند.</p>`;
+        } else if (K === "api") {
+          body = stField("آدرس API", `<input class="in ltr mono" id="eApiUrl" value="${esc(nd.url || "")}" placeholder="https://api.example.com/data" oninput="st.editing.nd.url=this.value;stUpdPrev()">`)
+            + stField("متد", `<select class="in" id="eApiMethod" onchange="st.editing.nd.method=this.value;stUpdPrev()">
+                <option value="GET" ${nd.method==='GET'?'selected':''}>GET</option>
+                <option value="POST" ${nd.method==='POST'?'selected':''}>POST</option>
+              </select>`)
+            + (nd.method === "POST" ? stField("بدنه درخواست (JSON)", `<textarea class="in mono ltr" id="eApiBody" rows="3" oninput="st.editing.nd.body=this.value;stUpdPrev()" placeholder='{"key": "{{var}}"}'>${esc(nd.body || "")}</textarea>`) : "")
+            + stField("ذخیره پاسخ در", `<input class="in mono ltr" id="eApiSave" value="${esc(nd.save_to || "api_result")}" placeholder="api_result" oninput="st.editing.nd.save_to=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">🌐 پاسخ API در متغیر ذخیره می‌شود. از <code>{{var}}</code> در body استفاده کنید.</p>`;
         }
+
         const rel = isNew ? "" : `<label>اتصالات</label>
           <div class="rel">
             <div class="rel-h">ورودی — چه کارت‌هایی این را صدا می‌زنند</div>
@@ -1609,6 +1706,29 @@
           if (!nd.keywords.length) return toast("حداقل یک کلیدواژه بنویس", 1);
         }
         if (nd.kind === "ticket") nd.words = (nd.words || []).map((w) => String(w).trim().slice(0, 30)).filter(Boolean).slice(0, 12);
+        if (nd.kind === "variable") {
+          if (!(nd.var_name || "").trim()) return toast("نام متغیر را بنویس", 1);
+          nd.var_name = nd.var_name.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+        }
+        if (nd.kind === "condition") {
+          if (!(nd.var_name || "").trim()) return toast("نام متغیر را بنویس", 1);
+          nd.var_name = nd.var_name.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+          nd.operator = nd.operator || "==";
+        }
+        if (nd.kind === "input") {
+          if (!(nd.text || "").trim()) return toast("سوال را بنویس", 1);
+          if (!(nd.target_var || "").trim()) return toast("نام متغیر مقصد را بنویس", 1);
+          nd.target_var = nd.target_var.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+          nd.type = nd.type || "text";
+        }
+        if (nd.kind === "api") {
+          let u = (nd.url || "").trim();
+          if (!u) return toast("آدرس API را بنویس", 1);
+          if (!/^https?:\/\//.test(u)) u = "https://" + u;
+          nd.url = u.slice(0, 500);
+          nd.method = nd.method || "GET";
+          nd.save_to = (nd.save_to || "api_result").trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64) || "api_result";
+        }
         if (nd.kind === "reply" && nd.role !== "group" && (nd.label || "").length > ST_LIM.label) return toast("برچسب دکمه بیش از ۶۴ نویسه", 1);
         if ((nd.text || "").length > ST_LIM.text) return toast("متن بیش از ۴۰۰۰ نویسه است", 1);
         const parent = E.isNew ? st.pendingParent : null;
@@ -2014,7 +2134,7 @@
         if (e.key === "f" || e.key === "F") { stFit(); return; }
         if (e.key === "v" || e.key === "V") { st.mode = "select"; $("stSel") && $("stSel").classList.add("on"); $("fc").classList.add("selmode"); return; }
         if (e.key === "l" || e.key === "L") { st.mode = "link"; $("stSel") && $("stSel").classList.remove("on"); $("fc").classList.remove("selmode"); return; }
-        const quick = { c: "cmd", r: "reply", g: "group", i: "image", k: "link", t: "ticket", w: "trigger" }[e.key.toLowerCase()];
+        const quick = { c: "cmd", r: "reply", g: "group", i: "image", k: "link", t: "ticket", w: "trigger", v: "variable", b: "condition", a: "input", p: "api" }[e.key.toLowerCase()];
         if (quick) { e.preventDefault(); stEdit(null, quick); }
       });
       window.addEventListener("beforeunload", (e) => { if (STG && st.dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -2028,6 +2148,19 @@
       }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
+
+      // آیکون‌های نودهای منطقی جدید
+      const IC_NEW = {
+        save: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+        branch: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
+        ask: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+        webhook: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
+      };
+
+      // Override ic function for new icons
+      const _origIc = ic;
+      ic = (name) => IC_NEW[name] || _origIc(name);
+
     </script>
   </body>
 </html>
