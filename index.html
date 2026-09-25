@@ -250,7 +250,7 @@
       .node .nt { color: var(--mu); font-size: 11.5px; line-height: 1.5; max-height: 48px; overflow: hidden; padding-inline-start: 30px; margin-bottom: 2px; }
       /* دکمه‌های ریز روی خودِ کارت (ویرایش/کپی/حذف) عمداً حذف شدند — روی گوشی همیشه گم می‌شدند.
          حالا کارت فقط برای انتخاب/جابه‌جایی/باز‌کردن ویرایشگر است؛ کارهای مخرب (حذف/کپی/گروه)
-         فقط از نوار بزرگِ پایین (.st-insp) که هنگام انتخاب ظاهر می‌شود انجام می‌شود — یک‌جا، بزرگ، بدون خطای لمسی. */
+         فقط از نوار بزرگِ پایین (.st-foot) که هنگام انتخاب ظاهر می‌شود انجام می‌شود — یک‌جا، بزرگ، بدون خطای لمسی. */
       .node .nb { display: flex; align-items: center; padding-inline-start: 30px; min-height: 4px; }
       .node .nicon { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; }
       .node.cmd .nicon { background: color-mix(in srgb, var(--ac) 18%, transparent); color: var(--ac); }
@@ -276,30 +276,41 @@
 
       /* ════ استودیوی جریان — تمام‌صفحه ════ */
       #app.full { max-width: none; padding: 0; height: calc(100dvh - max(14px, env(safe-area-inset-bottom)) - 66px); display: flex; flex-direction: column; overflow: hidden; }
-      .st-bar { display: flex; align-items: center; gap: 7px; padding: 9px 11px calc(9px); background: var(--panel); border-bottom: 1px solid var(--hair); flex: none; }
-      .st-bar .idn { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
-      .st-bar b { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .st-bar small { display: block; color: var(--mu); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .st-bar .ib { width: 38px; height: 38px; border-radius: 11px; }
-      .st-bar .ib svg { width: 17px; height: 17px; }
-      .st-status { display: inline-flex; align-items: center; gap: 5px; font: 600 10.5px var(--mono); color: var(--mu); padding: 4px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--hair); white-space: nowrap; max-width: 33vw; overflow: hidden; }
-      .st-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
-      .st-status.dirty { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
-      .st-status.dirty i { background: var(--amber); animation: pulse 1.3s infinite; }
-      .st-status.wait { color: var(--ac); }
-      .st-status.wait i { background: var(--ac); animation: pulse .7s infinite; }
+      /* ─ استودیو: چیدمان موبایل‌اول. سه نوار افقی باریک در بالا و پایین، پالت
+        کنار بالا، پهنهٔ نقشه که با انگشت جا‌به‌جا می‌شود. ارتفاع دکمه‌ها
+        حداقل ۴۸ پیکسل تا انگشت شست به‌راحتی به آن‌ها برسد. ─ */
+      .st-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px calc(7px + env(safe-area-inset-top, 0px)); background: var(--panel); border-bottom: 1px solid var(--hair); flex: none; }
+      .st-bar .ib { width: 42px; height: 42px; border-radius: 12px; flex: none; }
+      .st-bar .ib svg { width: 19px; height: 19px; }
+      .st-bar .st-bar-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+      .st-bar .st-bar-title b { font-size: 14.5px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .st-bar .st-bar-title small { color: var(--mu); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .st-bar .st-status { display: inline-flex; align-items: center; gap: 5px; font: 600 10px var(--mono); color: var(--mu); padding: 4px 9px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--hair); white-space: nowrap; max-width: 28vw; overflow: hidden; flex: none; }
+      .st-bar .st-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+      .st-bar .st-status.dirty { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+      .st-bar .st-status.dirty i { background: var(--amber); animation: pulse 1.3s infinite; }
+      .st-bar .st-status.wait { color: var(--ac); }
+      .st-bar .st-status.wait i { background: var(--ac); animation: pulse .7s infinite; }
       @keyframes pulse { 50% { opacity: .25; } }
-      .st-pal { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: none; padding: 9px 11px; background: var(--bg); border-bottom: 1px solid var(--hair); }
+      @media (max-width: 360px) { .st-bar .st-status { display: none; } }
+      /* پالت: تک‌ردیفه افقی با اسکرول صاف، چیپ‌های بزرگ برای انگشت */
+      .st-pal { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; flex: none; padding: 7px 10px 9px; background: var(--bg); border-bottom: 1px solid var(--hair); }
       .st-pal::-webkit-scrollbar { display: none; }
-      .st-pal .pal { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 13px; border-radius: 10px; background: var(--panel); border: 1px solid var(--hair); color: var(--tx); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: .14s; }
-      .st-pal .pal svg { width: 15px; height: 15px; color: var(--mu); }
+      .st-pal .pal { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 0 11px; border-radius: 999px; background: var(--panel); border: 1px solid var(--hair); color: var(--tx); font-size: 12px; font-weight: 600; cursor: pointer; transition: .12s; white-space: nowrap; }
+      .st-pal .pal-i { width: 24px; height: 24px; border-radius: 8px; background: var(--panel2); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+      .st-pal .pal-i svg { width: 14px; height: 14px; color: var(--mu); }
       .st-pal .pal:active { transform: scale(.94); border-color: var(--ac); }
       .st-pal .pal.on { border-color: var(--ac); color: var(--ac); background: var(--ac-soft); }
-      .st-pal .pal.on svg { color: var(--ac); }
-      .st-canvas { flex: 1 1 auto; height: auto !important; min-height: 0; border: 0; border-radius: 0; }
+      .st-pal .pal.on .pal-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
+      .st-pal .pal.on .pal-i svg { color: var(--ac); }
+      .st-pal .pal-sep { width: 1px; height: 22px; background: var(--hair); margin: 0 2px; flex: none; }
+      .st-pal .pal[data-a] { padding: 0; width: 40px; justify-content: center; }
+      /* پهنهٔ نقشه */
+      .st-canvas { flex: 1 1 auto; height: auto !important; min-height: 0; border: 0; border-radius: 0; position: relative; }
       .st-canvas.selmode { cursor: crosshair; }
       .st-band { position: absolute; z-index: 6; border: 1.5px dashed var(--ac); background: color-mix(in srgb, var(--ac) 10%, transparent); border-radius: 6px; pointer-events: none; }
-      .st-mini { position: absolute; z-index: 7; inset: auto 9px 40px auto; width: 104px; height: 72px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--hair); border-radius: 10px; overflow: hidden; cursor: pointer; box-shadow: var(--sh); }
+      /* مینی‌مپ: گوشهٔ بالا-چپ، کوچک‌تر، شیشه‌ای */
+      .st-mini { position: absolute; z-index: 7; top: 9px; left: 9px; width: 88px; height: 58px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; cursor: pointer; box-shadow: var(--sh); }
       .st-mini svg { width: 100%; height: 100%; display: block; }
       .st-mini line { stroke: var(--hair2); stroke-width: .7; }
       .st-mini rect { stroke: none; opacity: .85; }
@@ -311,13 +322,30 @@
       .st-mini rect.d-ticket { fill: #ef4444; }
       .st-mini rect.d-trigger { fill: #6366f1; }
       .st-mini rect.vp { fill: color-mix(in srgb, var(--ac) 16%, transparent); stroke: var(--ac); stroke-width: .8; }
-      .st-insp { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); box-shadow: 0 -8px 20px -14px rgba(0,0,0,.5); }
-      .st-insp .cnt { font: 700 12.5px var(--mono); color: var(--ac); background: var(--ac-soft); border-radius: 10px; padding: 7px 10px; flex: none; }
-      .st-insp .st-kind { color: var(--mu); font-size: 11px; display: none; }
-      .st-insp .btn { width: auto; height: 44px; padding: 0 14px; font-size: 13px; }
-      .st-insp .btn svg { width: 16px; height: 16px; }
-      .st-insp .ib { width: 44px; height: 44px; }
-      @media (min-width: 380px) { .st-insp .st-kind { display: inline; } }
+      /* زوم شناور: بالا-راست، سه دکمهٔ عمودی */
+      .st-zoom { position: absolute; z-index: 7; top: 9px; right: 9px; display: flex; flex-direction: column; gap: 4px; }
+      .st-zoom button { width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--hair); color: var(--tx); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh); transition: .12s; }
+      .st-zoom button:active { transform: scale(.92); border-color: var(--ac); }
+      .st-zoom button svg { width: 16px; height: 16px; color: var(--tx); }
+      .st-zoom .st-zoom-fit { margin-top: 4px; border-color: color-mix(in srgb, var(--ac) 40%, var(--hair)); color: var(--ac); }
+      /* نوار پایین: ستون فقرات تجربهٔ موبایل */
+      .st-foot { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; padding: 9px 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); box-shadow: 0 -10px 22px -16px rgba(0,0,0,.55); }
+      .st-foot .ft-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 54px; padding: 4px 2px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 11px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
+      .st-foot .ft-btn:active { transform: scale(.95); border-color: var(--ac); }
+      .st-foot .ft-btn .ft-i { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--panel); }
+      .st-foot .ft-btn .ft-i svg { width: 14px; height: 14px; color: var(--mu); }
+      .st-foot .ft-btn.ft-ac { border-color: color-mix(in srgb, var(--ac) 50%, var(--hair)); color: var(--ac); background: var(--ac-soft); }
+      .st-foot .ft-btn.ft-ac .ft-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
+      .st-foot .ft-btn.ft-ac .ft-i svg { color: var(--ac); }
+      .st-foot .ft-btn.ft-del { border-color: color-mix(in srgb, var(--red) 45%, var(--hair)); color: var(--red); background: color-mix(in srgb, var(--red) 8%, var(--panel)); }
+      .st-foot .ft-btn.ft-del .ft-i { background: color-mix(in srgb, var(--red) 16%, transparent); }
+      .st-foot .ft-btn.ft-del .ft-i svg { color: var(--red); }
+      .st-foot .ft-btn.ft-edit { border-color: color-mix(in srgb, var(--amber) 45%, var(--hair)); color: var(--amber); }
+      .st-foot .ft-btn.ft-edit .ft-i { background: color-mix(in srgb, var(--amber) 16%, transparent); }
+      .st-foot .ft-btn.ft-edit .ft-i svg { color: var(--amber); }
+      .st-foot .ft-btn.ft-cnt { background: var(--ac-soft); border-color: var(--ac); color: var(--ac); }
+      .st-foot .ft-cnt-n { font: 700 17px/1 var(--mono); }
+      @media (max-width: 380px) { .st-foot .ft-btn span:not(.ft-i):not(.ft-cnt-n) { font-size: 10.5px; } }
       /* کارت‌های استودیو */
       .node.grp { border-style: dashed; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
       .node.grp .nicon { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
@@ -388,7 +416,8 @@
       const I = {
         x: '<path d="M6 6l12 12M18 6L6 18"/>', down: '<path d="M6 9l6 6 6-6"/>', msg: '<path d="M4 5h16v11H9l-5 4z"/>',
         home: '<path d="M3 11l9-8 9 8M5 10v10h14V10"/>', bot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13v2M15 13v2"/>',
-        plus: '<path d="M12 5v14M5 12h14"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>', users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5M16 5a3.5 3.5 0 010 7M17.5 14.5c2.5.5 4 2.5 4 5"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>', users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5M16 5a3.5 3.5 0 010 7M17.5 14.5c2.5.5 4 2.5 4 5"/>',
+        "arrow-right": '<path d="M14 6l-6 6 6 6M8 12h12"/>',
         back: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
         plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0zM12 17v4"/>', send: '<path d="M21 3L3 10l7 3 3 7z"/>',
         lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>', logo: '<path d="M4 12l16-8-4 16-4-6z"/>',
@@ -424,7 +453,23 @@
       let tt;
       function toast(m, e) { const t = $("toast"); t.textContent = m; t.className = "on" + (e ? " err" : ""); clearTimeout(tt); tt = setTimeout(() => (t.className = ""), 2600); hap(e ? "error" : "success"); }
       function hap(t) { try { const H = tg?.HapticFeedback; if (!H) return; ["light","medium","heavy","rigid","soft"].includes(t) ? H.impactOccurred(t) : H.notificationOccurred(t); } catch (e) {} }
-      const sure = (m, f) => (tg?.showConfirm ? tg.showConfirm(m, (r) => r === "ok" && f()) : confirm(m) && f());
+      /* تأیید مخرب: Telegram WebApp روی iOS پنجرهٔ confirm مرورگر را بلوکه می‌کند و
+         tg.showConfirm در API رسمی وجود ندارد؛ پس شیت داخلی می‌سازیم. */
+      const sure = (m, f, okTxt, noTxt) => openConfirm(m, f, okTxt, noTxt);
+      function openConfirm(m, f, okTxt, noTxt) {
+        const sc = $("scrim"), sh = $("sheet");
+        sh.innerHTML = `<div class="sh-h"><span>تأیید عملیات</span><div class="ib" onclick="closeConfirm()">${ic("x")}</div></div>
+          <div class="sh-b" style="padding:6px 16px 18px">
+            <p style="font-size:14.5px;line-height:1.85;color:var(--tx);margin:6px 0 0">${esc(String(m))}</p>
+          </div>
+          <div class="sh-f" style="display:flex;gap:8px">
+            <button class="btn line" style="flex:1" onclick="closeConfirm()">${esc(noTxt || "انصراف")}</button>
+            <button class="btn red" style="flex:1.3" id="cfOk">${esc(okTxt || "تأیید")}</button>
+          </div>`;
+        sc.classList.add("on");
+        const ok = $("cfOk"); if (ok) ok.onclick = () => { closeConfirm(); try { f && f(); } catch (e) { console.error(e); } };
+      }
+      function closeConfirm() { closeSheet(); }
 
       async function api(p, o = {}) {
         const h = { "Content-Type": "application/json" };
@@ -512,7 +557,7 @@
               <div class="num">${configured && connected ? ic("check") : "4"}</div>
               <div class="c"><b>${configured && connected ? "همه‌چیز آماده است" : "قابلیت‌ها (افزونه‌ها)"}</b>
               <small>خوش‌آمد، پاسخ ناشناخته، قوانین کلیدواژه، پیام همگانی و عضویت اجباری را از تب افزونه فعال کن.</small>
-              <div class="foot"><button class="btn line" style="height:40px" ${connected ? "" : "disabled"} onclick="setTab('plug');go('bot','${bots[0]?.bot_id || ""}')">${ic("plug")} افزونه‌ها</button></div>
+              <div class="foot"><button class="btn line" style="height:40px" ${connected ? "" : "disabled"} onclick="go('bot','${bots[0]?.bot_id || ""}');setTab('plug')">${ic("plug")} افزونه‌ها</button></div>
               </div>
             </div>
           </div>`;
@@ -540,7 +585,7 @@
 
       /* ════ جزئیات/مدیریت یک ربات ════ */
       const vBot = guard(async (id) => {
-        if (id) { botId = id; tab = "cmds"; }
+        if (id) { botId = id; /* اگر قبلاً setTab فراخوانده شده باشد، آن را نگه می‌داریم */ }
         bot = (await api("/api/bots/" + botId)).bot;
         const s = bot.stats || {}, u = bot.bot_username || "";
         $("fab").classList.toggle("hide", tab !== "cmds"); $("fab").innerHTML = ic("plus");
@@ -1019,31 +1064,39 @@
           setTimeout(() => sure("نقشه‌ای که محلی ساخته‌ای (" + n(STG.nodes.length) + " کارت) روی سرور نیست؛ همین حالا اعمال شود؟", () => stPersist(true)), 300);
         }
         if (st.offline) toast("بک‌اند فعلی مسیر /flow را ندارد — استودیو در حالت سازگار کار می‌کند", 1);
+        /* ─ استودیو: چیدمان موبایل‌اول. سه نوار افقی (بالا/پالت/پایین) و یک پهنهٔ
+             شناور برای نقشه. نوار پایین بر اساس انتخاب، شکلش را عوض می‌کند. ─ */
         app().innerHTML = `
           <div class="st-bar">
-            <div class="idn">
-              <div class="ib" onclick="stMenu()">${ic("more")}</div>
-              <div style="min-width:0"><b>استودیوی جریان</b><small class="mono">@${esc(bot.bot_username || "—")}${st.derived ? " · از دستورها ساخته شد" : ""}</small></div>
+            <div class="ib" onclick="go('home')" title="خانه">${ic("arrow-right")}</div>
+            <div class="st-bar-title">
+              <b>استودیوی جریان</b>
+              <small class="mono">@${esc(bot.bot_username || "—")}${st.derived ? " · از دستورها" : ""}</small>
             </div>
             <span class="st-status" id="stStatus"></span>
-            <div class="ib" onclick="stUndo()" title="بازگشت">${ic("undo")}</div>
-            <div class="ib" onclick="stRedo()" title="دوباره">${ic("redo")}</div>
-            <div class="ib" onclick="stTest()" title="آزمون">${ic("play")}</div>
-            <div class="ib" style="color:var(--ac);border-color:var(--ac)" onclick="stApply()" title="اعمال روی ربات">${ic("check")}</div>
+            <div class="ib" onclick="stMenu()" title="منو">${ic("more")}</div>
           </div>
           <div class="st-pal" id="stPal">
-            ${Object.entries(ST_KIND).map(([k, v]) => `<button class="pal" data-k="${k}">${ic(v.ic)}${v.t}</button>`).join("")}
-            <button class="pal mode ${st.mode === "select" ? "on" : ""}" data-m="1" id="stSel">${ic("cursor")}انتخاب</button>
-            <button class="pal" data-a="fit">${ic("fit")}</button>
-            <button class="pal" data-a="zoom">${ic("zoomin")}</button>
+            ${Object.entries(ST_KIND).map(([k, v]) => `<button class="pal" data-k="${k}"><span class="pal-i">${ic(v.ic)}</span><span>${v.t}</span></button>`).join("")}
+            <span class="pal-sep"></span>
+            <button class="pal mode ${st.mode === "select" ? "on" : ""}" data-m="1" id="stSel"><span class="pal-i">${ic("cursor")}</span><span>انتخاب</span></button>
+            <button class="pal" data-a="fit" title="چیدن در صفحه"><span class="pal-i">${ic("fit")}</span></button>
+            <button class="pal" data-a="zoom-" title="کوچک‌نمایی"><span class="pal-i">${ic("zoomout")}</span></button>
+            <button class="pal" data-a="zoom+" title="بزرگ‌نمایی"><span class="pal-i">${ic("zoomin")}</span></button>
           </div>
           <div class="flow-canvas st-canvas" id="fc">
             <div class="flow-world" id="fw"></div>
             <div class="st-band" id="stBand" style="display:none"></div>
-            <div class="st-mini" id="stMini"></div>
             <div class="flow-hint" id="fhint"></div>
+            <div class="st-mini" id="stMini" title="نمای کلی"></div>
+            <div class="st-zoom">
+              <button onclick="stZoomAt(1.25)" aria-label="بزرگ‌نمایی">${ic("plus")}</button>
+              <button onclick="stZoomAt(0.8)" aria-label="کوچک‌نمایی">${ic("minus")}</button>
+              <button onclick="stFit()" aria-label="چیدن در صفحه" class="st-zoom-fit">${ic("fit")}</button>
+            </div>
           </div>
-          <div class="st-insp" id="stInsp" style="display:none"></div>`;
+          <div class="st-foot" id="stFoot"></div>`;
+        $("stFoot").innerHTML = stFootHtml();
         const c = $("fc");
         c.addEventListener("pointerdown", stDown);
         c.addEventListener("pointermove", stMove);
@@ -1055,7 +1108,8 @@
             if (b.dataset.k) { hap("light"); stEdit(null, b.dataset.k); return; }
             if (b.dataset.m) { st.mode = st.mode === "select" ? "link" : "select"; $("stSel").classList.toggle("on", st.mode === "select"); $("fc").classList.toggle("selmode", st.mode === "select"); toast(st.mode === "select" ? "حالت انتخاب: روی کارت بزن، یا دورش کادر بکش" : "حالت اتصال: از نقطهٔ کارت مبدأ بکش و روی مقصد رها کن"); return; }
             if (b.dataset.a === "fit") { stFit(); return; }
-            if (b.dataset.a === "zoom") { stZoomAt(1.25, null); return; }
+            if (b.dataset.a === "zoom+") { stZoomAt(1.25); return; }
+            if (b.dataset.a === "zoom-") { stZoomAt(0.8); return; }
           };
         });
         requestAnimationFrame(() => { stFit(); stRender(); });
@@ -1092,7 +1146,7 @@
           if (btns.some((x) => x.kind === "link")) chips.push(`<span class="nchip u">${n(btns.filter((x) => x.kind === "link").length)} url</span>`);
           if (btns.some((x) => x.kind === "image")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "image").length)} media</span>`);
           if (nd.kind === "cmd" && inOf(nd.id).length) chips.push(`<span class="nchip i">${n(inOf(nd.id).length)} in</span>`);
-          return `<div class="node ${s.tone} ${st.sel.includes(nd.id) ? "sel" : ""} ${bad ? (bad.includes("err") ? "bad" : "meh") : ""}" data-id="${nd.id}" style="transform:translate(${nd.x}px,${nd.y}px)">` +
+          return `<div class="node ${s.tone} ${st.sel.includes(nd.id) ? "sel" : ""} ${bad ? (bad.includes("err") ? "bad" : "meh") : ""}" data-id="${esc(nd.id)}" style="transform:translate(${nd.x}px,${nd.y}px)">` +
             (canSend(nd) ? `<i class="port out" data-port="${nd.id}"></i>` : "") +
             (canRecv(nd) ? `<i class="port in" data-port="in:${nd.id}"></i>` : "") +
             `<div class="nh"><span class="nicon">${ic(s.icon)}</span><b>${esc(s.title)}</b><span class="badge">${esc(String(s.badge))}</span></div>` +
@@ -1144,19 +1198,47 @@
           stRender();
         };
       }
-      function stInspector() {
-        const e = $("stInsp"); if (!e) return;
-        if (!st.sel.length) { e.style.display = "none"; return; }
-        e.style.display = "flex";
+      /* ── نوار پایین (شکل‌اش بسته به st.sel عوض می‌شود) ── */
+      function stFootHtml() {
+        const has = st.sel.length > 0;
         const one = stCur();
-        e.innerHTML = `<span class="cnt">${n(st.sel.length)} انتخاب</span>` +
-          (one ? `<span class="mono st-kind">${esc(ST_KIND[one.kind].t)}${isGroup(one) ? " · گروه" : ""}</span>` : "") +
-          (one ? `<button class="btn sm line" onclick="stEdit('${one.id}')">${ic("gear")} ویرایش</button>` : "") +
-          (st.sel.length > 1 ? `<button class="btn sm line" onclick="stGroupSel()">گروه</button>` : "") +
-          `<button class="btn sm line" onclick="stDupSel()">${ic("copy")}</button>` +
-          `<button class="btn sm red" style="width:auto" onclick="stDelSel()">${ic("trash")}</button>` +
-          `<div class="ib" style="margin-inline-start:auto" onclick="st.sel=[];stRender()">${ic("x")}</div>`;
+        const count = st.sel.length;
+        if (!has) {
+          /* چهار دکمهٔ اصلی؛ چیدمان دو به دو برای انگشت‌های شست */
+          return `<button class="ft-btn" data-a="test"><span class="ft-i">${ic("play")}</span><span>تست</span></button>` +
+            `<button class="ft-btn ft-ac" data-a="apply"><span class="ft-i">${ic("check")}</span><span>اعمال</span></button>` +
+            `<button class="ft-btn" data-a="layout"><span class="ft-i">${ic("fit")}</span><span>چیدمان</span></button>` +
+            `<button class="ft-btn" data-a="menu"><span class="ft-i">${ic("more")}</span><span>منو</span></button>`;
+        }
+        const editBtn = one ? `<button class="ft-btn ft-edit" data-a="edit" data-id="${esc(one.id)}"><span class="ft-i">${ic("gear")}</span><span>ویرایش</span></button>` : "";
+        const grpBtn = count > 1 ? `<button class="ft-btn" data-a="group"><span class="ft-i">${ic("folder")}</span><span>گروه</span></button>` : "";
+        return `<button class="ft-btn ft-cnt" data-a="clear-sel"><span class="ft-cnt-n">${n(count)}</span><span>انتخاب</span></button>` +
+          editBtn +
+          `<button class="ft-btn" data-a="dup"><span class="ft-i">${ic("copy")}</span><span>کپی</span></button>` +
+          grpBtn +
+          `<button class="ft-btn ft-del" data-a="del"><span class="ft-i">${ic("trash")}</span><span>حذف</span></button>`;
       }
+      function stFootUpdate() {
+        const f = $("stFoot"); if (!f) return;
+        f.innerHTML = stFootHtml();
+        f.querySelectorAll("[data-a]").forEach((b) => {
+          b.onclick = () => {
+            switch (b.dataset.a) {
+              case "test": return stTest();
+              case "apply": return stApply();
+              case "layout": return stAutoLayout();
+              case "menu": return stMenu();
+              case "edit": return stEdit(b.dataset.id);
+              case "group": return stGroupSel();
+              case "dup": return stDupSel();
+              case "del": return stDelSel();
+              case "clear-sel": st.sel = []; stRender(); return;
+            }
+          };
+        });
+      }
+      /* برای سازگاری با فراخوانی‌های قدیمی stRender→stInspector */
+      const stInspector = () => stFootUpdate();
       /* ── چیدمان خودکار ── */
       function autoLayout(nodes, edges, onlyNew) {
         if (!nodes.length) return;
@@ -1234,7 +1316,7 @@
         }
         const band = $("stBand");
         const nib = e.target.closest(".port.in");
-        if (nib) { const id = nib.dataset.port.slice(3); st.sel = [id]; const src = inOf(id); if (!src.length) return toast("این کارت ورودی ندارد", 1); stUnlink(src[src.length - 1].id, id); return; }
+        if (nib) { const id = nib.dataset.port.slice(3); st.sel = [id]; const src = inOf(id); if (!src.length) return toast("این کارت ورودی ندارد", 1); const which = src[src.length - 1]; sure(`اتصال ورودیِ این کارت قطع شود؟\n${stTitle(nSt(which.id) || which)}`, () => stUnlink(which.id, id)); return; }
         const outP = e.target.closest(".port.out");
         if (outP) {                                           /* شروع سیم */
           const nd = nSt(outP.dataset.port); if (!nd) return;
@@ -1246,9 +1328,7 @@
           const id = nodeEl.dataset.id, nd = nSt(id); if (!nd) return;
           if (e.shiftKey) st.sel = st.sel.includes(id) ? st.sel.filter((x) => x !== id) : [...st.sel, id];
           else if (!st.sel.includes(id)) st.sel = [id];
-          const moved = nd._tapAt && Date.now() - nd._tapAt < 340;
-          nd._tapAt = Date.now();
-          if (moved && st.sel.length === 1) { stEdit(id); return; }
+          /* تک‌ضرب فقط انتخاب می‌کند؛ ویرایش فقط با دو ضربهٔ سریع (در stUp) */
           st.act = { mode: "drag", id, sx: e.clientX, sy: e.clientY, moved: 0, orig: {} };
           (st.sel.includes(id) && st.sel.length > 1 ? st.sel : [id]).forEach((i) => { const t = nSt(i); if (t) st.act.orig[i] = { x: t.x, y: t.y }; });
           stRender(); return;
@@ -1306,7 +1386,17 @@
           if (a.hover) stLink(a.id, a.hover); else stWires();
           return;
         }
-        if (a.mode === "drag") { if ((a.moved || 0) < 6) stEdit(a.id); else stDirty(2); return; }
+        if (a.mode === "drag") {
+          if ((a.moved || 0) < 6) {
+            const nd = nSt(a.id); const now = Date.now();
+            if (nd && nd._tapAt && now - nd._tapAt < 360 && st.sel.length === 1) { stEdit(a.id); }
+            if (nd) nd._tapAt = now;
+            hap("light");
+            return;
+          }
+          stDirty(2);
+          return;
+        }
         if (a.mode === "pan") { if ((a.moved || 0) < 6) { st.sel = []; stRender(); } stMirror(); return; }
         if (a.mode === "band") {
           const b = $("stBand"); if (b) b.style.display = "none";
@@ -1645,6 +1735,8 @@
             <div class="item" onclick="closeSheet();stTickets()"><span class="sq">${ic("ticket")}</span><div class="g"><b>صندوق تیکت‌ها</b><small>پاسخ‌دهی و پذیرنده‌ها</small></div>${ic("next")}</div>
             <div class="item" onclick="closeSheet();stSettings()"><span class="sq">${ic("gear")}</span><div class="g"><b>تنظیمات ربات</b><small>خوش‌آمد، عضویت اجباری، منو</small></div>${ic("next")}</div>
             <div class="item" onclick="closeSheet();stIssuesSheet()"><span class="sq">${ic("shield")}</span><div class="g"><b>بررسی نقشه</b><small>${n((stIssues || []).length)} مورد</small></div>${ic("next")}</div>
+            <div class="item" onclick="closeSheet();stUndo()"><span class="sq">${ic("undo")}</span><div class="g"><b>بازگشت</b><small>${n((st.hist || []).length)} قدم قابل بازگشت</small></div></div>
+            <div class="item" onclick="closeSheet();stRedo()"><span class="sq">${ic("redo")}</span><div class="g"><b>دوباره</b><small>${n((st.redo || []).length)} قدم</small></div></div>
             <div class="item" onclick="stAutoLayout();closeSheet()"><span class="sq">${ic("fit")}</span><div class="g"><b>چیدمان خودکار</b><small>مرتب‌کردن کارت‌ها</small></div></div>
             <div class="item" onclick="closeSheet();stExport()"><span class="sq">${ic("download")}</span><div class="g"><b>خروجی JSON</b><small>بک‌آپ کامل ربات</small></div></div>
             <div class="item" onclick="closeSheet();stImport()"><span class="sq">${ic("code")}</span><div class="g"><b>بازگردانی JSON</b><small>درست از فایل بک‌آپ</small></div></div>
@@ -1798,17 +1890,44 @@
 
       /* ── مدیریت (تنظیمات) ── */
       const tSet = guard(async () => {
-        const g = bot.daily_stats || {}; const days = Object.keys(g).sort().slice(-7); const mx = Math.max(...days.map((d) => g[d].new_users || 0), 1);
+        const g = bot.daily_stats || {}; const days = Object.keys(g).filter((d) => g[d] && typeof g[d] === "object").sort().slice(-7); const mx = Math.max(1, ...days.map((d) => g[d]?.new_users || 0));
         const backup = JSON.stringify(bot.commands || {});
         $("tb").innerHTML =
-          (days.length ? `<h2 style="margin-top:4px">رشد کاربران · ۷ روز</h2><div class="card"><div class="chart">${days.map((d) => `<div class="col"><div class="cbar" style="height:${Math.max(6, ((g[d].new_users || 0) / mx) * 100)}%"></div><span class="clab">${d.slice(8)}</span></div>`).join("")}</div></div>` : "") +
+          (days.length ? `<h2 style="margin-top:4px">رشد کاربران · ۷ روز</h2><div class="card"><div class="chart">${days.map((d) => `<div class="col"><div class="cbar" style="height:${Math.max(6, ((g[d]?.new_users || 0) / mx) * 100)}%"></div><span class="clab">${d.slice(8)}</span></div>`).join("")}</div></div>` : "") +
           `<h2>منوی تلگرام</h2><div class="card" style="margin-bottom:10px"><p style="color:var(--mu);font-size:13px;margin-bottom:12px">دستورها را به منوی رسمی ربات اضافه می‌کند.</p><button class="btn line" id="syncb" onclick="syncMenu()">${ic("sync")} همگام‌سازی منو</button></div>
            <h2>پشتیبان / توسعه‌دهنده</h2><div class="card" style="margin-bottom:10px"><p style="color:var(--mu);font-size:13px;margin-bottom:10px">JSON دستورها را برون‌بَر یا درون‌ریزی کن.</p><div style="display:flex;gap:8px"><button class="btn line sm" style="flex:1" onclick="expJson()">${ic("download")} خروجی</button><button class="btn line sm" style="flex:1" onclick="impJson()">${ic("code")} ورودی</button></div></div>
            <h2>حذف</h2><div class="card"><p style="color:var(--mu);font-size:13px;margin-bottom:12px">حذف ربات برگشت‌ناپذیر است.</p><button class="btn red" onclick="delBot()">${ic("trash")} حذف ربات</button></div>`;
         window.__backup = backup;
       });
-      function expJson() { navigator.clipboard?.writeText(window.__backup || "{}").then(() => toast("JSON کپی شد")) || toast("در دسترس نیست", 1); }
-      function impJson() { const s = prompt("JSON دستورها را بچسبان:"); if (!s) return; let o; try { o = JSON.parse(s); } catch (e) { return toast("JSON نامعتبر", 1); } guard(async () => { for (const [name, c] of Object.entries(o)) { await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: { response: c.response || "", description: c.description || "", buttons: c.buttons || null, photo: c.photo || null, media: c.media || null } }); if (c.callbacks) for (const [id, r] of Object.entries(c.callbacks)) await api(`/api/bots/${botId}/commands/${name}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: r } }); } toast("بازیابی شد"); tSet(); tCmds(); })(); }
+      function expJson() {
+        const text = window.__backup || "{}";
+        const copy = () => navigator.clipboard?.writeText(text).then(() => toast("JSON کپی شد"), () => toast("کپی ناموفق", 1));
+        if (navigator.clipboard && window.isSecureContext) { copy(); return; }
+        /* WebApp/iOS: شیت داخلی */
+        $("sheet").innerHTML = `<div class="sh-h"><span>خروجی JSON</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><p style="color:var(--mu);font-size:13px">کلید کپی در iOS WebView در دسترس نیست؛ متن زیر را دستی کپی کن.</p>
+          <textarea class="in ltr mono" rows="6" readonly onclick="this.select()">${esc(text)}</textarea></div>
+          <div class="sh-f"><button class="btn" onclick="closeSheet()">بستن</button></div>`;
+        $("scrim").classList.add("on");
+      }
+      function impJson() {
+        $("sheet").innerHTML = `<div class="sh-h"><span>ورودی JSON دستورها</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b"><p style="color:var(--mu);font-size:13px">محتوای JSON را در کادر زیر بچسبان و تأیید کن.</p>
+          <textarea class="in ltr mono" id="impTA" rows="8" placeholder='{"start": {...}, "help": {...}}'></textarea></div>
+          <div class="sh-f"><button class="btn line" onclick="closeSheet()">انصراف</button><button class="btn" id="impOk">بازگردانی</button></div>`;
+        $("scrim").classList.add("on");
+        $("impOk").onclick = async () => {
+          const s = ($("impTA")?.value || "").trim();
+          if (!s) return toast("JSON خالی است", 1);
+          let o; try { o = JSON.parse(s); } catch (e) { return toast("JSON نامعتبر", 1); }
+          closeSheet();
+          for (const [name, c] of Object.entries(o)) {
+            await api(`/api/bots/${botId}/commands/${name}`, { method: "PUT", body: { response: c.response || "", description: c.description || "", buttons: c.buttons || null, photo: c.photo || null, media: c.media || null } });
+            if (c.callbacks) for (const [id, r] of Object.entries(c.callbacks)) await api(`/api/bots/${botId}/commands/${name}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: r } });
+          }
+          toast("بازیابی شد"); tSet(); tCmds();
+        };
+      }
       const syncMenu = guard(async () => { const b = $("syncb"); b.disabled = true; b.textContent = "در حال همگام‌سازی…"; try { const r = await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast(r.message || "همگام شد"); } finally { b && ((b.disabled = false), (b.innerHTML = ic("sync") + " همگام‌سازی منو")); } });
       const delBot = () => sure("ربات برای همیشه حذف شود؟", guard(async () => { await api("/api/bots/" + botId, { method: "DELETE" }); toast("حذف شد"); go("dev"); }));
 
