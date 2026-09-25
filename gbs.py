@@ -54,6 +54,15 @@ WEBHOOK_URL        = os.getenv("WEBHOOK_URL", "").strip().rstrip("/")
 API_HOST           = os.getenv("API_HOST", "0.0.0.0")
 API_PORT           = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
 
+# حالت اجرای ربات‌ها: اگر WEBHOOK_URL (آدرس https عمومی سرور) ست شده باشد،
+# همهٔ ربات‌ها (مادر + ساب‌بات‌ها) روی webhook اجرا می‌شوند: یک event-loop مشترک،
+# صفر thread و صفر پولینگ برای هرکدام — سبک، سریع و مقیاس‌پذیر برای صدها ربات.
+# اگر ست نشده باشد (مثلاً روی لپ‌تاپ بدون دامنهٔ عمومی)، رفتار قدیمیِ polling
+# با یک thread مستقل برای هر ربات دست‌نخورده باقی می‌ماند.
+USE_WEBHOOK        = bool(WEBHOOK_URL)
+WEBHOOK_PATH_PREFIX = "/tgwh"
+MOTHER_WEBHOOK_SECRET = secrets.token_urlsafe(24)
+
 ADMIN_IDS = {
     int(x) for x in os.getenv("ADMIN_IDS", "605611554").replace(" ", "").split(",")
     if x.strip().lstrip("-").isdigit()
@@ -900,6 +909,118 @@ storage = Storage()
 
 
 # ══════════════════════════════════════════════════════════════════════
+# حلقهٔ رویدادِ مشترک برای حالت Webhook
+# به‌جای اینکه هر ساب‌بات یک thread + یک asyncio loop + یک polling loop
+# جدا داشته باشد (همان چیزی که با تعداد بالای ربات، مصرف CPU/RAM را می‌ترکاند)،
+# در حالت webhook همهٔ Application ها روی یک event-loop مشترک زندگی می‌کنند
+# و فقط وقتی تلگرام یک آپدیت را به مسیر /tgwh/<bot_id> پوش می‌کند بیدار می‌شوند.
+# ══════════════════════════════════════════════════════════════════════
+BOT_LOOP: Optional[asyncio.AbstractEventLoop] = None
+_bot_loop_ready = threading.Event()
+
+
+def _bot_loop_main():
+    global BOT_LOOP
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    BOT_LOOP = loop
+    _bot_loop_ready.set()
+    try:
+        loop.run_forever()
+    finally:
+        loop.close()
+
+
+def start_bot_loop():
+    """فقط یک‌بار در main() صدا زده می‌شود."""
+    if BOT_LOOP is not None:
+        return
+    t = threading.Thread(target=_bot_loop_main, name="bot-loop", daemon=True)
+    t.start()
+    if not _bot_loop_ready.wait(timeout=10):
+        raise RuntimeError("راه‌اندازی حلقهٔ رویداد مشترک شکست خورد")
+
+
+def run_on_bot_loop(coro, timeout: Optional[float] = 20):
+    """یک کوروتین را روی حلقهٔ مشترک اجرا و منتظر نتیجه می‌ماند (برای فراخوانی از هر thread دیگر، مثل ترد Flask)."""
+    if BOT_LOOP is None:
+        raise RuntimeError("bot loop راه‌اندازی نشده — ابتدا start_bot_loop() را صدا بزن")
+    fut = asyncio.run_coroutine_threadsafe(coro, BOT_LOOP)
+    return fut.result(timeout=timeout)
+
+
+def fire_on_bot_loop(coro):
+    """یک کوروتین را بدون انتظار برای نتیجه روی حلقهٔ مشترک اجرا می‌کند (fire-and-forget)؛
+    برای پردازش آپدیت‌های ورودی از مسیر webhook تا درخواست HTTP تلگرام زود جواب بگیرد."""
+    if BOT_LOOP is None:
+        raise RuntimeError("bot loop راه‌اندازی نشده")
+    fut = asyncio.run_coroutine_threadsafe(coro, BOT_LOOP)
+
+    def _done(f):
+        exc = f.exception()
+        if exc:
+            log.error(f"خطا در پردازش آپدیتِ webhook: {exc}")
+    fut.add_done_callback(_done)
+    return fut
+
+
+class WebhookRunner:
+    """معادل سبکِ BotRunner برای حالت webhook — بدون thread و بدون polling.
+    Application فقط initialize و روی تلگرام set_webhook می‌شود؛ خودِ دریافت آپدیت
+    از طریق مسیر Flask در پایین فایل انجام می‌شود."""
+    def __init__(self, bot_id: str, bot_token: str):
+        self.bot_id = bot_id
+        self.bot_token = bot_token
+        self.secret = secrets.token_urlsafe(24)
+        self.app: Optional[Application] = None
+
+    def start(self) -> bool:
+        try:
+            app = Application.builder().token(self.bot_token).build()
+            app.add_handler(CommandHandler("start", lambda u, c: _subbot_start(u, c, self.bot_id)))
+            app.add_handler(CallbackQueryHandler(lambda u, c: _subbot_callback(u, c, self.bot_id)))
+            app.add_handler(MessageHandler(filters.TEXT & filters.COMMAND, lambda u, c: _subbot_command(u, c, self.bot_id)))
+            app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), lambda u, c: _subbot_text(u, c, self.bot_id)))
+
+            run_on_bot_loop(app.initialize())
+            me = run_on_bot_loop(app.bot.get_me())
+            storage.update_bot_username(self.bot_id, me.username or "")
+
+            url = f"{WEBHOOK_URL}{WEBHOOK_PATH_PREFIX}/{self.bot_id}"
+            run_on_bot_loop(app.bot.set_webhook(
+                url=url, secret_token=self.secret,
+                drop_pending_updates=True, allowed_updates=Update.ALL_TYPES,
+            ))
+            self.app = app
+            log.info(f"🟢 ساب‌بات @{me.username} ({self.bot_id}) روی webhook روشن شد")
+            return True
+        except Exception as e:
+            log.error(f"ساب‌بات {self.bot_id} خطا در راه‌اندازی webhook: {e}")
+            self.app = None
+            return False
+
+    def stop(self):
+        if not self.app:
+            return
+        app, self.app = self.app, None
+        try:
+            run_on_bot_loop(app.bot.delete_webhook(drop_pending_updates=False), timeout=10)
+        except Exception as e:
+            log.warning(f"خطا در حذف webhook {self.bot_id}: {e}")
+        try:
+            run_on_bot_loop(app.shutdown(), timeout=10)
+        except Exception as e:
+            log.warning(f"خطا در shutdown {self.bot_id}: {e}")
+
+    def get_bot(self) -> Optional[Bot]:
+        return self.app.bot if self.app else None
+
+    async def dispatch(self, update: Update):
+        if self.app:
+            await self.app.process_update(update)
+
+
+# ══════════════════════════════════════════════════════════════════════
 # BotFactory
 # ══════════════════════════════════════════════════════════════════════
 class BotRunner:
@@ -983,19 +1104,34 @@ class BotRunner:
 
 
 class BotFactory:
+    """رابط یکسان برای بالا (API) — بسته به USE_WEBHOOK، در پشت صحنه یا BotRunner
+    (polling، یک thread به ازای هر ربات) یا WebhookRunner (بدون thread، مشترک) صدا زده می‌شود.
+    هیچ‌کدام از endpoint های API لازم نیست تغییر کنند."""
     def __init__(self):
-        self._runners: dict = {}
+        self._runners: dict = {}     # حالت polling (سازگار با قبل، fallback بدون WEBHOOK_URL)
+        self._webhooks: dict = {}    # حالت webhook (پیشنهادی/پیش‌فرض وقتی WEBHOOK_URL ست شده)
         self._lock = threading.Lock()
+
+    def _stop_locked(self, bot_id: str):
+        r1 = self._runners.pop(bot_id, None)
+        if r1:
+            r1.stop()
+        r2 = self._webhooks.pop(bot_id, None)
+        if r2:
+            r2.stop()
 
     def start_bot(self, bot_id: str, bot_token: str) -> bool:
         with self._lock:
-            runner = self._runners.get(bot_id)
-            if runner:
-                runner.stop()
-                del self._runners[bot_id]
-            
-            time.sleep(1)
-            
+            self._stop_locked(bot_id)
+
+            if USE_WEBHOOK:
+                runner = WebhookRunner(bot_id, bot_token)
+                ok = runner.start()
+                if ok:
+                    self._webhooks[bot_id] = runner
+                return ok
+
+            time.sleep(1)  # فقط در polling لازم است: جلوگیری از تداخل 409 با getUpdates قبلی
             runner = BotRunner(bot_id, bot_token)
             ok = runner.start()
             if ok:
@@ -1004,18 +1140,28 @@ class BotFactory:
 
     def stop_bot(self, bot_id: str):
         with self._lock:
-            runner = self._runners.pop(bot_id, None)
-        if runner:
-            runner.stop()
+            self._stop_locked(bot_id)
         log.info(f"🔴 ساب‌بات {bot_id} خاموش شد")
 
     def is_running(self, bot_id: str) -> bool:
+        if bot_id in self._webhooks:
+            return self._webhooks[bot_id].app is not None
         runner = self._runners.get(bot_id)
         return runner is not None and runner._thread is not None and runner._thread.is_alive()
 
     def get_bot_instance(self, bot_id: str) -> Optional[Bot]:
+        if bot_id in self._webhooks:
+            return self._webhooks[bot_id].get_bot()
         runner = self._runners.get(bot_id)
         return runner.get_bot() if runner else None
+
+    def dispatch_webhook(self, bot_id: str, secret: str, update: Update) -> bool:
+        """از مسیر Flask /tgwh/<bot_id> صدا زده می‌شود. False یعنی secret اشتباه یا ربات خاموش است."""
+        runner = self._webhooks.get(bot_id)
+        if not runner or not runner.app or runner.secret != secret:
+            return False
+        fire_on_bot_loop(runner.dispatch(update))
+        return True
 
     def start_all_active(self):
         for b in storage.get_all_bots():
@@ -2053,6 +2199,42 @@ def run_mother_bot():
     loop.run_until_complete(_run())
 
 
+mother_app_holder: dict = {"app": None}
+
+
+def start_mother_webhook():
+    """معادل webhook برای ربات مادر — روی همان BOT_LOOP مشترک، بدون thread و بدون polling جدا."""
+    global mother_bot_instance, mother_bot_loop
+    app = Application.builder().token(PLATFORM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", mother_start))
+    app.add_handler(CommandHandler("mybots", mother_my_bots))
+    app.add_handler(CommandHandler("tickets", mother_list_tickets))
+    app.add_handler(CommandHandler("reply", mother_reply_ticket))
+    app.add_handler(CommandHandler("help", mother_help))
+    app.add_handler(CallbackQueryHandler(mother_callback))
+
+    run_on_bot_loop(app.initialize())
+    try:
+        run_on_bot_loop(app.bot.set_my_commands([
+            BotCommand("start", "باز کردن پنل مدیریت"),
+            BotCommand("mybots", "ربات‌های من"),
+            BotCommand("tickets", "تیکت‌های ربات"),
+            BotCommand("reply", "پاسخ به یک تیکت"),
+            BotCommand("help", "راهنما"),
+        ]))
+    except Exception:
+        pass
+    run_on_bot_loop(app.bot.set_webhook(
+        url=f"{WEBHOOK_URL}{WEBHOOK_PATH_PREFIX}/mother",
+        secret_token=MOTHER_WEBHOOK_SECRET,
+        drop_pending_updates=True, allowed_updates=Update.ALL_TYPES,
+    ))
+    mother_app_holder["app"] = app
+    mother_bot_instance = app.bot
+    mother_bot_loop = BOT_LOOP
+    log.info("🤖 ربات مادر روی webhook روشن شد")
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Flask App
 # ══════════════════════════════════════════════════════════════════════
@@ -2141,6 +2323,47 @@ def add_cors(response):
 @flask_app.route("/<path:path>", methods=["OPTIONS"])
 def options_handler(path):
     return "", 204
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Webhook تلگرام — فقط وقتی USE_WEBHOOK فعال است این مسیرها واقعاً کار
+# می‌کنند (BotFactory در آن حالت آپدیت را می‌شناسد)؛ در غیر این صورت
+# هیچ ربات‌ای روی این مسیر ثبت نشده و درخواست بی‌اثر رد می‌شود.
+# ──────────────────────────────────────────────────────────────────────
+@flask_app.post(f"{WEBHOOK_PATH_PREFIX}/<bot_id>")
+def tg_webhook(bot_id):
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    payload = request.get_json(force=True, silent=True) or {}
+    bot_obj = factory.get_bot_instance(bot_id)
+    if not bot_obj:
+        return "", 404
+    try:
+        update = Update.de_json(payload, bot_obj)
+    except Exception as e:
+        log.warning(f"وب‌هوک نامعتبر برای {bot_id}: {e}")
+        return "", 400
+    ok = factory.dispatch_webhook(bot_id, secret, update)
+    if not ok:
+        return "", 403
+    return "", 200
+
+
+@flask_app.post(f"{WEBHOOK_PATH_PREFIX}/mother")
+def tg_webhook_mother():
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if secret != MOTHER_WEBHOOK_SECRET:
+        return "", 403
+    app = mother_app_holder.get("app")
+    if not app:
+        return "", 503
+    payload = request.get_json(force=True, silent=True) or {}
+    try:
+        update = Update.de_json(payload, app.bot)
+    except Exception as e:
+        log.warning(f"وب‌هوک نامعتبر ربات مادر: {e}")
+        return "", 400
+    fire_on_bot_loop(app.process_update(update))
+    return "", 200
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -3441,10 +3664,16 @@ def api_upload_media():
 # main
 # ══════════════════════════════════════════════════════════════════════
 def main():
-    factory.start_all_active()
-
-    t = threading.Thread(target=run_mother_bot, daemon=True)
-    t.start()
+    if USE_WEBHOOK:
+        log.info(f"🌐 حالت اجرا: Webhook — {WEBHOOK_URL} (بدون thread/polling جدا برای هر ربات)")
+        start_bot_loop()
+        factory.start_all_active()
+        start_mother_webhook()
+    else:
+        log.info("🌐 حالت اجرا: Polling (برای سبک‌تر و مقیاس‌پذیرتر شدن، متغیر محیطی WEBHOOK_URL را با آدرس https عمومی سرور ست کن)")
+        factory.start_all_active()
+        t = threading.Thread(target=run_mother_bot, daemon=True)
+        t.start()
 
     log.info(f"🌐 Flask روی http://{API_HOST}:{API_PORT}")
     flask_app.run(host=API_HOST, port=API_PORT, threaded=True)
