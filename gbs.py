@@ -1560,7 +1560,8 @@ async def _check_force_join(ctx, bot_id, b, update) -> bool:
         return True     # کانال اشتباه/دسترس‌ناپذیر → ربات قفل نشود
     except Exception:
         return True
-    disp = ch if ch.startswith("@") else ch
+    # باگ رفع‌شده: قبلاً هر دو شاخهٔ شرط یک مقدار برمی‌گرداندند و "@" هرگز اضافه نمی‌شد
+    disp = ch if ch.startswith("@") else "@" + ch
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 عضو شدن", url=f"https://t.me/{disp.lstrip('@')}")],
         [InlineKeyboardButton("✅ عضو شدم — بررسی مجدد", callback_data="fj:check")]])
@@ -1577,16 +1578,19 @@ async def _legacy_callback(b, data, ctx, chat_id):
     for cmd_name, cmd in b.get("commands", {}).items():
         if data in cmd.get("callbacks", {}):
             resp = cmd["callbacks"][data] or ""
-            media = cmd.get("media")
-            try:
-                await ctx.bot.send_message(chat_id, resp, parse_mode=ParseMode.HTML)
-                storage.update_bot_stats(b["bot_id"], sent=1)
-            except Exception:
+            media = cmd.get("media") or ({"type": "photo", "url": cmd["photo"]}
+                                         if cmd.get("photo") else None)
+            # باگ رفع‌شده: قبلاً media استخراج می‌شد ولی هرگز ارسال نمی‌شد و فقط متن می‌رفت
+            sent = bool(media and await _send_media(ctx.bot, chat_id, media, resp, None))
+            if not sent:
                 try:
-                    await ctx.bot.send_message(chat_id, resp)
-                    storage.update_bot_stats(b["bot_id"], sent=1)
+                    await ctx.bot.send_message(chat_id, resp, parse_mode=ParseMode.HTML)
                 except Exception:
-                    pass
+                    try:
+                        await ctx.bot.send_message(chat_id, resp)
+                    except Exception:
+                        return True
+            storage.update_bot_stats(b["bot_id"], sent=1)
             return True
     return False
 
@@ -1741,7 +1745,9 @@ async def _subbot_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_i
         return
 
     if data.startswith("cmd:"):
-        name = data[4:16]
+        # باگ رفع‌شده: برش [4:16] نام دستورهای بلندتر از ۱۲ کاراکتر را قطع می‌کرد
+        # و باعث می‌شد منوی اینلاین برای آن دستورها هیچ‌وقت پاسخ درست پیدا نکند
+        name = data[4:]
         try:
             handled = await Engine(b).on_command(ctx, chat_id, name)
             if not handled:
@@ -2173,7 +2179,6 @@ def api_add_bot():
         if hashlib.sha256(b.get("bot_token", "").encode()).hexdigest() == token_hash:
             return jsonify({"error": "این ربات قبلاً اضافه شده"}), 409
 
-    import requests as req_lib
     try:
         resp = req_lib.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
         if not resp.ok or not resp.json().get("ok"):
@@ -3386,8 +3391,6 @@ def api_upload_media():
         safe_filename = f"gramsaz_{int(time.time())}_{secrets.token_hex(4)}.{ext}"
         
         log.info(f"📤 آپلود {media_type} به Catbox.moe ({size} bytes)...")
-        
-        import requests as req_lib
         
         response = req_lib.post(
             'https://catbox.moe/user/api.php',
