@@ -671,22 +671,33 @@
       /* گروه هم مبدأ است هم مقصد: به پیام والد وصل می‌شود و عضوهایش را باز می‌کند */
       const canRecv = (nd) => !!nd && ST_RECV[nd.kind] ? 1 : 0;
 
-      let STG = null;               /* {nodes,edges,view} */
-      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, testIn: "", testCb: "", testHtml: "", saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "" };
+      let STG = { nodes: [], edges: [], view: { x: 0, y: 0, z: 1 } };   /* هرگز null نمی‌شود */
+      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, testIn: "", testCb: "", testHtml: "", saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "", offline: false, recover: null, mirrorCount: 0 };
       let stIssues = [];
       const stCur = () => STG && st.sel.length === 1 ? STG.nodes.find((n) => n.id === st.sel[0]) : null;
       const nid = () => "n" + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
-      const stMirror = () => { try { localStorage.setItem("gs_flow_" + botId, JSON.stringify(STG)); } catch (e) {} };
+      /* تا نقشهٔ محلیِ کامل‌تر (که هنوز روی سرور نرفته) بی‌خبر بازنویسی نشود */
+      const stMirror = () => { if (st.recover) return; try { localStorage.setItem("gs_flow_" + botId, JSON.stringify(STG)); } catch (e) {} };
+      /* نسخهٔ امنِ هر نقشهٔ جایگزین‌شده */
+      const stBak = (g) => { try { if (g && g.nodes && g.nodes.length) localStorage.setItem("gs_flowbak_" + botId, JSON.stringify(g)); } catch (e) {} };
       const stView = (v) => ({ x: Math.round(+(v && v.x) || 0), y: Math.round(+(v && v.y) || 0), z: Math.min(2.4, Math.max(0.35, +(v && v.z) || 1)) });
+      /* شناسه باید با قانون سرور بخواند: [A-Za-z0-9_-]{2,24} */
+      const stSid = (raw) => {
+        let id = String(raw || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);
+        if (id.length < 2) id = "n" + Date.now().toString(36).slice(-6);
+        return id;
+      };
       const normGraph = (raw) => {
         const g = { nodes: [], edges: [], view: { x: 0, y: 0, z: 1 } };
-        const seen = new Set();
+        const seen = new Set(), map = {};
         for (const nd of (raw && raw.nodes) || []) {
           if (!nd || !nd.id) continue;
           let kind = nd.kind === "reply" && nd.role === "group" ? "group" : nd.kind;
-          if (!ST_KIND[kind] || seen.has(nd.id)) continue;
-          seen.add(nd.id);
-          const c = { id: nd.id, kind, x: Math.round(+nd.x || 0), y: Math.round(+nd.y || 0) };
+          if (!ST_KIND[kind]) continue;
+          let id = stSid(nd.id);
+          while (seen.has(id)) id = stSid(id.slice(0, 20) + Math.random().toString(36).slice(2, 5));
+          seen.add(id); map[String(nd.id)] = id;
+          const c = { id, kind, x: Math.round(+nd.x || 0), y: Math.round(+nd.y || 0) };
           ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
           if (Array.isArray(nd.keywords)) c.keywords = nd.keywords.map(String);
           if (Array.isArray(nd.words)) c.words = nd.words.map(String);
@@ -695,13 +706,15 @@
         }
         const eset = new Set();
         for (const e of (raw && raw.edges) || []) {
-          if (!e || e.from === e.to || !seen.has(e.from) || !seen.has(e.to)) continue;
-          const k = e.from + "\u0000" + e.to;
+          if (!e) continue;
+          const f = map[String(e.from)], t = map[String(e.to)];
+          if (!f || !t || f === t) continue;
+          const k = f + "\u0000" + t;
           if (eset.has(k)) continue;
           eset.add(k);
-          g.edges.push({ from: e.from, to: e.to });
+          g.edges.push({ from: f, to: t });
         }
-        if (raw && raw.view) g.view = stView(JSON.stringify(raw.view));
+        if (raw && raw.view) g.view = stView(raw.view);
         return g;
       };
       const stPos = () => {
@@ -737,23 +750,106 @@
         stStatus();
         if (st.autosave) { clearTimeout(st.timer); st.timer = setTimeout(() => stPersist(false), 1600); }
       }
-      function stStatus() { const e = $("stStatus"); if (!e) return; e.className = "st-status " + (st.dirty ? "dirty" : ""); e.innerHTML = st.dirty ? `<i></i>${st.autosave ? "در انتظار ذخیره" : "ذخیره نشده"}` : `<i></i>${st.saved || "آماده"}`; }
+      function stStatus() { const e = $("stStatus"); if (!e) return; e.className = "st-status " + (st.offline ? "wait" : "") + (st.dirty ? " dirty" : ""); e.innerHTML = st.offline ? `<i></i>حالت محلی — بک‌اند به‌روز نیست` : st.dirty ? `<i></i>${st.autosave ? "در انتظار ذخیره" : "ذخیره نشده"}` : `<i></i>${st.saved || "آماده"}`; }
       const stPersist = guard(async (apply) => {
         if (!STG) return;
         const iss = stValidate();
         if (apply && iss.some((i) => i.lv === "err")) { stIssues = iss; stRender(); return toast("نقشه خطای جدی دارد — از منوی «بررسی نقشه» ببین", 1); }
+        if (st.offline) {                                 /* بک‌اند قدیمی: فقط آینهٔ محلی */
+          stMirror(); st.derived = false;
+          if (apply) return stApplyLegacy();
+          st.dirty = false; st.saved = "محلی"; stStatus(); stRender(); return;
+        }
         const e0 = $("stStatus"); if (e0) { e0.className = "st-status wait"; e0.innerHTML = "<i></i>در حال ذخیره…"; }
-        const r = await api(`/api/bots/${botId}/flow`, { method: "PUT", body: { flow: exportGraph(STG), apply: !!apply } });
+        let r;
+        try {
+          r = await api(`/api/bots/${botId}/flow`, { method: "PUT", body: { flow: exportGraph(STG), apply: !!apply } });
+        } catch (err) {
+          if (/405|404/.test(err.message)) {             /* سرور مسیر /flow را ندارد */
+            st.offline = true; stMirror(); stStatus();
+            toast("بک‌اند به‌روز نیست — نقشه محلی نگه داشته شد", 1);
+            if (apply) stApplyLegacy();
+            return;
+          }
+          throw err;
+        }
         st.derived = false; bot.flow = r.flow;
+        clearTimeout(st.timer);
+        st.recover = null;
+        st.dirty = false;
         stMirror();
-        if (apply) { toast(r.message || "اعمال شد"); if (r.synced !== undefined) toast(`${n(r.synced)} دستور روی ربات به‌روز شد`); }
-        else { st.dirty = false; st.saved = "ذخیره " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }
+        if (apply) { st.saved = "اعمال شد " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); toast(r.message || "اعمال شد"); if (r.synced !== undefined) toast(`${n(r.synced)} دستور روی ربات به‌روز شد`); }
+        else st.saved = "ذخیره " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
         stStatus(); stRender();
       });
       function exportGraph(g) {
         return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "keywords", "words"].forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
       }
-      const stApply = guard(async () => { await stPersist(true); if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; });
+      /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
+      function stParts(nd, depth) {
+        const btns = [], urls = []; let media = null;
+        for (const t of outOf(nd.id)) {
+          if (t.kind === "link" && t.url) urls.push(t);
+          else if (t.kind === "image" && t.url && !media) media = t;
+          else if (isGroup(t) && depth < 3) {
+            const s = stParts(t, depth + 1);
+            btns.push(...s.btns); urls.push(...s.urls);
+            if (!media) media = s.media;
+          } else if (t.kind === "reply" || t.kind === "cmd" || t.kind === "ticket" || t.kind === "trigger") btns.push(t);
+        }
+        return { btns, urls, media };
+      }
+      function stCompileLegacy() {
+        const out = {};
+        for (const nd of STG.nodes) {
+          if (nd.kind !== "cmd" || !nd.name) continue;
+          const { btns, urls, media } = stParts(nd, 0);
+          const cb = btns.map((t) => ({
+            text: String(t.label || t.name || t.text || "ادامه").split("\n")[0].slice(0, 64) || "ادامه",
+            id: `gs:go:${nd.id}:${t.id}`.slice(0, 64),
+            resp: t.text || ""
+          }));
+          const rows = [];
+          for (let i = 0; i < cb.length; i += 3) rows.push(cb.slice(i, i + 3).map((b) => ({ text: b.text, id: b.id })));
+          for (const u of urls) rows.push([{ text: String(u.text || "لینک").slice(0, 64), url: u.url }]);
+          out[nd.name] = {
+            response: nd.text || "",
+            description: nd.description || "",
+            buttons: rows.length ? rows : null,
+            photo: null,
+            media: media ? { type: media.mediaType || "photo", url: media.url } : null,
+            callbacks: Object.fromEntries(cb.map((b) => [b.id, b.resp]))
+          };
+        }
+        return out;
+      }
+      async function stApplyLegacy() {
+        const want = stCompileLegacy();
+        if (!Object.keys(want).length) return toast("نقشه هیچ کارت دستوری ندارد — برای جلوگیری از حذف دستورها اعمال نشد", 1);
+        let skip = 0;
+        STG.nodes.forEach((nd) => { if (nd.kind === "trigger" || nd.kind === "ticket") skip++; });
+        const old = Object.keys(cmds || {});
+        for (const [name, c] of Object.entries(want)) {
+          await api(`/api/bots/${botId}/commands/${name}`, {
+            method: "PUT",
+            body: { response: c.response, description: c.description, buttons: c.buttons, photo: null, media: c.media }
+          });
+          for (const [id, resp] of Object.entries(c.callbacks))
+            await api(`/api/bots/${botId}/commands/${name}/callbacks/${encodeURIComponent(id)}`, { method: "PUT", body: { response: resp } });
+        }
+        for (const name of old)
+          if (!(name in want) && name !== "start")
+            await api(`/api/bots/${botId}/commands/${name}`, { method: "DELETE" });
+        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
+        st.dirty = false; st.saved = "محلی"; stStatus();
+        toast(`اعمال شد (حالت سازگار) — ${n(Object.keys(want).length)} دستور`);
+        if (skip) toast("کارت‌های تیکت/کلیدواژه در بک‌اند قدیمی اجرا نمی‌شوند — gbs.py تازه را مستقر کن", 1);
+      }
+      const stApply = guard(async () => {
+        await stPersist(true);
+        if (bot.auto_menu !== false) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} }
+        try { cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; } catch (e) {}
+      });
 
       /* ── اعتبارسنجی محلی ── */
       function stValidate() {
@@ -844,6 +940,37 @@
         return c;
       }
 
+      /* تبدیل دستورها/دکمه‌های نسخهٔ قدیمی به گراف — همان کاری که سرور انجام می‌دهد */
+      function stLegacyGraph(cs) {
+        const nodes = [], edges = [], used = new Set();
+        const sid = (base) => { let i = 1, id = base; while (used.has(id)) id = base.slice(0, 20) + (i++); used.add(id); return id; };
+        Object.entries(cs || {}).forEach(([name, c], k) => {
+          const cid = sid("c_" + String(name).replace(/[^a-z0-9_]/gi, "").slice(0, 16));
+          nodes.push({ id: cid, kind: "cmd", name: String(name).toLowerCase(), text: (c && c.response) || "", description: (c && c.description) || "", x: 40, y: 40 + k * 150 });
+          const m = (c && c.media) || (c && c.photo ? { type: "photo", url: c.photo } : null);
+          if (m && m.url) {
+            const mid = sid("i_" + String(name).replace(/[^a-z0-9_]/gi, "").slice(0, 14));
+            nodes.push({ id: mid, kind: "image", mediaType: m.type || "photo", url: m.url, caption: m.caption || "", x: 320, y: 40 + k * 150 });
+            edges.push({ from: cid, to: mid });
+          }
+          const cb = (c && c.callbacks) || {};
+          ((c && c.buttons) || []).flat().forEach((b, i) => {
+            if (!b || !(b.text || "").trim()) return;
+            if (b.url) {
+              const lid = sid("l_" + String(name).replace(/[^a-z0-9_]/gi, "").slice(0, 12) + i);
+              nodes.push({ id: lid, kind: "link", text: b.text, url: b.url, x: 320, y: 100 + k * 150 + i * 40 });
+              edges.push({ from: cid, to: lid });
+            } else {
+              const key = b.id || b.text, resp = cb[key] || "";
+              const rid = sid("r_" + String(name).replace(/[^a-z0-9_]/gi, "").slice(0, 12) + i);
+              nodes.push({ id: rid, kind: "reply", label: b.text, text: resp, x: 600, y: 40 + k * 150 + i * 40 });
+              edges.push({ from: cid, to: rid });
+            }
+          });
+        });
+        return { nodes, edges, view: { x: 0, y: 0, z: 1 } };
+      }
+
       /* ── ورود و پوسته ── */
       const vStudio = guard(async (id) => {
         if (!user) return showAuth();
@@ -851,21 +978,48 @@
         if (!bots.length) { try { ({ bots } = await api("/api/bots")); } catch (e) {} }
         app().className = "full";
         if (!bots.length) {
+          STG = { nodes: [], edges: [], view: { x: 0, y: 0, z: 1 } }; st.sel = []; stIssues = [];
           app().innerHTML = `<div class="st-bar"><div class="idn"><b style="font-size:15px">استودیوی جریان</b></div><div class="ib" onclick="go('home')">${ic("plus")}</div></div>` +
             empty("رباتی برای نقشه کشیدن نیست", "اول رباتت را وصل کن، بعد بی‌نهایت اتصال بساز.", `<button class="btn sm" style="max-width:220px" onclick="go('home')">${ic("bolt")} اتصال ربات</button>`, "map");
           return;
         }
         if (!botId || !bots.some((b) => b.bot_id === botId)) botId = bots[0].bot_id;
-        bot = (await api("/api/bots/" + botId)).bot;
-        cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
-        const d = await api(`/api/bots/${botId}/flow`);
-        st.derived = !!d.derived;
-        STG = normGraph(d.flow);
-        STG.view = stView(JSON.stringify({ x: 0, y: 0, z: 1 }));
+        /* ── بارگذاری مقاوم: هر کدام از این سه درخواست که نبود، استودیو باز می‌ماند ── */
+        st.offline = false;
+        try { bot = (await api("/api/bots/" + botId)).bot; }
+        catch (e) { bot = bot && bot.bot_id === botId ? bot : (bots.find((b) => b.bot_id === botId) || bots[0]); }
+        try { cmds = (await api(`/api/bots/${botId}/commands`)).commands || {}; }
+        catch (e) { cmds = (bot && bot.commands) || {}; }
+        let raw = null, mirror = null;
+        try { mirror = JSON.parse(localStorage.getItem("gs_flow_" + botId) || "null"); } catch (e) {}
+        try { const d = await api(`/api/bots/${botId}/flow`); raw = d.flow; st.derived = !!d.derived; }
+        catch (e) {
+          st.offline = true;
+          raw = mirror;
+          if (!raw || !raw.nodes) { raw = stLegacyGraph(cmds); st.derived = true; }
+        }
+        /* نقشهٔ محلی (حالت سازگار یا کاری که ذخیرهٔ سروری نشده) از سرور پرکارت‌تر است */
+        let preferLocal = false;
+        st.mirrorCount = mirror && Array.isArray(mirror.nodes) ? mirror.nodes.length : 0;
+        if (st.mirrorCount > ((raw && raw.nodes) || []).length) {
+          stBak(mirror);
+          if (st.derived) { raw = mirror; st.derived = false; preferLocal = true; }
+        }
+        STG = normGraph(raw);
+        if (!STG.nodes.length) {
+          raw = stLegacyGraph(cmds); STG = normGraph(raw); st.derived = true;
+        }
+        /* محلی پرکارت‌تر است ولی سرور نقشهٔ واقعی دارد → بازیابی‌اش در منو می‌ماند، هیچ‌چیز پاک نمی‌شود */
+        st.recover = !st.offline && st.mirrorCount > STG.nodes.length && !preferLocal ? mirror : null;
         if (st.derived && !STG.nodes.length) STG.nodes.push({ id: nid(), kind: "cmd", name: "start", text: (cmds.start || {}).response || "", description: (cmds.start || {}).description || "", x: 40, y: 40 });
         autoLayout(STG.nodes, STG.edges, true);
-        stMirror();
-        st.hist = []; st.redo = []; st.sel = []; st.dirty = false; st.saved = ""; st.autosave = localStorage.st_autosave !== "0";
+        st.hist = []; st.redo = []; st.sel = []; st.dirty = false; st.saved = ""; st.vdirty = true; st.autosave = localStorage.st_autosave !== "0";
+        stMirror();                                    /* در صورت وجود st.recover خودش کنار می‌کشد */
+        if (preferLocal) {
+          stDirty(2); clearTimeout(st.timer);   /* ذخیرهٔ خودکار قبل از تصمیم کاربر اجرا نشود */
+          setTimeout(() => sure("نقشه‌ای که محلی ساخته‌ای (" + n(STG.nodes.length) + " کارت) روی سرور نیست؛ همین حالا اعمال شود؟", () => stPersist(true)), 300);
+        }
+        if (st.offline) toast("بک‌اند فعلی مسیر /flow را ندارد — استودیو در حالت سازگار کار می‌کند", 1);
         app().innerHTML = `
           <div class="st-bar">
             <div class="idn">
@@ -1375,14 +1529,68 @@
           </div>`;
         $("scrim").classList.add("on");
       }
+      /* شبیه‌ساز محلی موتور (برای حالت سازگار) — هم‌راستا با Flow.render/parts/match_keyword */
+      function stLocalRender(nd) {
+        if (!nd || nd.kind === "link") return null;
+        if (nd.kind === "image") {
+          if (!nd.url) return null;
+          return { node: nd, text: nd.caption || nd.text || "", media: { type: nd.mediaType || "photo", url: nd.url }, buttons: [] };
+        }
+        const { btns, urls, media } = stParts(nd, 0);
+        let cb;
+        if (nd.kind === "ticket") {
+          cb = [{ text: "🎟 ثبت تیکت", data: `gs:tk:${nd.id}:` }];
+          (nd.words || []).forEach((w, i) => cb.push({ text: "🔑 " + String(w).slice(0, 18), data: `gs:tka:${nd.id}:w${i}` }));
+        } else {
+          cb = btns.map((t) => ({ text: String(t.label || t.name || t.text || "ادامه").split("\n")[0].slice(0, 64) || "ادامه", data: `gs:go:${nd.id}:${t.id}`.slice(0, 64), tgt: t.id }));
+        }
+        const rows = [];
+        urls.forEach((u) => rows.push([{ text: String(u.text || "لینک").slice(0, 64), url: u.url }]));
+        for (let i = 0; i < cb.length; i += 3) rows.push(cb.slice(i, i + 3).map((b) => (b.url ? b : { text: b.text, callback_data: b.data })));
+        return { node: nd, text: nd.text || (nd.kind === "ticket" ? "پیام خود را بنویسید…" : ""), media: media ? { type: media.mediaType || "photo", url: media.url } : null, buttons: rows, _cb: cb };
+      }
+      function stLocalTest(inp) {
+        inp = String(inp || "").trim();
+        if (!inp) return { matched: false };
+        if (inp.startsWith("/")) {
+          const nm = inp.slice(1).split(/\s+/)[0].toLowerCase();
+          const nd = STG.nodes.find((n) => n.kind === "cmd" && (n.name || "").toLowerCase() === nm);
+          return nd ? { matched: true, node: { id: nd.id, kind: "cmd", label: nd.name }, result: stLocalRender(nd) } : { matched: false };
+        }
+        if (inp.startsWith("gs:")) {
+          const p = inp.slice(3).split(":");
+          const tgt = p[2] ? nSt(p[2]) : null, src = nSt(p[1]);
+          const nd = tgt || src;
+          return nd ? { matched: true, node: { id: nd.id, kind: nd.kind, label: nd.name || nd.label }, result: stLocalRender(nd) } : { matched: false };
+        }
+        const t = inp.toLowerCase();
+        const trg = STG.nodes.find((n) => {
+          if (n.kind !== "trigger") return false;
+          const mode = n.mode || "contains";
+          return (n.keywords || []).some((k) => {
+            const s = String(k).toLowerCase();
+            if (mode === "exact") return t === s;
+            if (mode === "regex") { try { return new RegExp(k, "i").test(inp); } catch (e) { return false; } }
+            return t.includes(s);
+          });
+        });
+        return trg ? { matched: true, node: { id: trg.id, kind: "trigger", label: trg.name || trg.label || "کلیدواژه" }, result: stLocalRender(trg) } : { matched: false };
+      }
       const stRunTest = guard(async (mode) => {
         let inp = mode === "cb" && st.testCb ? st.testCb : ($("stIn").value || "").trim();
         if (!inp) return toast("ورودی را بنویس", 1);
-        const r = await api(`/api/bots/${botId}/flow/test`, { method: "POST", body: { input: inp, flow: exportGraph(STG) } });
+        let r;
+        if (st.offline) {
+          r = stLocalTest(inp);
+          if (r.matched && r.result) r.node = r.node || { id: r.result.node.id, kind: r.result.node.kind, label: r.result.node.name || r.result.node.label };
+        } else {
+          try { r = await api(`/api/bots/${botId}/flow/test`, { method: "POST", body: { input: inp, flow: exportGraph(STG) } }); }
+          catch (e) { if (/405|404/.test(e.message)) { st.offline = true; stStatus(); r = stLocalTest(inp); } else throw e; }
+        }
         st.testIn = mode === "cb" ? st.testIn : inp;
-        if (!r.matched) { st.testHtml = `<p style="color:var(--amber);font-size:13px">هیچ کارتی با «${esc(inp)}» مطابقت نکرد — ${esc(r.hint || "")}</p>`; stTest(); return; }
+        if (!r.matched) { st.testHtml = `<p style="color:var(--amber);font-size:13px">هیچ کارتی با «${esc(inp)}» مطابقت نکرد${st.offline ? " (پیش‌نمایش محلی)" : ""}</p>`; stTest(); return; }
         const m = r.result || {};
-        const nid2 = r.node.id, nn = nSt(nid2);
+        const nid2 = r.node && r.node.id, nn = nid2 ? nSt(nid2) : null;
         st.testHtml = `<div style="color:var(--mu);font-size:11.5px;margin-bottom:8px" class="mono">${esc(ST_KIND[(nn || {}).kind] ? ST_KIND[(nn || {}).kind].t : r.node.kind)} · ${esc(r.node.label || r.node.id)}</div>` +
           (m.media ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${esc(m.media.type)} · <span class="mono ltr">${esc((m.media.url || "").slice(-40))}</span></div>` : "") +
           `<div class="bub">${esc(m.text || "…")}</div>` +
@@ -1393,19 +1601,34 @@
 
       /* ── صندوق تیکت ── */
       const stTickets = guard(async () => {
-        const d = await api(`/api/bots/${botId}/tickets`);
+        let d = { tickets: [], admins: (bot && bot.ticket_admins) || [] }, local = false;
+        try { d = await api(`/api/bots/${botId}/tickets`); }
+        catch (e) {
+          if (!/405|404/.test(e.message)) throw e;
+          local = true;
+          try { d = JSON.parse(localStorage.getItem("gs_tk_" + botId) || "null") || d; } catch (e2) {}
+        }
         const list = d.tickets || [];
-        $("sheet").innerHTML = `<div class="sh-h"><span>صندوق تیکت‌ها</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
-          <div class="sh-b">
+        $("sheet").innerHTML = `<div class="sh-h"><span>صندوق تیکت‌ها${local ? " · محلی" : ""}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b">${local ? `<p style="color:var(--amber);font-size:12.5px;margin-bottom:10px">بک‌اند فعلی مسیر تیکت‌ها را ندارد. برای دریافت واقعی تیکت، gbs.py تازه را مستقر کن.</p>` : ""}
             <label>پذیرنده‌ها (شناسهٔ عددی، با ویرگول)</label>
             <input class="in ltr mono" id="tkAd" value="${esc((d.admins || []).join(", "))}" placeholder="123456789, 987654321">
-            <button class="btn line sm" style="width:100%;margin-top:8px" onclick="stSaveAdmins()">ذخیرهٔ پذیرنده‌ها</button>
+            <button class="btn line sm" style="width:100%;margin-top:8px" onclick="stSaveAdmins(${local ? 1 : 0})">ذخیرهٔ پذیرنده‌ها</button>
             <label style="margin-top:18px">تیکت‌ها (${n(list.length)})</label>
             ${list.length ? list.map((t) => `<div class="item static" style="align-items:flex-start"><div class="g"><b>${esc(t.name || t.username || "#" + t.uid)} <span class="badge mono">${esc(t.id)}</span></b><small style="white-space:normal;display:block;margin-top:4px">${esc((t.text || "").slice(0, 220))}</small>${t.reply ? `<small style="color:var(--ok);white-space:normal;display:block">پاسخ: ${esc(t.reply.slice(0, 120))}</small>` : ""}<small class="mono" style="margin-top:4px">${new Date((t.t || 0) * 1000).toLocaleString("fa-IR")}</small></div>${t.reply ? "" : `<button class="btn sm line" onclick="stReplyTicket('${esc(t.id)}')">پاسخ</button>`}</div>`).join("") : `<p style="color:var(--mu);font-size:13px">هنوز تیکتی نیامده. یک کارت «تیکت» بساز و به یک دکمه وصل کن.</p>`}
           </div>`;
         $("scrim").classList.add("on");
       });
-      const stSaveAdmins = guard(async () => { const r = await api(`/api/bots/${botId}/tickets`, { method: "POST", body: { admins: $("tkAd").value.split(/[،,\s]+/).map((x) => x.trim()).filter(Boolean) } }); toast(r.message || "ذخیره شد"); });
+      const stSaveAdmins = guard(async (local) => {
+        const admins = $("tkAd").value.split(/[،,\s]+/).map((x) => x.trim()).filter(Boolean);
+        if (local) {
+          let o = {}; try { o = JSON.parse(localStorage.getItem("gs_tk_" + botId) || "{}"); } catch (e) {}
+          o.admins = admins; o.tickets = o.tickets || [];
+          localStorage.setItem("gs_tk_" + botId, JSON.stringify(o));
+          return toast("پذیرنده‌ها محلی ذخیره شدند — پس از استقرار بک‌اند تازه، دوباره ذخیره‌شان کن");
+        }
+        const r = await api(`/api/bots/${botId}/tickets`, { method: "POST", body: { admins } }); toast(r.message || "ذخیره شد");
+      });
       function stReplyTicket(id) {
         $("sheet").innerHTML = `<div class="sh-h"><span>پاسخ تیکت ${esc(id)}</span><div class="ib" onclick="stTickets()">${ic("x")}</div></div>
           <div class="sh-b"><label>متن پاسخ</label><textarea class="in" id="tkR" rows="4" placeholder="پاسخ شما…"></textarea></div>
@@ -1417,7 +1640,9 @@
       function stMenu() {
         $("sheet").innerHTML = `<div class="sh-h"><span>استودیو — منو</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b">
+            ${st.offline ? `<div class="item static" style="background:var(--ac-soft);border-color:transparent;margin-bottom:10px"><span class="sq">${ic("help")}</span><div class="g"><b>حالت سازگار</b><small>بک‌اند فعلی مسیر /flow را ندارد. نقشه محلی می‌ماند و با «اعمال» به صورت دستور نوشته می‌شود. با استقرار gbs.py تازه، تیکت و کلیدواژه هم فعال می‌شوند.</small></div></div>` : ""}
             <div class="item" onclick="closeSheet();stBots()"><span class="sq">${ic("bot")}</span><div class="g"><b>تغییر ربات</b><small>${n(bots.length)} ربات در دسترس</small></div>${ic("next")}</div>
+            ${st.recover ? `<div class="item" style="border-color:var(--ac)" onclick="closeSheet();stRecover()"><span class="sq" style="color:var(--ac)">${ic("undo")}</span><div class="g"><b>بازیابی نقشهٔ محلی</b><small>${n((st.recover.nodes || []).length)} کارت روی این دستگاه ذخیره شده و روی سرور نیست</small></div>${ic("next")}</div>` : ""}
             <div class="item" onclick="closeSheet();stTickets()"><span class="sq">${ic("ticket")}</span><div class="g"><b>صندوق تیکت‌ها</b><small>پاسخ‌دهی و پذیرنده‌ها</small></div>${ic("next")}</div>
             <div class="item" onclick="closeSheet();stSettings()"><span class="sq">${ic("gear")}</span><div class="g"><b>تنظیمات ربات</b><small>خوش‌آمد، عضویت اجباری، منو</small></div>${ic("next")}</div>
             <div class="item" onclick="closeSheet();stIssuesSheet()"><span class="sq">${ic("shield")}</span><div class="g"><b>بررسی نقشه</b><small>${n((stIssues || []).length)} مورد</small></div>${ic("next")}</div>
@@ -1431,6 +1656,16 @@
         $("scrim").classList.add("on");
       }
       const stAuto = (el) => { st.autosave = !st.autosave; el.classList.toggle("on", st.autosave); localStorage.st_autosave = st.autosave ? "1" : "0"; stStatus(); };
+      /* نقشهٔ محلیِ دور ریخته‌شده را برمی‌گرداند: فعلی در gs_flowbak می‌ماند */
+      const stRecover = guard(async () => {
+        const r = st.recover;
+        if (!r || !r.nodes) return toast("چیزی برای بازیابی نیست", 1);
+        stBak(STG);
+        STG = normGraph(r); st.recover = null;
+        st.hist = []; st.redo = []; st.sel = [];
+        stMirror(); stDirty(3); stRender(); stFit();
+        toast("نقشهٔ محلی بازیابی شد — «اعمال» را بزن تا روی ربات بنشیند");
+      });
       function stIssuesSheet() {
         stIssues = stValidate();
         $("sheet").innerHTML = `<div class="sh-h"><span>بررسی نقشه</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
@@ -1488,14 +1723,30 @@
       }
 
       /* ── بک‌آپ کامل ── */
+      async function stLocalBackup() {
+        let rules = [];
+        try { rules = (await api(`/api/bots/${botId}/rules`)).rules || []; } catch (e) {}
+        return {
+          version: 3, exported_at: new Date().toISOString(),
+          bot_username: (bot && bot.bot_username) || "",
+          commands: cmds || {}, flow: exportGraph(STG), rules,
+          settings: { welcome_message: bot && bot.welcome_message, unknown_reply: bot && bot.unknown_reply, auto_menu: bot && bot.auto_menu }
+        };
+      }
       const stExport = guard(async () => {
-        const d = await api(`/api/bots/${botId}/backup`);
+        let backup;
+        try { backup = (await api(`/api/bots/${botId}/backup`)).backup; }
+        catch (e) {
+          if (!/405|404/.test(e.message)) throw e;
+          backup = await stLocalBackup();
+          toast("بک‌آپ محلی ساخته شد (بدون تنظیمات سرور)");
+        }
         const name = `gramsaaz-${(bot.bot_username || botId).replace(/[^\w.-]/g, "_")}.json`;
-        const blob = new Blob([JSON.stringify(d.backup, null, 2)], { type: "application/json" });
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-        toast("فایل بک‌آپ ساخته شد");
+        if (!st.offline) toast("فایل بک‌آپ ساخته شد");
       });
       function stImport() {
         $("sheet").innerHTML = `<div class="sh-h"><span>بازگردانی بک‌آپ</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
@@ -1512,8 +1763,18 @@
         const s = (st.impJson || "").trim(); if (!s) return toast("فایل یا JSON را بفرست", 1);
         let o; try { o = JSON.parse(s); } catch (e) { return toast("JSON نامعتبر است", 1); }
         sure("اطلاعات فعلی با بک‌آپ جایگزین شود؟", guard(async () => {
-          const r = await api(`/api/bots/${botId}/restore`, { method: "POST", body: { backup: o } });
-          toast(r.message || "بازگردانی شد"); closeSheet(); await vStudio(botId);
+          try {
+            const r = await api(`/api/bots/${botId}/restore`, { method: "POST", body: { backup: o } });
+            toast(r.message || "بازگردانی شد"); closeSheet(); await vStudio(botId);
+          } catch (e) {
+            if (!/405|404/.test(e.message)) throw e;
+            /* بک‌اند قدیمی: نقشه را محلی بازمی‌گردانیم و دستورها را مستقیم می‌فرستیم */
+            st.offline = true;
+            if (o.flow && o.flow.nodes) { STG = normGraph(o.flow); autoLayout(STG.nodes, STG.edges, true); }
+            if (o.commands) cmds = o.commands;
+            closeSheet(); stDirty(1); stMirror(); await stApplyLegacy();
+            stRender();
+          }
         }));
       });
 
