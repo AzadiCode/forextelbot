@@ -59,6 +59,11 @@ API_PORT           = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
 # صفر thread و صفر پولینگ برای هرکدام — سبک، سریع و مقیاس‌پذیر برای صدها ربات.
 # اگر ست نشده باشد (مثلاً روی لپ‌تاپ بدون دامنهٔ عمومی)، رفتار قدیمیِ polling
 # با یک thread مستقل برای هر ربات دست‌نخورده باقی می‌ماند.
+# اگر WEBHOOK_URL ست شده ولی https نیست، تلگرام set_webhook را بی‌صدا رد می‌کند
+# و ربات «روشن» نشان داده می‌شود ولی آپدیتی نمی‌گیرد. پس صریح رد می‌کنیم.
+if WEBHOOK_URL and not WEBHOOK_URL.startswith("https://"):
+    log.error(f"❌ WEBHOOK_URL باید با https شروع شود — مقدار فعلی «{WEBHOOK_URL}» نادیده گرفته شد")
+    WEBHOOK_URL = ""
 USE_WEBHOOK        = bool(WEBHOOK_URL)
 WEBHOOK_PATH_PREFIX = "/tgwh"
 MOTHER_WEBHOOK_SECRET = secrets.token_urlsafe(24)
@@ -1016,8 +1021,19 @@ class WebhookRunner:
         return self.app.bot if self.app else None
 
     async def dispatch(self, update: Update):
-        if self.app:
+        if not self.app:
+            return
+        try:
             await self.app.process_update(update)
+        except Exception as e:
+            log.error(f"process_update {self.bot_id} ({getattr(update, 'update_id', '?')}): {e}")
+            # اگر callback بود و جواب نداد، حتماً answer کنیم تا تلگرام «ساعت‌شنی» نزند
+            try:
+                cq = getattr(update, "callback_query", None)
+                if cq is not None:
+                    await cq.answer("خطا در پردازش", show_alert=False)
+            except Exception:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1150,17 +1166,33 @@ class BotFactory:
         return runner is not None and runner._thread is not None and runner._thread.is_alive()
 
     def get_bot_instance(self, bot_id: str) -> Optional[Bot]:
-        if bot_id in self._webhooks:
-            return self._webhooks[bot_id].get_bot()
+        with self._lock:
+            wh = self._webhooks.get(bot_id)
+        if wh:
+            return wh.get_bot()
         runner = self._runners.get(bot_id)
         return runner.get_bot() if runner else None
 
+    def get_loop(self, bot_id: str):
+        """حلقه‌ای که باید کوروتینِ این ربات روی آن اجرا شود.
+        در حالت webhook همه روی BOT_LOOP مشترک‌اند؛ در polling هر ربات حلقهٔ خودش را
+        دارد. فراخوان‌های API هرگز مستقیم _loop نخوانند — در webhook خالی می‌ماند و
+        پیام بی‌صدا ارسال نمی‌شود."""
+        with self._lock:
+            if bot_id in self._webhooks:
+                return BOT_LOOP
+            runner = self._runners.get(bot_id)
+        if runner and runner._loop and runner._loop.is_running():
+            return runner._loop
+        return BOT_LOOP if USE_WEBHOOK else None
+
     def dispatch_webhook(self, bot_id: str, secret: str, update: Update) -> bool:
         """از مسیر Flask /tgwh/<bot_id> صدا زده می‌شود. False یعنی secret اشتباه یا ربات خاموش است."""
-        runner = self._webhooks.get(bot_id)
-        if not runner or not runner.app or runner.secret != secret:
-            return False
-        fire_on_bot_loop(runner.dispatch(update))
+        with self._lock:                        # تا toggle همزمان، آپدیت را به appِ خاموش‌شده ندهد
+            runner = self._webhooks.get(bot_id)
+            if not runner or not runner.app or runner.secret != secret:
+                return False
+            fire_on_bot_loop(runner.dispatch(update))
         return True
 
     def start_all_active(self):
@@ -1170,6 +1202,24 @@ class BotFactory:
 
 
 factory = BotFactory()
+
+
+async def bot_call(bot_id: str, coro_fn):
+    """یک کوروتین را روی حلقهٔ درستِ همان ربات اجرا و نتیجه را برمی‌گرداند.
+      - اگر حلقهٔ مقصد همان حلقهٔ جاری باشد، مستقیم await می‌شود
+        (run_coroutine_threadsafe روی همان loop می‌تواند قفل کند).
+      - اگر ربات خاموش باشد RuntimeError می‌دهد تا فراخواننده پیام روشن بدهد.
+    coro_fn یک تابع بی‌arg است (کوروتین را تنبل می‌سازد تا اگر ربات خاموش بود، ساخته نشود)."""
+    loop = factory.get_loop(bot_id)
+    if loop is None:
+        raise RuntimeError("ربات خاموش است")
+    try:
+        cur = asyncio.get_running_loop()
+    except RuntimeError:
+        cur = None
+    if loop is cur:
+        return await coro_fn()
+    return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coro_fn(), loop))
 
 # ══════════════════════════════════════════════════════════════════════
 # موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
@@ -1576,13 +1626,28 @@ class Engine:
     async def _alert_admins(self, text: str):
         """تیکت را با ربات مادر برای پذیرنده‌ها می‌فرستد (آن‌ها ممکن است ساب‌بات را استارت نکرده باشند)"""
         targets = sorted(self.ticket_admins())
+        if not targets:
+            return
+        # حلقهٔ مادر در حالت webhook با حلقهٔ جاری یکی است؛ پس هرگز با fut.result()
+        # بلوکه نمی‌کنیم (وگرنه کل حلقهٔ مشترک همهٔ ربات‌ها قفل می‌شود).
         if mother_bot_instance and mother_bot_loop and mother_bot_loop.is_running():
+            try:
+                cur = asyncio.get_running_loop()
+            except RuntimeError:
+                cur = None
+            if mother_bot_loop is cur:
+                for uid in targets:
+                    try:
+                        await mother_bot_instance.send_message(uid, text, parse_mode=ParseMode.HTML)
+                    except Exception:
+                        pass
+                return
             for uid in targets:
                 try:
-                    fut = asyncio.run_coroutine_threadsafe(
-                        mother_bot_instance.send_message(uid, text, parse_mode=ParseMode.HTML),
-                        mother_bot_loop)
-                    fut.result(timeout=10)
+                    await asyncio.wrap_future(
+                        asyncio.run_coroutine_threadsafe(
+                            mother_bot_instance.send_message(uid, text, parse_mode=ParseMode.HTML),
+                            mother_bot_loop))
                 except Exception:
                     pass
             return
@@ -2020,15 +2085,11 @@ async def mother_reply_ticket(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     tk = next((t for t in storage.ticket_list(target["bot_id"], 200) if t.get("id") == tid), None)
     sub = factory.get_bot_instance(target["bot_id"])
-    runner = factory._runners.get(target["bot_id"])
-    if sub and runner and runner._loop and tk:
+    if sub and tk:
         try:
-            fut = asyncio.run_coroutine_threadsafe(
-                sub.send_message(tk["uid"],
-                                 f"🎟 <b>پاسخ تیکت {tid}</b>\n\n{_html(text)}",
-                                 parse_mode=ParseMode.HTML),
-                runner._loop)
-            await asyncio.wrap_future(fut)
+            await bot_call(target["bot_id"], lambda: sub.send_message(
+                tk["uid"], f"🎟 <b>پاسخ تیکت {tid}</b>\n\n{_html(text)}",
+                parse_mode=ParseMode.HTML))
             await update.effective_message.reply_text(f"✅ پاسخ تیکت {tid} ارسال شد.")
             return
         except Exception as e:
@@ -2239,6 +2300,7 @@ def start_mother_webhook():
 # Flask App
 # ══════════════════════════════════════════════════════════════════════
 flask_app = Flask(__name__)
+flask_app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024        # ۶۰ مگابایت سقف کلی آپلود
 
 
 def _public_user(u: dict) -> dict:
@@ -2452,17 +2514,23 @@ def api_toggle_bot(bot_id):
     storage.set_bot_active(bot_id, active)
     if active:
         ok = factory.start_bot(bot_id, b["bot_token"])
+        if not ok and USE_WEBHOOK:
+            log.error(f"start_bot webhook برای {bot_id} شکست خورد — WEBHOOK_URL را بررسی کن")
     else:
         factory.stop_bot(bot_id)
         ok = True
-    return jsonify({"active": active, "is_running": factory.is_running(bot_id)})
+    return jsonify({"active": active, "is_running": factory.is_running(bot_id),
+                    "message": "روشن شد" if active and ok else "خاموش شد" if not active else "روشن‌سازی ناموفق"})
 
 
-@flask_app.route("/api/bots/<bot_id>/force-join", methods=["PATCH"])
+@flask_app.route("/api/bots/<bot_id>/force-join", methods=["GET", "PATCH", "POST"])
 @auth_required
 def api_force_join(bot_id):
     _, err = get_owned_bot(bot_id)
     if err: return err
+    if request.method == "GET":
+        b = storage.get_bot(bot_id) or {}
+        return jsonify({"channel": b.get("force_join_channel")})
     data    = request.get_json(force=True) or {}
     channel = data.get("channel") or None
     storage.set_force_join(bot_id, channel)
@@ -2558,25 +2626,22 @@ def api_broadcast(bot_id):
     if not sub_bot:
         return jsonify({"error": "ربات خاموش است — اول روشنش کن"}), 400
 
-    runner = factory._runners.get(bot_id)
+    loop = factory.get_loop(bot_id)
+    if loop is None:
+        return jsonify({"error": "ربات خاموش است — اول روشنش کن"}), 400
 
     def do_broadcast():
-        loop = runner._loop if runner else None
-        if not loop:
-            return
         sent = failed = 0
         for uid in users:
             try:
-                fut = asyncio.run_coroutine_threadsafe(
-                    sub_bot.send_message(uid, text, parse_mode=ParseMode.HTML), loop)
-                fut.result(timeout=10)
+                asyncio.run_coroutine_threadsafe(
+                    sub_bot.send_message(uid, text, parse_mode=ParseMode.HTML), loop).result(timeout=10)
                 sent += 1
             except Exception:
                 # در صورت خطای فرمت، بدون HTML امتحان کن
                 try:
-                    fut = asyncio.run_coroutine_threadsafe(
-                        sub_bot.send_message(uid, text), loop)
-                    fut.result(timeout=10)
+                    asyncio.run_coroutine_threadsafe(
+                        sub_bot.send_message(uid, text), loop).result(timeout=10)
                     sent += 1
                 except Exception:
                     failed += 1
@@ -2591,11 +2656,19 @@ def api_broadcast(bot_id):
 # ──────────────────────────────────────────────────────────────────────
 # /api/bots/<bot_id>/config  — خوش‌آمد، پاسخ ناشناخته، منوی خودکار
 # ──────────────────────────────────────────────────────────────────────
-@flask_app.route("/api/bots/<bot_id>/config", methods=["PATCH"])
+@flask_app.route("/api/bots/<bot_id>/config", methods=["GET", "PATCH", "POST"])
 @auth_required
 def api_bot_config(bot_id):
     _, err = get_owned_bot(bot_id)
     if err: return err
+    if request.method == "GET":
+        b, _ = get_owned_bot(bot_id)
+        return jsonify({
+            "welcome_message": b.get("welcome_message", ""),
+            "unknown_reply":   b.get("unknown_reply", ""),
+            "auto_menu":       b.get("auto_menu", True),
+            "rules":           b.get("rules", []),
+        })
     data = request.get_json(force=True) or {}
     patch = {}
     for k in ("welcome_message", "unknown_reply", "auto_menu"):
@@ -2640,8 +2713,18 @@ def _clean_rules(raw):
             return None, f"قانون {rid}: نوع تطبیق نامعتبر است"
         for kw in kws:
             if mode == "regex":
+                pat = str(kw)
+                if len(pat) > 200:
+                    return None, f"قانون {rid}: الگوی regex بیش از ۲۰۰ نویسه است"
+                # رد سرنخ‌های ReDoS: گروه تکرارشوندهٔ تو در تو + کوانتورهای تو در تو
+                depth = 0; max_depth = 0
+                for ch in pat:
+                    if ch == "(": depth += 1; max_depth = max(max_depth, depth)
+                    elif ch == ")": depth = max(0, depth - 1)
+                if max_depth > 3:
+                    return None, f"قانون {rid}: الگوی regex تو در توی عمیق دارد (ReDoS)"
                 try:
-                    re.compile(str(kw))
+                    re.compile(pat)
                 except re.error as e:
                     return None, f"قانون {rid}: الگوی نامعتبر ({e})"
         resp = r.get("response")
@@ -2728,14 +2811,12 @@ def api_sync_menu(bot_id):
     for name, cmd in cmds.items():
         desc = (cmd.get("description") or "").strip() or name
         menu.append(BotCommand(command=name[:32], description=desc[:48]))
-    runner = factory._runners.get(bot_id)
     try:
-        loop = runner._loop if runner else None
-        if loop:
-            fut = asyncio.run_coroutine_threadsafe(sub_bot.set_my_commands(menu), loop)
-            fut.result(timeout=15)
-        else:
-            sub_bot.set_my_commands(menu)
+        # این endpoint ترد Flask است، پس نتیجه‌گرفتن همزمان از حلقهٔ ربات بی‌خطر است.
+        loop = factory.get_loop(bot_id)
+        if not loop:
+            return jsonify({"error": "ربات خاموش است — اول روشنش کن"}), 400
+        asyncio.run_coroutine_threadsafe(sub_bot.set_my_commands(menu), loop).result(timeout=15)
         return jsonify({"message": f"منوی تلگرام با {len(menu)} دستور همگام شد", "count": len(menu)})
     except Exception as e:
         log.error(f"❌ خطا در sync-menu {bot_id}: {e}")
@@ -2806,8 +2887,17 @@ def _clean_flow(raw):
                 return None, f"کارت «{nid}»: نوع تطبیق نامعتبر است"
             for k in kws:
                 if mode == "regex":
+                    pat = str(k)
+                    if len(pat) > 200:
+                        return None, f"کارت «{nid}»: الگوی regex بیش از ۲۰۰ نویسه است"
+                    depth = 0; max_depth = 0
+                    for ch in pat:
+                        if ch == "(": depth += 1; max_depth = max(max_depth, depth)
+                        elif ch == ")": depth = max(0, depth - 1)
+                    if max_depth > 3:
+                        return None, f"کارت «{nid}»: الگوی regex تو در توی عمیق دارد (ReDoS)"
                     try:
-                        re.compile(str(k))
+                        re.compile(pat)
                     except re.error as e:
                         return None, f"کارت «{nid}»: الگوی نامعتبر ({e})"
             clean["keywords"] = [s(k, 60).strip() for k in kws if str(k).strip()][:20]
@@ -2970,15 +3060,15 @@ def api_flow_apply(bot_id):
     data = request.get_json(silent=True) or {}
     if data.get("sync_menu", True) and b.get("auto_menu", True):
         sub_bot = factory.get_bot_instance(bot_id)
-        runner = factory._runners.get(bot_id)
-        if sub_bot and runner and runner._loop:
+        loop = factory.get_loop(bot_id)
+        if sub_bot and loop:
             try:
                 cmds = storage.get_bot(bot_id).get("commands", {})
                 menu = [BotCommand(command=k[:32],
                                    description=((v or {}).get("description") or k)[:48])
                         for k, v in cmds.items()]
                 asyncio.run_coroutine_threadsafe(
-                    sub_bot.set_my_commands(menu), runner._loop).result(timeout=15)
+                    sub_bot.set_my_commands(menu), loop).result(timeout=15)
                 msg += " و منوی تلگرام همگام شد"
             except Exception as e:
                 log.warning(f"sync-menu پس از apply {bot_id}: {e}")
@@ -3147,16 +3237,16 @@ def api_tickets(bot_id):
 
     sent = False
     sub_bot = factory.get_bot_instance(bot_id)
-    runner = factory._runners.get(bot_id)
+    loop = factory.get_loop(bot_id)
     tk = next((t for t in storage.ticket_list(bot_id, 200) if t.get("id") == tid), None)
-    if sub_bot and runner and runner._loop and tk:
+    if sub_bot and loop and tk:
         try:
             asyncio.run_coroutine_threadsafe(
                 sub_bot.send_message(
                     tk["uid"],
                     f"🎟 <b>پاسخ تیکت {tid}</b>\n\n{_html(text)}",
                     parse_mode=ParseMode.HTML),
-                runner._loop).result(timeout=10)
+                loop).result(timeout=10)
             sent = True
         except Exception as e:
             log.warning(f"ارسال پاسخ تیکت {tid}: {e}")
@@ -3256,10 +3346,13 @@ def api_send_code():
         else:
             log.warning("⚠️ ربات مادر آماده نیست")
         
-        log.info(f"📱 کد تایید برای @{telegram_username}: {code}")
-        
+        # کد هرگز در لاگ نوشته نمی‌شود؛ فقط اگر ارسال تلگرام ناموفق بود،
+        # مدیر از طریق لاگِ هشدار می‌تواند مشکل را ببیند (بدون افشای کد).
+        if not code_sent:
+            log.warning(f"⚠️ کد تایید به @{telegram_username} ارسال نشد — کانال تلگرام در دسترس نیست")
+
         return jsonify({
-            "message": "کد تایید به تلگرام شما ارسال شد" + ("" if code_sent else " (کد در لاگ سرور نیز موجود است)"),
+            "message": "کد تایید به تلگرام شما ارسال شد",
             "telegram_username": telegram_username,
             "code_sent": code_sent
         })
@@ -3347,23 +3440,47 @@ def api_register():
         return jsonify({"error": "خطای سرور در ثبت‌نام"}), 500
 
 
+# rate-limit ساده: شمارندهٔ شکست در یک پنجرهٔ لغزان (هر آی‌پی + نام‌کاربری)
+_login_attempts = {}
+_LOGIN_WINDOW = 60.0
+_LOGIN_MAX = 8                          # ۸ تلاش در دقیقه
+
+def _login_blocked(ip: str, username: str) -> Optional[str]:
+    now = time.time()
+    key = (ip, username.lower())
+    arr = [t for t in _login_attempts.get(key, []) if now - t < _LOGIN_WINDOW]
+    if len(arr) >= _LOGIN_MAX:
+        return f"تعداد تلاش ناموفق بیش از حد مجاز است — یک دقیقه صبر کن"
+    _login_attempts[key] = arr
+    return None
+
+def _login_record_failure(ip: str, username: str) -> None:
+    _login_attempts.setdefault((ip, username.lower()), []).append(time.time())
+
 @flask_app.post("/api/auth/login")
 def api_login():
     data = request.get_json(force=True) or {}
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
-    
+
     if not username or not password:
         return jsonify({"error": "نام کاربری و رمز عبور الزامی است"}), 400
-    
+
+    ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+          or request.remote_addr or "")
+    if (msg := _login_blocked(ip, username)):
+        return jsonify({"error": msg}), 429
+
     try:
         user, token = storage.login_user(username, password)
+        _login_attempts.pop((ip, username.lower()), None)
         return jsonify({
             "message": "ورود موفق",
             "user": _public_user(user),
             "token": token
         })
     except ValueError as e:
+        _login_record_failure(ip, username)
         return jsonify({"error": str(e)}), 401
     except Exception as e:
         log.error(f"❌ خطا در ورود: {e}")
@@ -3594,16 +3711,22 @@ def api_upload_media():
         # محدودیت حجم بر اساس نوع
         max_size_mb = 10 if media_type == 'photo' else 50
         max_size_bytes = max_size_mb * 1024 * 1024
-        
-        # خواندن فایل
-        file_data = file.read()
+
+        # خواندن تدریجی تا سقف — یک آپلود ۱ گیگابایتی نباید RAM را ببلعد.
+        # request.max_content_length باید در app config تنظیم شده باشد (Flask خودش بیشتر را قطع می‌کند).
+        file_data = bytearray()
+        stream = file.stream
+        while True:
+            chunk = stream.read(64 * 1024)
+            if not chunk:
+                break
+            file_data.extend(chunk)
+            if len(file_data) > max_size_bytes:
+                return jsonify({"error": f"حجم فایل باید کمتر از {max_size_mb} مگابایت باشد"}), 400
+
+        file_data = bytes(file_data)
         size = len(file_data)
-        
-        if size > max_size_bytes:
-            return jsonify({
-                "error": f"حجم فایل باید کمتر از {max_size_mb} مگابایت باشد"
-            }), 400
-        
+
         if size < 100:
             return jsonify({"error": "فایل خیلی کوچک است"}), 400
         
