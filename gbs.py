@@ -1229,9 +1229,9 @@ class Flow:
                 rows.append([u])
             callbacks = {}
             for b in r["cb"]:
-                tgt = self.node(b["data"].split(":", 2)[2])
-                callbacks[b["data"]] = ((tgt or {}).get("text") or
-                                        (tgt or {}).get("response") or "")
+                # callback_data شامل پیشوند gs: است؛ parse خودش آن را می‌زداید
+                tgt = (self.parse(b["data"]) or {}).get("tgt") or {}
+                callbacks[b["data"]] = (tgt.get("text") or tgt.get("response") or "")
             result[name] = {
                 "response": nd.get("text") or nd.get("response") or "",
                 "description": nd.get("description") or "",
@@ -2633,7 +2633,15 @@ def _clean_flow(raw):
         if nodes[nid_].get("role") == "group" and _depth(nid_, {nid_}) > 2:
             return None, f"گروه «{nid_}» بیش از ۳ سطح تودرتو است — ساده‌اش کن"
 
-    return {"version": FLOW_VERSION, "nodes": list(nodes.values()), "edges": edges}, None
+    out = {"version": FLOW_VERSION, "nodes": list(nodes.values()), "edges": edges}
+    v = raw.get("view")
+    if isinstance(v, dict):                       # جای دوربین روی بوم — فقط برای رابط کاربری
+        try:
+            out["view"] = {"x": int(v.get("x") or 0), "y": int(v.get("y") or 0),
+                           "z": min(2.4, max(0.35, float(v.get("z") or 1)))}
+        except (TypeError, ValueError):
+            pass
+    return out, None
 
 
 def _sync_commands_from_flow(bot_id: str, graph: dict) -> int:
@@ -2687,7 +2695,7 @@ def _mirror_cmd_in_flow(bot_id: str, cmd_name: str, removed: bool = False):
                           "text": str(c.get("response") or "")[:4000],
                           "description": str(c.get("description") or "")[:60],
                           "x": 40, "y": 40 + 130 * len(nodes)})
-    cleaned, verr = _clean_flow({"nodes": nodes, "edges": edges})
+    cleaned, verr = _clean_flow({"nodes": nodes, "edges": edges, "view": raw.get("view")})
     if not verr and cleaned:
         storage.set_flow(bot_id, cleaned)
 
