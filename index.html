@@ -339,11 +339,12 @@
       .st-tool.on { border-color: var(--ac); background: var(--ac-soft); }
       .st-tool.on svg { color: var(--ac); }
       /* نوار پایین: ظریف و کوچک‌تر از نوار اصلی، تمایز بصری واضح */
-      .st-foot { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); }
-      .st-foot .ft-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 46px; padding: 3px 2px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 10px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
+      .st-foot { flex: none; display: flex; flex-flow: row wrap; align-items: center; justify-content: center; gap: 8px; padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); }
+      .st-foot .ft-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 6px 16px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 12px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
+      .st-foot .ft-cnt, .st-foot .ft-edit, .st-foot .ft-del { flex: none; }
       .st-foot .ft-btn:active { transform: scale(.95); border-color: var(--ac); }
-      .st-foot .ft-btn .ft-i { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--panel); }
-      .st-foot .ft-btn .ft-i svg { width: 13px; height: 13px; color: var(--mu); }
+      .st-foot .ft-btn .ft-i { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--panel); }
+      .st-foot .ft-btn .ft-i svg { width: 12px; height: 12px; color: var(--mu); }
       .st-foot .ft-btn.ft-ac { border-color: color-mix(in srgb, var(--ac) 50%, var(--hair)); color: var(--ac); background: var(--ac-soft); }
       .st-foot .ft-btn.ft-ac .ft-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
       .st-foot .ft-btn.ft-ac .ft-i svg { color: var(--ac); }
@@ -749,7 +750,7 @@
       const canRecv = (nd) => !!nd && ST_RECV[nd.kind] ? 1 : 0;
 
       let STG = { nodes: [], edges: [], view: { x: 0, y: 0, z: 1 } };   /* هرگز null نمی‌شود */
-      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, testIn: "", testCb: "", testHtml: "", saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "", offline: false, recover: null, mirrorCount: 0 };
+      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "", offline: false, recover: null, mirrorCount: 0 };
       let stIssues = [];
       const stCur = () => STG && st.sel.length === 1 ? STG.nodes.find((n) => n.id === st.sel[0]) : null;
       const nid = () => "n" + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
@@ -1283,11 +1284,9 @@
         const one = stCur();
         const count = st.sel.length;
         if (!has) {
-          /* چهار دکمهٔ اصلی؛ چیدمان دو به دو برای انگشت‌های شست */
-          return `<button class="ft-btn" data-a="test"><span class="ft-i">${ic("play")}</span><span>تست</span></button>` +
-            `<button class="ft-btn ft-ac" data-a="apply"><span class="ft-i">${ic("check")}</span><span>اعمال</span></button>` +
-            `<button class="ft-btn" data-a="layout"><span class="ft-i">${ic("fit")}</span><span>چیدمان</span></button>` +
-            `<button class="ft-btn" data-a="menu"><span class="ft-i">${ic("more")}</span><span>منو</span></button>`;
+          /* فقط دو دکمهٔ اصلی، ساده و وسط‌چین */
+          return `<button class="ft-btn ft-ac" data-a="apply"><span class="ft-i">${ic("check")}</span><span>اعمال</span></button>` +
+            `<button class="ft-btn" data-a="layout"><span class="ft-i">${ic("fit")}</span><span>چیدمان</span></button>`;
         }
         const editBtn = one ? `<button class="ft-btn ft-edit" data-a="edit" data-id="${esc(one.id)}"><span class="ft-i">${ic("gear")}</span><span>ویرایش</span></button>` : "";
         const grpBtn = count > 1 ? `<button class="ft-btn" data-a="group"><span class="ft-i">${ic("folder")}</span><span>گروه</span></button>` : "";
@@ -1303,10 +1302,8 @@
         f.querySelectorAll("[data-a]").forEach((b) => {
           b.onclick = () => {
             switch (b.dataset.a) {
-              case "test": return stTest();
               case "apply": return stApply();
               case "layout": return stAutoLayout();
-              case "menu": return stMenu();
               case "edit": return stEdit(b.dataset.id);
               case "group": return stGroupSel();
               case "dup": return stDupSel();
@@ -1744,127 +1741,6 @@
         if (E.isNew && !parent && !canSend(nd)) toast("حالا از نقطهٔ سبزِ یک کارت به این کارت سیم بکش");
       }
       function stDelFromEdit(id) { st.sel = [id]; st.editing = null; closeSheet(); stDelSel(); }
-
-      /* ── آزمون زنده ── */
-      function stTest() {
-        const cmdsAvail = STG.nodes.filter((n) => n.kind === "cmd").slice(0, 6);
-        $("sheet").innerHTML = `<div class="sh-h"><span>آزمون نقشه</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
-          <div class="sh-b">
-            <label>چیزی که کاربر می‌فرستد</label>
-            <div style="display:flex;gap:6px"><input class="in ltr" id="stIn" value="${esc(st.testIn)}" placeholder="/start یا یک متن" oninput="st.testIn=this.value"><div class="ib" style="width:44px" onclick="stRunTest()">${ic("play")}</div></div>
-            <div class="chips" style="margin-top:9px">${cmdsAvail.map((n) => `<span onclick="st.testIn='/'+this.textContent.slice(1);stRunTest()">${"/" + esc(n.name)}</span>`).join("")}${st.testCb ? `<span onclick="stRunTest('cb')">تکرار آخرین دکمه</span>` : ""}</div>
-            <div id="stOut" style="margin-top:14px">${st.testHtml || `<p style="color:var(--mu);font-size:12.5px">همین نقشهٔ ذخیره‌نشده روی سرور اجرا می‌شود و دقیقاً همان پیامی که کاربر می‌گیرد را نشان می‌دهد. روی دکمهٔ نتیجه بزن تا مسیر ادامه را ببینی.</p>`}</div>
-          </div>`;
-        $("scrim").classList.add("on");
-      }
-      /* شبیه‌ساز محلی موتور (برای حالت سازگار) — هم‌راستا با Flow.render/parts/match_keyword */
-      /* حالت آفلاین: شبیه‌سازی سبک شرط/متغیر با یک انبار محلی فقط برای تست */
-      const stLocalVars = () => (st.testVars || (st.testVars = {}));
-      function stEvalCond(nd) {
-        const v = stLocalVars()[nd.var], val = nd.value;
-        switch (nd.op) {
-          case "exists": return v !== undefined;
-          case "nexists": return v === undefined;
-          case "contains": return String(v ?? "").includes(String(val ?? ""));
-          case "gt": return (+v || 0) > (+val || 0);
-          case "lt": return (+v || 0) < (+val || 0);
-          case "neq": return String(v ?? "") !== String(val ?? "");
-          default: return String(v ?? "") === String(val ?? "");
-        }
-      }
-      function stApplySet(nd) {
-        const vars = stLocalVars(); const cur = vars[nd.var];
-        if (nd.op === "inc") vars[nd.var] = (+cur || 0) + (+nd.value || 0);
-        else if (nd.op === "dec") vars[nd.var] = (+cur || 0) - (+nd.value || 0);
-        else if (nd.op === "append") vars[nd.var] = String(cur ?? "") + String(nd.value ?? "");
-        else vars[nd.var] = nd.value;
-      }
-      function stResolveLogic(nd, depth) {
-        depth = depth || 0;
-        const seen = new Set();
-        while (nd && (nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "random" || nd.kind === "notify") && depth < 12) {
-          if (seen.has(nd.id)) return null;
-          seen.add(nd.id); depth++;
-          const outs = outOf(nd.id);
-          if (nd.kind === "setvar") { stApplySet(nd); nd = outs[0] || null; }
-          else if (nd.kind === "notify") { nd = outs[0] || null; }
-          else if (nd.kind === "random") { nd = outs.length ? outs[Math.floor(Math.random() * outs.length)] : null; }
-          else nd = stEvalCond(nd) ? (outs[0] || null) : (outs[1] || null);
-        }
-        return nd;
-      }
-      function stLocalRender(nd) {
-        nd = stResolveLogic(nd);
-        if (!nd || nd.kind === "link") return null;
-        if (nd.kind === "image") {
-          if (!nd.url) return null;
-          return { node: nd, text: nd.caption || nd.text || "", media: { type: nd.mediaType || "photo", url: nd.url }, buttons: [] };
-        }
-        const { btns, urls, media } = stParts(nd, 0);
-        let cb;
-        if (nd.kind === "ticket") {
-          cb = [{ text: "🎟 ثبت تیکت", data: `gs:tk:${nd.id}:` }];
-          (nd.words || []).forEach((w, i) => cb.push({ text: "🔑 " + String(w).slice(0, 18), data: `gs:tka:${nd.id}:w${i}` }));
-        } else if (nd.kind === "input") {
-          cb = [{ text: "✏️ پاسخ بده", data: `gs:in:${nd.id}:` }];
-        } else {
-          cb = btns.map((t) => ({ text: String(t.label || t.name || t.text || "ادامه").split("\n")[0].slice(0, 64) || "ادامه", data: `gs:go:${nd.id}:${t.id}`.slice(0, 64), tgt: t.id }));
-        }
-        const rows = [];
-        urls.forEach((u) => rows.push([{ text: String(u.text || "لینک").slice(0, 64), url: u.url }]));
-        for (let i = 0; i < cb.length; i += 3) rows.push(cb.slice(i, i + 3).map((b) => (b.url ? b : { text: b.text, callback_data: b.data })));
-        return { node: nd, text: nd.text || (nd.kind === "ticket" ? "پیام خود را بنویسید…" : ""), media: media ? { type: media.mediaType || "photo", url: media.url } : null, buttons: rows, _cb: cb };
-      }
-      function stLocalTest(inp) {
-        inp = String(inp || "").trim();
-        if (!inp) return { matched: false };
-        if (inp.startsWith("/")) {
-          const nm = inp.slice(1).split(/\s+/)[0].toLowerCase();
-          const nd = STG.nodes.find((n) => n.kind === "cmd" && (n.name || "").toLowerCase() === nm);
-          return nd ? { matched: true, node: { id: nd.id, kind: "cmd", label: nd.name }, result: stLocalRender(nd) } : { matched: false };
-        }
-        if (inp.startsWith("gs:")) {
-          const p = inp.slice(3).split(":");
-          const tgt = p[2] ? nSt(p[2]) : null, src = nSt(p[1]);
-          const raw = tgt || src;
-          const nd = raw ? (stResolveLogic(raw) || raw) : null;
-          return nd ? { matched: true, node: { id: nd.id, kind: nd.kind, label: nd.name || nd.label }, result: stLocalRender(raw) } : { matched: false };
-        }
-        const t = inp.toLowerCase();
-        const trg = STG.nodes.find((n) => {
-          if (n.kind !== "trigger") return false;
-          const mode = n.mode || "contains";
-          return (n.keywords || []).some((k) => {
-            const s = String(k).toLowerCase();
-            if (mode === "exact") return t === s;
-            if (mode === "regex") { try { return new RegExp(k, "i").test(inp); } catch (e) { return false; } }
-            return t.includes(s);
-          });
-        });
-        return trg ? { matched: true, node: { id: trg.id, kind: "trigger", label: trg.name || trg.label || "کلیدواژه" }, result: stLocalRender(trg) } : { matched: false };
-      }
-      const stRunTest = guard(async (mode) => {
-        let inp = mode === "cb" && st.testCb ? st.testCb : ($("stIn").value || "").trim();
-        if (!inp) return toast("ورودی را بنویس", 1);
-        let r;
-        if (st.offline) {
-          r = stLocalTest(inp);
-          if (r.matched && r.result) r.node = r.node || { id: r.result.node.id, kind: r.result.node.kind, label: r.result.node.name || r.result.node.label };
-        } else {
-          try { r = await api(`/api/bots/${botId}/flow/test`, { method: "POST", body: { input: inp, flow: exportGraph(STG) } }); }
-          catch (e) { if (/405|404/.test(e.message)) { st.offline = true; stStatus(); r = stLocalTest(inp); } else throw e; }
-        }
-        st.testIn = mode === "cb" ? st.testIn : inp;
-        if (!r.matched) { st.testHtml = `<p style="color:var(--amber);font-size:13px">هیچ کارتی با «${esc(inp)}» مطابقت نکرد${st.offline ? " (پیش‌نمایش محلی)" : ""}</p>`; stTest(); return; }
-        const m = r.result || {};
-        const nid2 = r.node && r.node.id, nn = nid2 ? nSt(nid2) : null;
-        st.testHtml = `<div style="color:var(--mu);font-size:11.5px;margin-bottom:8px" class="mono">${esc(ST_KIND[(nn || {}).kind] ? ST_KIND[(nn || {}).kind].t : r.node.kind)} · ${esc(r.node.label || r.node.id)}</div>` +
-          (m.media ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${esc(m.media.type)} · <span class="mono ltr">${esc((m.media.url || "").slice(-40))}</span></div>` : "") +
-          `<div class="bub">${esc(m.text || "…")}</div>` +
-          (m.buttons || []).map((row) => `<div class="bubrow">${row.map((b) => `<i ${b.url ? `onclick="window.open('${esc(b.url)}','_blank')"` : `onclick="st.testCb='${esc(b.callback_data)}';stRunTest('cb')"`}>${b.url ? "🔗 " : ""}${esc(b.text)}</i>`).join("")}</div>`).join("") +
-          (!m.buttons || !m.buttons.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">این پیام دکمه‌ای ندارد.</div>` : "");
-        stTest();
-      });
 
       /* ── صندوق تیکت ── */
       const stTickets = guard(async () => {
