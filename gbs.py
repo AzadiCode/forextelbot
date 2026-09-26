@@ -9,7 +9,7 @@ from __future__ import annotations
 import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, copy, secrets, re
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Any, Dict
+from typing import Optional
 from functools import wraps
 from html import escape as h_escape
 import urllib.parse
@@ -19,8 +19,6 @@ from flask import Flask, request, jsonify, g
 
 # ── HTTP client ──
 import requests as req_lib
-
-import aiohttp  # برای نود API/Webhook
 
 # ── python-telegram-bot ──
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo, BotCommand
@@ -151,8 +149,6 @@ class Storage:
                 self._users.create_index("uid", unique=True)
                 self._bots.create_index("bot_id", unique=True)
                 self._bots.create_index("owner_uid")
-                self._states = db["user_states"]  # کالکشن جدید برای متغیرها
-                self._states.create_index([("bot_id", 1), ("uid", 1)], unique=True)
                 log.info("✅ MongoDB متصل شد")
             except Exception as e:
                 log.warning(f"⚠️ خطا در اتصال به MongoDB: {e}. از حافظه موقت استفاده می‌شود.")
@@ -165,7 +161,6 @@ class Storage:
         self._is_memory = True
         self._users = {}  # uid -> user_dict
         self._bots = {}   # bot_id -> bot_dict
-        self._states = {} # bot_id:uid -> {vars, waiting_for}
 
     def _find_user_by(self, query: dict) -> Optional[dict]:
         """جستجوی کاربر با query در حالت Memory یا MongoDB"""
@@ -279,6 +274,7 @@ class Storage:
         })
         b.setdefault("force_join_channel", None)
         b.setdefault("bot_users", [])
+        b.setdefault("bot_user_vars", {})       # uid -> {varname: value}  (کارت‌های شرط/متغیر)
         # ── تنظیمات جدید (سازگار با ربات‌های قبلی) ──
         b.setdefault("welcome_message", "")   # پیام خوش‌آمد برای عضو جدید
         b.setdefault("unknown_reply", "")      # پاسخ خودکار به دستور ناشناخته
@@ -618,6 +614,29 @@ class Storage:
         else:
             self._bots.update_one({"bot_id": bot_id}, {"$set": {"ticket_admins": uids}})
 
+    # ── متغیرهای کاربر (برای کارت‌های شرط/متغیر در موتور جریان) ──────────
+    def get_user_vars(self, bot_id: str, uid: int) -> dict:
+        uid = str(uid)
+        if self._is_memory:
+            bot = self._bots.get(bot_id) or {}
+            return dict((bot.get("bot_user_vars") or {}).get(uid) or {})
+        doc = self._bots.find_one({"bot_id": bot_id}, {f"bot_user_vars.{uid}": 1}) or {}
+        return dict((doc.get("bot_user_vars") or {}).get(uid) or {})
+
+    def set_user_var(self, bot_id: str, uid: int, name: str, value):
+        uid, name = str(uid), str(name)[:40]
+        if not name:
+            return
+        if isinstance(value, str):
+            value = value[:500]
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if bot is not None:
+                bot.setdefault("bot_user_vars", {}).setdefault(uid, {})[name] = value
+            return
+        self._bots.update_one({"bot_id": bot_id},
+                              {"$set": {f"bot_user_vars.{uid}.{name}": value}})
+
     # ── آمار ──────────────────────────────────────────────────────────
     def add_bot_user(self, bot_id: str, uid: int) -> bool:
         if self._is_memory:
@@ -913,50 +932,6 @@ class Storage:
                 {"$unset": {"auth_token": ""}}
             )
             return result.modified_count > 0
-
-    # ══════════════════════════════════════════════════════════════════
-    # سیستم State و متغیرها (منطق نودهای جدید)
-    # ══════════════════════════════════════════════════════════════════
-    def get_user_state(self, bot_id: str, uid: int) -> dict:
-        key = f"{bot_id}:{uid}"
-        if self._is_memory:
-            return copy.deepcopy(self._states.get(key, {"vars": {}, "waiting_for": None}))
-        doc = self._states.find_one({"bot_id": bot_id, "uid": uid})
-        if doc:
-            doc.pop("_id", None)
-            return doc
-        return {"vars": {}, "waiting_for": None}
-
-    def set_user_var(self, bot_id: str, uid: int, var_name: str, value: Any):
-        key = f"{bot_id}:{uid}"
-        safe_val = str(value)[:4000] if value is not None else ""
-        if self._is_memory:
-            if key not in self._states:
-                self._states[key] = {"bot_id": bot_id, "uid": uid, "vars": {}, "waiting_for": None}
-            self._states[key]["vars"][var_name] = safe_val
-        else:
-            self._states.update_one(
-                {"bot_id": bot_id, "uid": uid},
-                {"$set": {f"vars.{var_name}": safe_val}},
-                upsert=True
-            )
-
-    def set_waiting_state(self, bot_id: str, uid: int, state: Optional[dict]):
-        """state = {'node_id': '...', 'target_var': '...', 'type': 'text|number', 'next_node': '...'}"""
-        key = f"{bot_id}:{uid}"
-        if self._is_memory:
-            if key not in self._states:
-                self._states[key] = {"bot_id": bot_id, "uid": uid, "vars": {}, "waiting_for": None}
-            self._states[key]["waiting_for"] = state
-        else:
-            if state is None:
-                self._states.update_one({"bot_id": bot_id, "uid": uid}, {"$unset": {"waiting_for": ""}})
-            else:
-                self._states.update_one(
-                    {"bot_id": bot_id, "uid": uid},
-                    {"$set": {"waiting_for": state}},
-                    upsert=True
-                )
 
 
 storage = Storage()
@@ -1273,10 +1248,13 @@ async def bot_call(bot_id: str, coro_fn):
 # ══════════════════════════════════════════════════════════════════════
 # موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
 # ══════════════════════════════════════════════════════════════════════
-FLOW_VERSION = 3
+FLOW_VERSION = 2
 TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
 CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
-KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "variable", "condition", "input", "api"}
+KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
+         "input", "random", "notify"}
+LOGIC_KINDS = {"condition", "setvar", "random", "notify"}  # پیام نیستند، فقط مسیر می‌سازند/عارضهٔ جانبی دارند
+_TPL_RE = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}")
 
 
 def _html(t: str) -> str:
@@ -1285,6 +1263,29 @@ def _html(t: str) -> str:
     if re.search(r"</?[a-zA-Z][^>]*>", t):
         return t
     return h_escape(t)
+
+
+def _tpl(text: str, ctx: Optional[dict]) -> str:
+    """جای‌گذاری {{var.x}} و {{user.x}} در متن — بدون ctx دست‌نخورده برمی‌گردد"""
+    if not text or "{{" not in text or not ctx:
+        return text
+    get_var = ctx.get("get_var")
+    user = ctx.get("user") or {}
+
+    def _sub(m):
+        path = m.group(1)
+        if path.startswith("var.") and get_var:
+            v = get_var(path[4:])
+            return "" if v is None else str(v)
+        if path.startswith("user."):
+            v = user.get(path[5:])
+            return "" if v is None else str(v)
+        return m.group(0)
+
+    try:
+        return _TPL_RE.sub(_sub, text)
+    except Exception:
+        return text
 
 
 class Flow:
@@ -1399,16 +1400,102 @@ class Flow:
                 urls.extend(sub_u)
                 if media is None and sub_m:
                     media = sub_m
-            elif k in ("reply", "cmd", "ticket", "trigger"):
+            elif k in ("reply", "cmd", "ticket", "trigger", "condition", "setvar",
+                       "input", "random", "notify"):
                 btns.append(t)
         return btns, urls, media
 
-    def render(self, nd, chain=None):
-        """نود → پیام رندرشده. سیم خروجی = دکمه/لینک/رسانهٔ همان پیام."""
+    # ── نودهای منطقی: شرط/متغیر — پیام نیستند، فقط مسیر واقعی را پیدا می‌کنند ──
+    @staticmethod
+    def _cast(a, b):
+        try:
+            return float(a), float(b)
+        except (TypeError, ValueError):
+            return None
+
+    def _eval_condition(self, nd, ctx) -> bool:
+        get_var = (ctx or {}).get("get_var") or (lambda _n: None)
+        v, val, op = get_var(nd.get("var")), nd.get("value"), nd.get("op") or "eq"
+        if op == "exists":
+            return v is not None
+        if op == "nexists":
+            return v is None
+        if op == "contains":
+            return str(val or "") in str(v if v is not None else "")
+        if op in ("gt", "lt"):
+            nums = self._cast(v, val)
+            if nums is None:
+                return False
+            return nums[0] > nums[1] if op == "gt" else nums[0] < nums[1]
+        if op == "neq":
+            return str(v if v is not None else "") != str(val if val is not None else "")
+        return str(v if v is not None else "") == str(val if val is not None else "")
+
+    def _apply_setvar(self, nd, ctx):
+        set_var = (ctx or {}).get("set_var")
+        get_var = (ctx or {}).get("get_var") or (lambda _n: None)
+        if not set_var:
+            return
+        name, op, val = nd.get("var"), nd.get("op") or "set", nd.get("value")
+        if not name:
+            return
+        if op in ("inc", "dec"):
+            try:
+                cur = float(get_var(name) or 0)
+            except (TypeError, ValueError):
+                cur = 0
+            try:
+                delta = float(val or 0)
+            except (TypeError, ValueError):
+                delta = 0
+            nv = cur + delta if op == "inc" else cur - delta
+            set_var(name, nv if nv % 1 else int(nv))
+        elif op == "append":
+            set_var(name, str(get_var(name) or "") + str(val or ""))
+        else:
+            set_var(name, val)
+
+    def _apply_notify(self, nd, ctx):
+        """کارت اعلان پیام نیست: متن را در صف اعلان (ctx) می‌گذارد تا لایهٔ async بعداً برای
+        پذیرنده‌های تیکت بفرستد — خودِ Flow هرگز مستقیم شبکه صدا نمی‌زند (کاملاً sync است)."""
+        notify = (ctx or {}).get("notify")
+        text = _tpl(_html(nd.get("text") or nd.get("label") or ""), ctx)
+        if notify is not None and text:
+            notify(text)
+
+    def resolve_action(self, nd, ctx=None, depth=0):
+        """پیمایش نودهای منطقی (شرط/متغیر/تصادفی/اعلان) تا رسیدن به نودِ واقعاً قابل‌نمایش (یا None)"""
+        seen = set()
+        while nd and nd.get("kind") in LOGIC_KINDS and depth < 12:
+            if nd["id"] in seen:
+                return None
+            seen.add(nd["id"])
+            depth += 1
+            outs = self.outs(nd["id"])
+            if nd["kind"] == "setvar":
+                self._apply_setvar(nd, ctx)
+                nd = outs[0] if outs else None
+            elif nd["kind"] == "notify":
+                self._apply_notify(nd, ctx)
+                nd = outs[0] if outs else None
+            elif nd["kind"] == "random":
+                nd = random.choice(outs) if outs else None
+            else:
+                ok = self._eval_condition(nd, ctx)
+                nd = (outs[0] if outs else None) if ok else (outs[1] if len(outs) > 1 else None)
+        return nd
+
+    def render(self, nd, chain=None, ctx=None):
+        """نود → پیام رندرشده. سیم خروجی = دکمه/لینک/رسانهٔ همان پیام.
+        اگر نود به شرط/متغیر برسد، بی‌صدا پیمایش می‌شود تا نودِ واقعیِ پیام‌دار."""
         if not nd:
             return None
+        if nd.get("kind") in LOGIC_KINDS:
+            nd = self.resolve_action(nd, ctx)
+            if not nd:
+                return None
         kind = nd.get("kind")
-        if kind not in ("cmd", "reply", "image", "ticket", "trigger"):
+        if kind not in ("cmd", "reply", "image", "ticket", "trigger", "input"):
             return None
         chain = chain or set()
         if nd["id"] in chain:
@@ -1420,7 +1507,7 @@ class Flow:
             if not nd.get("url"):
                 return None
             return {"mtype": nd.get("mediaType") or "photo", "url": nd["url"],
-                    "text": _html(nd.get("caption") or ""), "cb": [], "urlb": []}
+                    "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": []}
 
         if kind == "ticket":
             words = [str(w).strip() for w in (nd.get("words") or []) if str(w).strip()]
@@ -1429,10 +1516,16 @@ class Flow:
                 cb.append({"text": f"🔑 {w[:18]}", "data": self.cid("tka", nd,
                                                                   {"id": f"w{i}"})})
             return {"mtype": None, "url": None, "ready": True,
-                    "text": _html(nd.get("text") or "متن تیکت خود را بنویسید."),
+                    "text": _tpl(_html(nd.get("text") or "متن تیکت خود را بنویسید."), ctx),
                     "cb": cb, "urlb": urls, "words": words}
 
-        text = _html(nd.get("text") or nd.get("response") or "")
+        if kind == "input":
+            cb = [{"text": "✏️ پاسخ بده", "data": self.cid("in", nd)}]
+            return {"mtype": None, "url": None, "ready": True,
+                    "text": _tpl(_html(nd.get("text") or "پاسخ خود را بنویسید."), ctx),
+                    "cb": cb, "urlb": urls}
+
+        text = _tpl(_html(nd.get("text") or nd.get("response") or ""), ctx)
         cb = []
         for t in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
@@ -1555,12 +1648,9 @@ class Engine:
         self.flow = flow_from(bot_rec)
 
     # ── ارسال ─────────────────────────────────────────────────────────
-    async def deliver(self, ctx, chat_id, msg, message=None, uid=None):
+    async def deliver(self, ctx, chat_id, msg, message=None):
         if not msg:
             return False
-        # رندر متغیرها در متن
-        if uid and msg.get("text"):
-            msg["text"] = self._render_template(msg["text"], uid)
         kb = self.flow.markup(msg)
         text = msg.get("text") or ""
         try:
@@ -1595,19 +1685,57 @@ class Engine:
             log.error(f"❌ deliver {self.bot_id}: {e}")
             return False
 
+    # ── کارت‌های شرط/متغیر/اعلان: زمینهٔ اجرا برای هر کاربر ────────────────
+    def _vctx(self, chat_id, user=None) -> dict:
+        cache = {}
+        notify_q = []
+
+        def get_var(name):
+            if name not in cache:
+                cache.update(storage.get_user_vars(self.bot_id, chat_id))
+            return cache.get(name)
+
+        def set_var(name, value):
+            cache[name] = value
+            storage.set_user_var(self.bot_id, chat_id, name, value)
+
+        def notify(text):
+            notify_q.append(text)
+
+        return {"get_var": get_var, "set_var": set_var, "user": user or {},
+                "notify": notify, "_notify_q": notify_q}
+
+    async def _flush_notify(self, vctx):
+        """کارت‌های اعلان طی resolve_action فقط متن را در صف گذاشته‌اند؛ اینجا واقعاً می‌فرستیم
+        (شبکه/await فقط این‌جا، بیرون از Flow که کاملاً sync است)."""
+        q = (vctx or {}).get("_notify_q")
+        if not q:
+            return
+        for text in q:
+            await self._alert_admins(f"🔔 <b>اعلان جریان</b>\n{text}")
+        q.clear()
+
+    async def _deliver_flow(self, ctx, chat_id, nd, vctx=None):
+        """رندر + ارسال + تخلیهٔ صفِ اعلان — مسیر مشترک همهٔ نقاط ورودی به موتور جریان."""
+        vctx = vctx or self._vctx(chat_id)
+        msg = self.flow.render(nd, ctx=vctx)
+        ok = await self.deliver(ctx, chat_id, msg)
+        await self._flush_notify(vctx)
+        return ok
+
     # ── ورودی‌ها ──────────────────────────────────────────────────────
-    async def on_command(self, ctx, chat_id, cmd_name, uid=None):
+    async def on_command(self, ctx, chat_id, cmd_name, user=None):
         nd = self.flow.entry_for(cmd_name)
         if not nd:
             return False
-        await self.deliver(ctx, chat_id, self.flow.render(nd), uid=uid)
+        await self._deliver_flow(ctx, chat_id, nd, self._vctx(chat_id, user))
         return True
 
-    async def on_keyword(self, ctx, chat_id, text, uid=None):
+    async def on_keyword(self, ctx, chat_id, text, user=None):
         nd = self.flow.match_keyword(text)
         if not nd:
             return False
-        await self.deliver(ctx, chat_id, self.flow.render(nd), uid=uid)
+        await self._deliver_flow(ctx, chat_id, nd, self._vctx(chat_id, user))
         return True
 
     async def on_callback(self, ctx, chat_id, data, message, user_id=None):
@@ -1625,162 +1753,27 @@ class Engine:
             return await self._ticket_toggle(ctx, chat_id, src,
                                              str(p.get("raw") or ""), user_id or chat_id)
 
+        if act == "in":
+            await self._input_open(ctx, chat_id, src)
+            return "done"
 
         if act == "go":
             tgt = p["tgt"]
             if tgt is None:
                 return "legacy"
-            
-            # مدیریت نودهای منطقی جدید
-            kind = tgt.get("kind")
-            if kind == "input":
-                # ذخیره وضعیت انتظار برای نود بعدی
-                outs = self.flow.outs(tgt["id"])
-                next_id = outs[0]["id"] if outs else None
-                storage.set_waiting_state(self.bot_id, user_id, {
-                    "node_id": tgt["id"],
-                    "target_var": tgt.get("target_var", "last_input"),
-                    "type": tgt.get("type", "text"),
-                    "validation": tgt.get("validation"),
-                    "next_node": next_id
-                })
-                msg = self.flow.render(tgt)
-                if msg: await self.deliver(ctx, chat_id, msg, uid=user_id)
-                return "done"
-            if kind == "variable":
-                await self._handle_variable_node(ctx, chat_id, tgt, user_id)
-                return "done"
-            if kind == "condition":
-                next_node = await self._evaluate_condition(tgt, user_id)
-                if next_node:
-                    msg = self.flow.render(next_node)
-                    if msg: await self.deliver(ctx, chat_id, msg, uid=user_id)
-                return "done"
-            if kind == "api":
-                await self._handle_api_node(ctx, chat_id, tgt, user_id)
-                return "done"
-
-            msg = self.flow.render(tgt)
+            vctx = self._vctx(user_id or chat_id)
+            msg = self.flow.render(tgt, ctx=vctx)
             if not msg or not msg.get("ready"):
+                # نود مقصد محتوایی ندارد → متن سادهٔ خودِ نود را نشان بده
                 txt = _html(tgt.get("text") or tgt.get("response") or tgt.get("caption") or "")
                 if not txt:
                     return "legacy"
                 msg = {"mtype": None, "url": None, "text": txt, "cb": [], "urlb": [],
                        "ready": True}
-            await self.deliver(ctx, chat_id, msg, uid=user_id)
+            await self.deliver(ctx, chat_id, msg)
+            await self._flush_notify(vctx)
             return "done"
-
-    # ── توابع کمکی منطق جدید ─────────────────────────────────────────
-    def _render_template(self, text: str, uid: int) -> str:
-        if not text or "{{" not in text: return text
-        state = storage.get_user_state(self.bot_id, uid)
-        vars_dict = state.get("vars", {})
-        def replacer(match):
-            key = match.group(1).strip()
-            return str(vars_dict.get(key, ""))
-        return re.sub(r"\{\{(\w+)\}\}", replacer, text)
-
-    async def _handle_input_capture(self, ctx, chat_id, text, uid: int, waiting_state: dict) -> bool:
-        target_var = waiting_state.get("target_var", "last_input")
-        expected_type = waiting_state.get("type", "text")
-        validation = waiting_state.get("validation")
-        next_node_id = waiting_state.get("next_node")
-        
-        valid = True
-        error_msg = "❌ لطفاً ورودی معتبر وارد کنید."
-        
-        if expected_type == "number":
-            if not text.isdigit(): valid = False; error_msg = "❌ لطفاً فقط عدد وارد کنید."
-        elif expected_type == "phone":
-            if not re.match(r"^[\+]?[0-9]{10,15}$", text.replace(" ","")): valid = False; error_msg = "❌ شماره تلفن نامعتبر است."
-        elif expected_type == "email":
-            if "@" not in text or "." not in text: valid = False; error_msg = "❌ ایمیل نامعتبر است."
-        elif validation:
-            try:
-                if not re.match(validation, text): valid = False
-            except: pass
-            
-        if not valid:
-            await ctx.bot.send_message(chat_id, error_msg)
-            return True 
-            
-        storage.set_user_var(self.bot_id, uid, target_var, text)
-        storage.set_waiting_state(self.bot_id, uid, None) 
-        
-        if next_node_id:
-            next_nd = self.flow.node(next_node_id)
-            if next_nd:
-                msg = self.flow.render(next_nd)
-                if msg: await self.deliver(ctx, chat_id, msg, uid=uid)
-        return True
-
-    async def _handle_variable_node(self, ctx, chat_id, node, uid):
-        var_name = node.get("var_name")
-        var_value = node.get("value", "")
-        if var_name:
-            rendered_val = self._render_template(var_value, uid)
-            storage.set_user_var(self.bot_id, uid, var_name, rendered_val)
-        outs = self.flow.outs(node["id"])
-        if outs:
-            msg = self.flow.render(outs[0])
-            if msg: await self.deliver(ctx, chat_id, msg, uid=uid)
-
-    async def _evaluate_condition(self, node, uid) -> Optional[dict]:
-        var_name = node.get("var_name", "")
-        operator = node.get("operator", "==")
-        compare_val = node.get("value", "")
-        state = storage.get_user_state(self.bot_id, uid)
-        current_val = str(state.get("vars", {}).get(var_name, ""))
-        compare_val = str(compare_val)
-        
-        result = False
-        if operator == "==": result = current_val == compare_val
-        elif operator == "!=": result = current_val != compare_val
-        elif operator == "contains": result = compare_val in current_val
-        elif operator == ">": 
-            try: result = float(current_val) > float(compare_val)
-            except: pass
-        elif operator == "<": 
-            try: result = float(current_val) < float(compare_val)
-            except: pass
-            
-        outs = self.flow.outs(node["id"])
-        for out_nd in outs:
-            edge = self.flow.edge(node["id"], out_nd["id"])
-            label = (edge or {}).get("label", "").lower()
-            if (result and label in ("true", "بله", "yes", "اگر")) or \
-               (not result and label in ("false", "خیر", "no", "وگرنه")):
-                return out_nd
-        return outs[0] if outs else None
-
-    async def _handle_api_node(self, ctx, chat_id, node, uid):
-        url = node.get("url", "")
-        method = node.get("method", "GET").upper()
-        save_to = node.get("save_to", "api_result")
-        if not url.startswith(("http://", "https://")): return
-        
-        try:
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                headers = {"Content-Type": "application/json"}
-                data = None
-                if method == "POST":
-                    body = node.get("body", "{}")
-                    body = self._render_template(body, uid)
-                    try: data = json.loads(body)
-                    except: data = {"raw": body}
-                    
-                async with session.request(method, url, json=data, headers=headers) as resp:
-                    text = await resp.text()
-                    storage.set_user_var(self.bot_id, uid, save_to, text[:4000])
-        except Exception as e:
-            log.error(f"API Node Error {self.bot_id}: {e}")
-            storage.set_user_var(self.bot_id, uid, save_to, "ERROR")
-            
-        outs = self.flow.outs(node["id"])
-        if outs:
-            msg = self.flow.render(outs[0])
-            if msg: await self.deliver(ctx, chat_id, msg, uid=uid)
+        return "legacy"
 
     # ── تیکت پشتیبانی ─────────────────────────────────────────────────
     def ticket_admins(self):
@@ -1792,7 +1785,14 @@ class Engine:
 
     async def _ticket_open(self, ctx, chat_id, nd):
         storage.ticket_set_pending(self.bot_id, chat_id, str(nd["id"]), TICKET_TTL)
-        await self.deliver(ctx, chat_id, self.flow.render(nd))
+        await self._deliver_flow(ctx, chat_id, nd)
+
+    # ── دریافت ورودی (کارت «input») ─────────────────────────────────────
+    async def _input_open(self, ctx, chat_id, nd):
+        """کارت «دریافت ورودی» باز می‌شود: همان جایگاه انتظارِ تیکت را به امانت می‌گیرد،
+        چون هر کاربر در آنِ واحد فقط یک ورودی معلق می‌تواند داشته باشد."""
+        storage.ticket_set_pending(self.bot_id, chat_id, str(nd["id"]), TICKET_TTL)
+        await self._deliver_flow(ctx, chat_id, nd)
 
     async def _ticket_toggle(self, ctx, chat_id, nd, raw, who):
         """پذیرندهٔ تیکت با زدن دکمهٔ 🔑، همان کلمهٔ عبور را برداشتن/گذاشتن می‌کند"""
@@ -1813,7 +1813,7 @@ class Engine:
         words.pop(i)
         nd["words"] = words
         self.save()
-        await self.deliver(ctx, chat_id, self.flow.render(nd))
+        await self.deliver(ctx, chat_id, self.flow.render(nd, ctx=self._vctx(chat_id)))
         return "done"
 
     async def _alert_admins(self, text: str):
@@ -1851,11 +1851,16 @@ class Engine:
                 pass
 
     async def on_ticket_text(self, ctx, chat_id, text, bot_ref=None):
+        """پیام آزاد بعدی کاربر وقتی یک تیکت یا یک کارت «دریافت ورودی» در انتظار است.
+        (نام تابع به‌خاطر سازگاری با نقطهٔ فراخوانی موجود تغییر نکرده.)"""
         self._bot = ctx.bot
         pend = storage.ticket_pop_pending(self.bot_id, chat_id)
         if not pend:
             return False
         nd = self.flow.node(pend["node"])
+        if nd and nd.get("kind") == "input":
+            return await self._input_capture(ctx, chat_id, nd, text)
+
         words = [str(w).strip() for w in ((nd or {}).get("words") or []) if str(w).strip()]
         body = (text or "").strip()
         if words and not any(body.lower().startswith(w.lower()) for w in words):
@@ -1887,6 +1892,26 @@ class Engine:
                  f" برای پاسخ، کد تیکت را در پنل بفرستید یا در تلگرام:\n"
                  f"<code>/reply {tid} متن پاسخ</code>")
         await self._alert_admins(alert)
+        return True
+
+    async def _input_capture(self, ctx, chat_id, nd, text):
+        """متن آزاد کاربر را در متغیرِ کارت «دریافت ورودی» ذخیره می‌کند و بی‌صدا ادامه می‌دهد."""
+        body = (text or "").strip()
+        if not body:
+            storage.ticket_set_pending(self.bot_id, chat_id, str(nd["id"]), TICKET_TTL)
+            await ctx.bot.send_message(chat_id, "یک متن بفرست تا ثبت شود.")
+            return True
+        var = nd.get("var")
+        if var:
+            storage.set_user_var(self.bot_id, chat_id, var, body[:4000])
+        outs = self.flow.outs(nd["id"])
+        if outs:
+            await self._deliver_flow(ctx, chat_id, outs[0])
+        else:
+            try:
+                await ctx.bot.send_message(chat_id, "✅ ثبت شد.")
+            except Exception:
+                pass
         return True
 
     def save(self):
@@ -2022,7 +2047,7 @@ async def _subbot_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: 
             storage.update_bot_stats(bot_id, sent=1)
 
         eng = Engine(b)
-        if not await eng.on_command(ctx, chat_id, "start", uid=uid):
+        if not await eng.on_command(ctx, chat_id, "start"):
             # نود /start وجود ندارد → پاسخ ذخیره‌شدهٔ قدیمی
             cmd = b.get("commands", {}).get("start", {})
             response = cmd.get("response", "سلام 👋")
@@ -2064,7 +2089,7 @@ async def _subbot_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id
     cmd_name = text.lstrip("/").split(maxsplit=1)[0].lower() if text.startswith("/") else ""
     chat_id = update.effective_chat.id
     try:
-        if await Engine(b).on_command(ctx, chat_id, cmd_name, uid=uid):
+        if await Engine(b).on_command(ctx, chat_id, cmd_name):
             return
         cmd = b.get("commands", {}).get(cmd_name)
         if not cmd:
@@ -2108,19 +2133,9 @@ async def _subbot_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE, bot_id: s
     chat_id = update.effective_chat.id
     try:
         eng = Engine(b)
-        
-        # ۱. اولویت مطلق: اگر کاربر در حال پاسخ به نود Input است
-        state = storage.get_user_state(bot_id, uid)
-        waiting = state.get("waiting_for")
-        if waiting and waiting.get("node_id"):
-            handled = await eng._handle_input_capture(ctx, chat_id, text, uid, waiting)
-            if handled: return
-
-        # ۲. تیکت در انتظار
         if await eng.on_ticket_text(ctx, chat_id, text):
             return
-
-        if await eng.on_keyword(ctx, chat_id, text, uid=uid):
+        if await eng.on_keyword(ctx, chat_id, text):
             return
 
         rule = Storage.match_rule(b.get("rules", []), text)
@@ -3031,7 +3046,10 @@ def api_sync_menu(bot_id):
 # ══════════════════════════════════════════════════════════════════════
 MAX_NODES = 400
 MAX_EDGES = 800
-NODE_KINDS = ("cmd", "reply", "image", "link", "ticket", "trigger", "variable", "condition", "input", "api")
+NODE_KINDS = ("cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
+              "input", "random", "notify")
+VAR_OPS = ("eq", "neq", "contains", "gt", "lt", "exists", "nexists")
+SET_OPS = ("set", "inc", "dec", "append")
 
 
 def _clean_flow(raw):
@@ -3118,35 +3136,35 @@ def _clean_flow(raw):
                 mt = s(nd.get("mediaType"), 12) or "photo"
                 clean["mediaType"] = mt if mt in MEDIA_TYPES else "photo"
         elif kind == "ticket":
-            
             clean["text"] = s(nd.get("text"), 2000)
             words = nd.get("words")
             if words is not None and not isinstance(words, list):
                 return None, f"کارت «{nid}»: کلمات عبور نامعتبر است"
             clean["words"] = [s(w, 30).strip() for w in (words or []) if str(w).strip()][:12]
-        elif kind == "variable":
-            clean["var_name"] = s(nd.get("var_name"), 64)
-            clean["value"] = s(nd.get("value"), 4000)
-        elif kind == "condition":
-            clean["var_name"] = s(nd.get("var_name"), 64)
-            clean["operator"] = s(nd.get("operator"), 10)
-            clean["value"] = s(nd.get("value"), 4000)
+        elif kind in ("condition", "setvar"):
+            var = re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("var"), 40).strip())
+            if not var:
+                return None, f"کارت «{nid}»: نام متغیر لازم است"
+            ops = VAR_OPS if kind == "condition" else SET_OPS
+            op = s(nd.get("op"), 12) or ("eq" if kind == "condition" else "set")
+            if op not in ops:
+                return None, f"کارت «{nid}»: عملگر نامعتبر است"
+            clean.update({"var": var, "op": op, "value": s(nd.get("value"), 200),
+                          "label": s(nd.get("label"), 64)})
         elif kind == "input":
-            clean["text"] = s(nd.get("text"), 4000)
-            clean["target_var"] = s(nd.get("target_var"), 64)
-            clean["type"] = s(nd.get("type"), 16)
-            clean["validation"] = s(nd.get("validation"), 200)
-        elif kind == "api":
-            url = s(nd.get("url"), 500).strip()
-            if url and not url.startswith(("http://", "https://")): return None, f"کارت «{nid}»: پیوند API نامعتبر است"
-            clean["url"] = url
-            clean["method"] = s(nd.get("method"), 6).upper() or "GET"
-            clean["body"] = s(nd.get("body"), 4000)
-            clean["save_to"] = s(nd.get("save_to"), 64) or "api_result"
-
+            var = re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("var"), 40).strip())
+            if not var:
+                return None, f"کارت «{nid}»: نام متغیرِ ذخیره لازم است"
+            clean.update({"var": var, "text": s(nd.get("text"), 2000),
+                          "label": s(nd.get("label"), 64)})
+        elif kind == "random":
+            clean["label"] = s(nd.get("label"), 64)
+        elif kind == "notify":
+            txt = s(nd.get("text"), 2000).strip()
+            if not txt:
+                return None, f"کارت «{nid}»: متن اعلان لازم است"
+            clean.update({"text": txt, "label": s(nd.get("label"), 64)})
         nodes[nid] = clean
-
-        
 
     edges, seen_edge = [], set()
     for e in edges_raw:
@@ -3335,7 +3353,27 @@ def api_flow_test(bot_id):
     if not nd:
         return jsonify({"matched": False, "result": None,
                         "hint": "هیچ کارتی با این ورودی مطابقت نکرد"})
-    msg = flow.render(nd)
+    test_uid = f"_test_{g.current_user['uid']}"
+    _cache = {}
+
+    def _get_var(name):
+        if name not in _cache:
+            _cache.update(storage.get_user_vars(bot_id, test_uid))
+        return _cache.get(name)
+
+    def _set_var(name, value):
+        _cache[name] = value
+        storage.set_user_var(bot_id, test_uid, name, value)
+
+    test_ctx = {"get_var": _get_var, "set_var": _set_var,
+                "user": {"first_name": g.current_user.get("full_name") or "",
+                         "full_name": g.current_user.get("full_name") or "",
+                         "username": g.current_user.get("username") or ""}}
+    shown = flow.resolve_action(nd, test_ctx) if nd.get("kind") in LOGIC_KINDS else nd
+    if nd.get("kind") in LOGIC_KINDS and not shown:
+        return jsonify({"matched": True, "result": None,
+                        "hint": "کارت پیدا شد ولی به هیچ پیامی نمی‌رسد"})
+    msg = flow.render(shown, ctx=test_ctx)
     if not msg:
         return jsonify({"matched": True, "result": None,
                         "hint": "کارت پیدا شد ولی محتوای قابل‌ارسال ندارد"})
@@ -3347,8 +3385,8 @@ def api_flow_test(bot_id):
         btn_rows.append([{"text": x["text"], "callback_data": x["data"]} for x in cbs[i:i + 3]])
     return jsonify({
         "matched": True,
-        "node": {"id": nd["id"], "kind": nd["kind"],
-                 "label": nd.get("name") or nd.get("label") or ""},
+        "node": {"id": shown["id"], "kind": shown["kind"],
+                 "label": shown.get("name") or shown.get("label") or ""},
         "result": {
             "text": msg["text"],
             "media": {"type": msg["mtype"], "url": msg["url"]} if msg.get("url") else None,
