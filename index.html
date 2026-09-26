@@ -146,8 +146,8 @@
       .empty b { color: var(--tx); font-weight: 600; font-size: 15px; }
       .bar2 { height: 4px; border-radius: 3px; background: var(--panel2); margin-top: 7px; overflow: hidden; }
       .bar2 i { display: block; height: 100%; background: var(--ac); transition: .3s; }
-      #toast { position: fixed; top: 14px; left: 50%; transform: translate(-50%,-80px); background: var(--tx); color: var(--bg); padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: 13.5px; z-index: 99; transition: .3s cubic-bezier(.2,.8,.2,1); max-width: 90%; box-shadow: var(--sh); }
-      #toast.on { transform: translate(-50%,0); }
+      #toast { position: fixed; top: -140px; left: 50%; transform: translate(-50%,0); background: var(--tx); color: var(--bg); padding: 11px 18px; border-radius: 12px; font-weight: 600; font-size: 13.5px; z-index: 99; transition: .3s cubic-bezier(.2,.8,.2,1); max-width: 90%; box-shadow: var(--sh); }
+      #toast.on { transform: translate(-50%,calc(154px + env(safe-area-inset-top, 0px))); }
       #toast.err { background: var(--red); color: #fff; }
       #auth { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: none; overflow: auto; padding: max(48px,10vh) 24px 40px; }
       #auth.on { display: block; }
@@ -338,21 +338,24 @@
       .st-tool svg { width: 17px; height: 17px; color: var(--mu); }
       .st-tool.on { border-color: var(--ac); background: var(--ac-soft); }
       .st-tool.on svg { color: var(--ac); }
-      /* نوار پایین: بدون پس‌زمینهٔ خودش — مستقیم روی بومِ نقشه می‌نشیند، ظریف و کوچک */
-      .st-foot { flex: none; position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; flex-flow: row wrap; align-items: center; justify-content: center; gap: 8px; z-index: 12; pointer-events: none; }
-      .st-foot .ft-btn { pointer-events: auto; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--panel) 78%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--hair); color: var(--tx); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
+      /* نوار پایین: ظریف و کوچک‌تر، وسط‌چین */
+      .st-foot { flex: none; display: flex; flex-flow: row wrap; align-items: center; justify-content: center; gap: 8px; padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--hair); }
+      .st-foot .ft-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 6px 16px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--hair); color: var(--tx); font-size: 12px; font-weight: 600; cursor: pointer; transition: .12s; user-select: none; }
       .st-foot .ft-cnt, .st-foot .ft-edit, .st-foot .ft-del { flex: none; }
       .st-foot .ft-btn:active { transform: scale(.95); border-color: var(--ac); }
-      .st-foot .ft-btn .ft-i { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+      .st-foot .ft-btn .ft-i { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--panel); }
       .st-foot .ft-btn .ft-i svg { width: 12px; height: 12px; color: var(--mu); }
-      .st-foot .ft-btn.ft-ac { border-color: color-mix(in srgb, var(--ac) 50%, var(--hair)); color: var(--ac); background: color-mix(in srgb, var(--ac) 14%, var(--panel) 78%); }
+      .st-foot .ft-btn.ft-ac { border-color: color-mix(in srgb, var(--ac) 50%, var(--hair)); color: var(--ac); background: var(--ac-soft); }
+      .st-foot .ft-btn.ft-ac .ft-i { background: color-mix(in srgb, var(--ac) 18%, transparent); }
       .st-foot .ft-btn.ft-ac .ft-i svg { color: var(--ac); }
-      .st-foot .ft-btn.ft-del { border-color: color-mix(in srgb, var(--red) 45%, var(--hair)); color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--panel) 78%); }
+      .st-foot .ft-btn.ft-del { border-color: color-mix(in srgb, var(--red) 45%, var(--hair)); color: var(--red); background: color-mix(in srgb, var(--red) 8%, var(--panel)); }
+      .st-foot .ft-btn.ft-del .ft-i { background: color-mix(in srgb, var(--red) 16%, transparent); }
       .st-foot .ft-btn.ft-del .ft-i svg { color: var(--red); }
       .st-foot .ft-btn.ft-edit { border-color: color-mix(in srgb, var(--amber) 45%, var(--hair)); color: var(--amber); }
+      .st-foot .ft-btn.ft-edit .ft-i { background: color-mix(in srgb, var(--amber) 16%, transparent); }
       .st-foot .ft-btn.ft-edit .ft-i svg { color: var(--amber); }
-      .st-foot .ft-btn.ft-cnt { background: color-mix(in srgb, var(--ac) 16%, var(--panel) 78%); border-color: var(--ac); color: var(--ac); }
-      .st-foot .ft-cnt-n { font: 700 13px/1 var(--mono); }
+      .st-foot .ft-btn.ft-cnt { background: var(--ac-soft); border-color: var(--ac); color: var(--ac); }
+      .st-foot .ft-cnt-n { font: 700 15px/1 var(--mono); }
       /* کارت‌های استودیو */
       .node.grp { border-style: dashed; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
       .node.grp .nicon { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
@@ -1155,8 +1158,8 @@
               <button class="st-tool" data-t="layout" title="چیدمان خودکار">${ic("fit")}</button>
               <button class="st-tool st-sel ${st.mode === "select" ? "on" : ""}" data-t="sel" id="stSel" title="حالت انتخاب">${ic("cursor")}</button>
             </div>
-            <div class="st-foot" id="stFoot"></div>
-          </div>`;
+          </div>
+          <div class="st-foot" id="stFoot"></div>`;
         $("stFoot").innerHTML = stFootHtml();
         const c = $("fc");
         c.addEventListener("pointerdown", stDown);
@@ -1283,8 +1286,9 @@
         const one = stCur();
         const count = st.sel.length;
         if (!has) {
-          /* فقط یک دکمهٔ اصلی، ساده و وسط‌چین — چیدمان بالا کنار بازگشت/دوباره است */
-          return `<button class="ft-btn ft-ac" data-a="apply"><span class="ft-i">${ic("check")}</span><span>اعمال</span></button>`;
+          /* دو دکمهٔ اصلی، ساده و وسط‌چین */
+          return `<button class="ft-btn ft-ac" data-a="apply"><span class="ft-i">${ic("check")}</span><span>اعمال</span></button>` +
+            `<button class="ft-btn" data-a="layout"><span class="ft-i">${ic("fit")}</span><span>چیدمان</span></button>`;
         }
         const editBtn = one ? `<button class="ft-btn ft-edit" data-a="edit" data-id="${esc(one.id)}"><span class="ft-i">${ic("gear")}</span><span>ویرایش</span></button>` : "";
         const grpBtn = count > 1 ? `<button class="ft-btn" data-a="group"><span class="ft-i">${ic("folder")}</span><span>گروه</span></button>` : "";
@@ -1301,6 +1305,7 @@
           b.onclick = () => {
             switch (b.dataset.a) {
               case "apply": return stApply();
+              case "layout": return stAutoLayout();
               case "edit": return stEdit(b.dataset.id);
               case "group": return stGroupSel();
               case "dup": return stDupSel();
@@ -2047,13 +2052,9 @@
       async function boot(manual) { if (tg?.initData) initData = tg.initData; if (!initData && !token) return showAuth(); try { user = await api(manual ? "/api/auth/me" : initData ? "/api/me" : "/api/auth/me"); go("home"); } catch (e) { if (!token && !initData) return; toast("خطا: " + e.message, 1); if (/401|نامعتبر|unauthor/i.test(e.message)) showAuth(); } }
       if (tg) {
         tg.ready(); tg.expand();
-        /* حذف نوار سرِ بومیِ تلگرام (که گاهی روی هدر استودیو می‌افتد): تمام‌صفحه واقعی + غیرفعال‌کردن سوایپ عمودی */
-        try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
-        try { tg.requestFullscreen && tg.requestFullscreen(); } catch (e) {}
         /* وقتی صفحه‌کلید تلگرام باز/بسته می‌شود یا viewport تغییر می‌کند، چیدمان را دوباره بکش
            تا نقشهٔ جریان و شیت‌های ویرایش روی گوشی بدریخت/بریده نشوند */
         tg.onEvent && tg.onEvent("viewportChanged", () => { if (STG && $("fc")) stRender(); });
-        tg.onEvent && tg.onEvent("fullscreenChanged", () => { if (STG && $("fc")) stRender(); });
       }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
