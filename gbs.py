@@ -3042,7 +3042,7 @@ def api_sync_menu(bot_id):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# /api/bots/<bot_id>/flow — موتور جریان: ذخیره، اعمال، تست، تیکت‌ها
+# /api/bots/<bot_id>/flow — موتور جریان: ذخیره، اعمال، تیکت‌ها
 # ══════════════════════════════════════════════════════════════════════
 MAX_NODES = 400
 MAX_EDGES = 800
@@ -3317,82 +3317,6 @@ def api_flow_apply(bot_id):
             except Exception as e:
                 log.warning(f"sync-menu پس از apply {bot_id}: {e}")
     return jsonify({"message": msg, "count": n})
-
-
-@flask_app.post("/api/bots/<bot_id>/flow/test")
-@auth_required
-def api_flow_test(bot_id):
-    """یک ورودی (دستور / متن کلیدواژه / callback دکمه) را روی گراف اجرا می‌کند — بدون ارسال پیام"""
-    b, err = get_owned_bot(bot_id)
-    if err:
-        return err
-    data = request.get_json(force=True) or {}
-    what = str(data.get("input") or "").strip()
-    if not what:
-        return jsonify({"error": "ورودی خالی است"}), 400
-
-    graph = data.get("flow")
-    if isinstance(graph, dict) and graph.get("nodes"):
-        cleaned, verr = _clean_flow(graph)
-        if verr:
-            return jsonify({"error": verr}), 400
-        flow = Flow(cleaned)
-    else:
-        flow = flow_from(b)
-
-    kind = data.get("as") or ("cmd" if what.startswith("/") else
-                              "callback" if what.startswith(CB_PREFIX) else "text")
-    if kind == "cmd":
-        nd = flow.entry_for(what.lstrip("/").split(maxsplit=1)[0])
-    elif kind == "callback":
-        p = flow.parse(what)
-        nd = (p or {}).get("tgt") or (p or {}).get("src")
-    else:
-        nd = flow.match_keyword(what)
-
-    if not nd:
-        return jsonify({"matched": False, "result": None,
-                        "hint": "هیچ کارتی با این ورودی مطابقت نکرد"})
-    test_uid = f"_test_{g.current_user['uid']}"
-    _cache = {}
-
-    def _get_var(name):
-        if name not in _cache:
-            _cache.update(storage.get_user_vars(bot_id, test_uid))
-        return _cache.get(name)
-
-    def _set_var(name, value):
-        _cache[name] = value
-        storage.set_user_var(bot_id, test_uid, name, value)
-
-    test_ctx = {"get_var": _get_var, "set_var": _set_var,
-                "user": {"first_name": g.current_user.get("full_name") or "",
-                         "full_name": g.current_user.get("full_name") or "",
-                         "username": g.current_user.get("username") or ""}}
-    shown = flow.resolve_action(nd, test_ctx) if nd.get("kind") in LOGIC_KINDS else nd
-    if nd.get("kind") in LOGIC_KINDS and not shown:
-        return jsonify({"matched": True, "result": None,
-                        "hint": "کارت پیدا شد ولی به هیچ پیامی نمی‌رسد"})
-    msg = flow.render(shown, ctx=test_ctx)
-    if not msg:
-        return jsonify({"matched": True, "result": None,
-                        "hint": "کارت پیدا شد ولی محتوای قابل‌ارسال ندارد"})
-    btn_rows = []
-    for u in msg["urlb"]:
-        btn_rows.append([{"text": (u.get("text") or "لینک")[:64], "url": u["url"]}])
-    cbs = msg["cb"]
-    for i in range(0, len(cbs), 3):
-        btn_rows.append([{"text": x["text"], "callback_data": x["data"]} for x in cbs[i:i + 3]])
-    return jsonify({
-        "matched": True,
-        "node": {"id": shown["id"], "kind": shown["kind"],
-                 "label": shown.get("name") or shown.get("label") or ""},
-        "result": {
-            "text": msg["text"],
-            "media": {"type": msg["mtype"], "url": msg["url"]} if msg.get("url") else None,
-            "buttons": btn_rows,
-        },
-    })
 
 
 # ── بک‌آپ / بازگردانی کامل (دستورها + نقشه + قوانین + تنظیمات) ───────
