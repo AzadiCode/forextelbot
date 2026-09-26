@@ -277,6 +277,8 @@
       .flow-palette button:active { transform: scale(.95); background: var(--panel2); border-color: var(--ac); color: var(--ac); }
       .flow-palette button svg { width: 14px; height: 14px; }
 
+
+      
       /* ════ استودیوی جریان — تمام‌صفحه ════ */
       #app.full { max-width: none; padding: 0; height: calc(100dvh - max(14px, env(safe-area-inset-bottom)) - 66px); display: flex; flex-direction: column; overflow: hidden; }
       /* ─ استودیو: چیدمان موبایل‌اول. سه نوار افقی باریک در بالا و پایین، پالت
@@ -322,8 +324,6 @@
       .st-mini rect.d-link { fill: #10b981; }
       .st-mini rect.d-ticket { fill: #ef4444; }
       .st-mini rect.d-trigger { fill: #6366f1; }
-      .st-mini rect.d-condition { fill: #a855f7; }
-      .st-mini rect.d-setvar { fill: #14b8a6; }
       .st-mini rect.vp { fill: color-mix(in srgb, var(--ac) 16%, transparent); stroke: var(--ac); stroke-width: .8; }
       /* ابزار شناور: بالا-راست، کنار مینی‌مپ. بازگشت / دوباره / انتخاب. */
       .st-tools { position: absolute; z-index: 7; top: 9px; right: 9px; display: flex; gap: 5px; }
@@ -353,9 +353,6 @@
       .node.grp { border-style: dashed; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
       .node.grp .nicon { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
       .node.trg .nicon { background: color-mix(in srgb, #6366f1 18%, transparent); color: #8b8ff5; }
-      .node.cnd .nicon { background: color-mix(in srgb, #a855f7 18%, transparent); color: #a855f7; }
-      .node.cnd { border-style: dashed; border-color: color-mix(in srgb, #a855f7 45%, transparent); }
-      .node.vset .nicon { background: color-mix(in srgb, #14b8a6 18%, transparent); color: #14b8a6; }
       .node.sel { border-color: var(--ac); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 30%, transparent), 0 12px 26px -16px color-mix(in srgb, var(--ac) 60%, transparent); }
       .node.bad { border-color: color-mix(in srgb, var(--red) 65%, transparent); }
       .node.bad::after { content: "!"; position: absolute; top: -7px; right: -7px; width: 19px; height: 19px; border-radius: 50%; background: var(--red); color: #fff; font: 700 12px/19px var(--mono); text-align: center; z-index: 5; }
@@ -392,6 +389,30 @@
       #app.full ~ #fab { display: none; }
 
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+      .node.var { --tone: #22c55e; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.var .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.cond { --tone: #f59e0b; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.cond .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.input { --tone: #3b82f6; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.input .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+      .node.api { --tone: #a855f7; border-color: color-mix(in srgb, var(--tone) 30%, var(--panel)); }
+      .node.api .nh { background: color-mix(in srgb, var(--tone) 8%, var(--panel)); }
+
+      .edge-label {
+        position: absolute;
+        background: var(--panel);
+        border: 1px solid var(--hair);
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: var(--ac);
+        cursor: pointer;
+        user-select: none;
+      }
+      .edge-label:hover { background: var(--panel2); }
+
+
     </style>
   </head>
   <body>
@@ -451,9 +472,7 @@
         cursor: '<path d="M5 3l7 17 2-7 7-2z"/>', undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-6"/>',
         redo: '<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h6"/>', play: '<path d="M7 4l13 8-13 8z"/>',
         more: '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
-        fit: '<path d="M4 9V5a1 1 0 011-1h4M15 4h4a1 1 0 011 1v4M20 15v4a1 1 0 01-1 1h-4M9 20H5a1 1 0 01-1-1v-4"/>', center: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/>',
-        branch: '<circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="18" cy="12" r="2.3"/><path d="M6 8.3V15.7M6 12c0-2.2 1.8-4 4-4h1.5M11.5 8h4a2.3 2.3 0 012.3 2.3v.4"/>',
-        var: '<path d="M7 4c-1.8 0-2.6.9-2.6 2.6v2.6c0 1.2-.8 2-2 2.3 1.2.3 2 1.1 2 2.3v2.6c0 1.7.8 2.6 2.6 2.6M17 4c1.8 0 2.6.9 2.6 2.6v2.6c0 1.2.8 2 2 2.3-1.2.3-2 1.1-2 2.3v2.6c0 1.7-.8 2.6-2.6 2.6"/>'
+        fit: '<path d="M4 9V5a1 1 0 011-1h4M15 4h4a1 1 0 011 1v4M20 15v4a1 1 0 01-1 1h-4M9 20H5a1 1 0 01-1-1v-4"/>', center: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/>'
       };
 
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -708,20 +727,20 @@
          ══════════════════════════════════════════════════════════════════ */
       const ST_LIM = { nodes: 400, edges: 800, label: 64, text: 4000, url: 500, kw: 20 };
       const ST_KIND = {
-        cmd:     { t: "دستور",   ic: "code",  d: "ورودی ربات مثل ‎/start" },
-        reply:   { t: "پاسخ",    ic: "msg",   d: "متن و دکمهٔ پیام" },
-        group:   { t: "گروه",    ic: "folder", d: "دستهٔ دکمه‌ها و پیوندها" },
-        image:   { t: "رسانه",   ic: "image", d: "عکس، ویدیو، صوت، فایل" },
-        link:    { t: "پیوند",   ic: "link",  d: "دکمهٔ لینک‌دار" },
-        ticket:  { t: "تیکت",    ic: "ticket", d: "دریافت پیام کاربر و alert ادمین" },
-        trigger: { t: "کلیدواژه", ic: "spark", d: "پاسخ خودکار به متن کاربر" },
-        condition: { t: "شرط",   ic: "branch", d: "مسیر را بر اساس متغیر دو شاخه کن" },
-        setvar:  { t: "متغیر",   ic: "var",   d: "روی کاربر یک مقدار ذخیره/تغییر بده" },
+        cmd:       { t: "دستور",     ic: "code",     d: "ورودی ربات مثل ‎/start" },
+        reply:     { t: "پاسخ",      ic: "msg",      d: "متن و دکمهٔ پیام" },
+        group:     { t: "گروه",      ic: "folder",   d: "دستهٔ دکمه‌ها و پیوندها" },
+        image:     { t: "رسانه",     ic: "image",    d: "عکس، ویدیو، صوت، فایل" },
+        link:      { t: "پیوند",     ic: "link",     d: "دکمهٔ لینک‌دار" },
+        ticket:    { t: "تیکت",      ic: "ticket",   d: "دریافت پیام کاربر و alert ادمین" },
+        trigger:   { t: "کلیدواژه",  ic: "spark",    d: "پاسخ خودکار به متن کاربر" },
+        variable:  { t: "متغیر",     ic: "save",     d: "ذخیره مقدار در متغیر" },
+        condition: { t: "شرط",       ic: "branch",   d: "شاخه‌بندی بر اساس متغیر" },
+        input:     { t: "دریافت",    ic: "ask",      d: "سوال و ذخیره پاسخ کاربر" },
+        api:       { t: "API",       ic: "webhook",  d: "فراخوانی آدرس بیرونی" },
       };
-      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1 };
-      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1 };
-      const VAR_OPS = { eq: "برابر با", neq: "نابرابر با", contains: "شامل", gt: "بزرگ‌تر از", lt: "کوچک‌تر از", exists: "تعریف‌شده", nexists: "تعریف‌نشده" };
-      const SET_OPS = { set: "قرار بده", inc: "افزایش بده", dec: "کاهش بده", append: "بچسبان" };
+      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, variable: 1, condition: 1, input: 1, api: 1 };
+      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, variable: 1, condition: 1, input: 1, api: 1 };
       const isGroup = (nd) => !!nd && nd.kind === "reply" && nd.role === "group";
       const canSend = (nd) => !!nd && (ST_SEND[nd.kind] || isGroup(nd) ? 1 : 0);
       /* گروه هم مبدأ است هم مقصد: به پیام والد وصل می‌شود و عضوهایش را باز می‌کند */
@@ -754,7 +773,7 @@
           while (seen.has(id)) id = stSid(id.slice(0, 20) + Math.random().toString(36).slice(2, 5));
           seen.add(id); map[String(nd.id)] = id;
           const c = { id, kind, x: Math.round(+nd.x || 0), y: Math.round(+nd.y || 0) };
-          ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "var", "op", "value"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
+          ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
           if (Array.isArray(nd.keywords)) c.keywords = nd.keywords.map(String);
           if (Array.isArray(nd.words)) c.words = nd.words.map(String);
           if (kind === "group") { c.kind = "reply"; c.role = "group"; }
@@ -788,8 +807,6 @@
         if (kind === "ticket") { nd.text = ""; nd.words = []; }
         if (kind === "trigger") { nd.keywords = []; nd.mode = "contains"; nd.text = ""; nd.label = ""; }
         if (kind === "cmd") { nd.name = ""; nd.text = ""; nd.description = ""; }
-        if (kind === "condition") { nd.label = ""; nd.var = ""; nd.op = "eq"; nd.value = ""; }
-        if (kind === "setvar") { nd.label = ""; nd.var = ""; nd.op = "set"; nd.value = ""; }
         return nd;
       };
 
@@ -841,8 +858,7 @@
         stStatus(); stRender();
       });
       function exportGraph(g) {
-        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "keywords", "words", "var", "op", "value"].forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
-      }
+        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "keywords", "mode", "words", "var_name", "value", "operator", "target_var", "type", "validation", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null && nd[k] !== "") o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to, label: e.label || "" })), view: stView(g.view) };}
       /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
       function stParts(nd, depth) {
         const btns = [], urls = []; let media = null;
@@ -853,7 +869,7 @@
             const s = stParts(t, depth + 1);
             btns.push(...s.btns); urls.push(...s.urls);
             if (!media) media = s.media;
-          } else if (t.kind === "reply" || t.kind === "cmd" || t.kind === "ticket" || t.kind === "trigger" || t.kind === "condition" || t.kind === "setvar") btns.push(t);
+          } else if (t.kind === "reply" || t.kind === "cmd" || t.kind === "ticket" || t.kind === "trigger") btns.push(t);
         }
         return { btns, urls, media };
       }
@@ -885,7 +901,7 @@
         const want = stCompileLegacy();
         if (!Object.keys(want).length) return toast("نقشه هیچ کارت دستوری ندارد — برای جلوگیری از حذف دستورها اعمال نشد", 1);
         let skip = 0;
-        STG.nodes.forEach((nd) => { if (nd.kind === "trigger" || nd.kind === "ticket" || nd.kind === "condition" || nd.kind === "setvar") skip++; });
+        STG.nodes.forEach((nd) => { if (nd.kind === "trigger" || nd.kind === "ticket") skip++; });
         const old = Object.keys(cmds || {});
         for (const [name, c] of Object.entries(want)) {
           await api(`/api/bots/${botId}/commands/${name}`, {
@@ -901,7 +917,7 @@
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
         st.dirty = false; st.saved = "محلی"; stStatus();
         toast(`اعمال شد (حالت سازگار) — ${n(Object.keys(want).length)} دستور`);
-        if (skip) toast("کارت‌های تیکت/کلیدواژه/شرط/متغیر در بک‌اند قدیمی اجرا نمی‌شوند — gbs.py تازه را مستقر کن", 1);
+        if (skip) toast("کارت‌های تیکت/کلیدواژه در بک‌اند قدیمی اجرا نمی‌شوند — gbs.py تازه را مستقر کن", 1);
       }
       const stApply = guard(async () => {
         await stPersist(true);
@@ -958,19 +974,6 @@
           if (nd.kind === "trigger" && !inOf(nd.id).length && !outOf(nd.id).length) iss.push({ lv: "warn", m: "کلیدواژه بی‌استفاده است", nd });
           if (nd.kind === "image" && !inOf(nd.id).length) iss.push({ lv: "warn", m: "رسانه به هیچ پیامی وصل نیست", nd });
           if (nd.kind === "link" && !inOf(nd.id).length) iss.push({ lv: "warn", m: "پیوند به هیچ پیامی وصل نیست", nd });
-          if (nd.kind === "condition") {
-            if (!(nd.var || "").trim()) iss.push({ lv: "err", m: "شرط بدون نام متغیر است", nd });
-            if (!inOf(nd.id).length) iss.push({ lv: "warn", m: "شرط به هیچ دکمه‌ای وصل نیست", nd });
-            const oc = outOf(nd.id).length;
-            if (oc === 0) iss.push({ lv: "warn", m: "شرط هیچ مسیر بله/خیری ندارد", nd });
-            else if (oc === 1) iss.push({ lv: "warn", m: "شرط فقط مسیر «بله» دارد — مسیر «خیر» را هم وصل کن", nd });
-            else if (oc > 2) iss.push({ lv: "err", m: "شرط بیش از دو مسیر دارد — فقط دوتای اول (بله/خیر) اجرا می‌شود", nd });
-          }
-          if (nd.kind === "setvar") {
-            if (!(nd.var || "").trim()) iss.push({ lv: "err", m: "کارت متغیر بدون نام متغیر است", nd });
-            if (!inOf(nd.id).length) iss.push({ lv: "warn", m: "کارت متغیر به هیچ دکمه‌ای وصل نیست", nd });
-            if (outOf(nd.id).length > 1) iss.push({ lv: "err", m: "کارت متغیر بیش از یک مسیر ادامه دارد — فقط اولی اجرا می‌شود", nd });
-          }
         }
         /* سرور گروه را تا ۳ سطح باز می‌کند؛ سطح چهارم روی ربات دیده نمی‌شود */
         for (const nd of STG.nodes) {
@@ -1150,7 +1153,7 @@
       /* ── رندر ── */
       function nodeSummary(nd) {
         const out = outOf(nd.id), inn = inOf(nd.id);
-        const btns = out.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger" || x.kind === "condition" || x.kind === "setvar").length;
+        const btns = out.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger").length;
         const urls = out.filter((x) => x.kind === "link").length;
         const media = out.find((x) => x.kind === "image");
         if (nd.kind === "cmd") return { title: "/" + (nd.name || "…"), sub: nd.text || "بی‌متن", badge: "cmd", icon: "code", tone: "cmd" };
@@ -1159,9 +1162,12 @@
         if (nd.kind === "link") return { title: nd.text || "پیوند", sub: nd.url || "بی‌آدرس", badge: "url", icon: "link", tone: "url" };
         if (nd.kind === "image") return { title: ({ photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" })[nd.mediaType] || "رسانه", sub: nd.caption || (nd.url || "").replace(/^https?:\/\//, "").slice(0, 38) || "بی‌فایل", badge: nd.mediaType || "photo", icon: "image", tone: "img" };
         if (nd.kind === "ticket") return { title: "تیکت", sub: nd.text || "دریافت پیام کاربر", badge: (nd.words || []).length ? `pass ${n(nd.words.length)}` : "ticket", icon: "ticket", tone: "ticket" };
-        if (nd.kind === "condition") return { title: nd.label || "شرط", sub: nd.var ? `${nd.var} ${VAR_OPS[nd.op] || ""} ${nd.value || ""}`.trim() : "متغیری انتخاب نشده", badge: "if", icon: "branch", tone: "cnd" };
-        if (nd.kind === "setvar") return { title: nd.label || "متغیر", sub: nd.var ? `${SET_OPS[nd.op] || ""} ${nd.var} = ${nd.value || ""}`.trim() : "متغیری انتخاب نشده", badge: "var", icon: "var", tone: "vset" };
+        if (nd.kind === "variable") return { title: "متغیر", sub: nd.var_name ? `${nd.var_name} = ${nd.value || "…"}` : "بدون نام", badge: "var", icon: "save", tone: "var" };
+        if (nd.kind === "condition") return { title: "شرط", sub: nd.var_name ? `${nd.var_name} ${nd.operator || "=="} ${nd.value || "…"}` : "بدون متغیر", badge: "if", icon: "branch", tone: "cond" };
+        if (nd.kind === "input") return { title: "دریافت", sub: nd.text || "سوال از کاربر", badge: "ask", icon: "ask", tone: "input" };
+        if (nd.kind === "api") return { title: "API", sub: nd.url ? `${nd.method || "GET"} ${nd.url.slice(0, 40)}…` : "بدون آدرس", badge: "api", icon: "webhook", tone: "api" };
         return { title: "کلیدواژه", sub: (nd.keywords || []).slice(0, 3).join("، ") || "بدون کلیدواژه", badge: nd.mode || "kw", icon: "spark", tone: "trg" };
+
       }
       function nodeH(nd) { const el = $("fw") && $("fw").querySelector(`.node[data-id="${CSS.escape(nd.id)}"]`); return (el && el.offsetHeight) || 76; }
       function stRender() {
@@ -1175,7 +1181,7 @@
           const s = nodeSummary(nd), bad = issBy[nd.id];
           const chips = [];
           const btns = outOf(nd.id);
-          if (btns.length) chips.push(`<span class="nchip">${n(btns.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger" || x.kind === "condition" || x.kind === "setvar").length)} btn</span>`);
+          if (btns.length) chips.push(`<span class="nchip">${n(btns.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger").length)} btn</span>`);
           if (btns.some((x) => x.kind === "link")) chips.push(`<span class="nchip u">${n(btns.filter((x) => x.kind === "link").length)} url</span>`);
           if (btns.some((x) => x.kind === "image")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "image").length)} media</span>`);
           if (nd.kind === "cmd" && inOf(nd.id).length) chips.push(`<span class="nchip i">${n(inOf(nd.id).length)} in</span>`);
@@ -1193,21 +1199,46 @@
         const svg = $("fs"); if (!svg) return;
         const w = 200;
         const mid = (nd) => nd.y + nodeH(nd) / 2;
-        const paths = STG.edges.map((e) => {
-          const a = nSt(e.from), b = nSt(e.to); if (!a || !b) return "";
+        let paths = "";
+        STG.edges.forEach((e) => {
+          const a = nSt(e.from), b = nSt(e.to); if (!a || !b) return;
           const x1 = a.x + w, y1 = mid(a), x2 = b.x, y2 = mid(b);
           const dx = Math.max(36, Math.abs(x2 - x1) * 0.45);
           const hot = st.sel.includes(a.id) || st.sel.includes(b.id);
           const bad = !canSend(a) || !canRecv(b);
           const cls = (bad ? "bad" : hot ? "hot" : "") + (isGroup(a) || isGroup(b) ? " grp" : "");
           const d = `M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
-          return `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
+          paths += `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
             `<path class="wire ${cls}" d="${d}"/>` +
             `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
-        }).join("");
-        const d = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
-        svg.innerHTML = paths + d;
+          const lbl = stEdgeLabel(e);
+          if (lbl) {
+            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+            paths += `<text x="${mx}" y="${my}" text-anchor="middle" fill="var(--ac)" font-size="11" style="cursor:pointer" onclick="stEditEdgeLabel('${e.from}','${e.to}')">${esc(lbl)}</text>`;
+          }
+        });
+        const draft = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
+        svg.innerHTML = paths + draft;
       }
+
+      function stEdgeLabel(e) {
+        // فقط برای سیم‌های خروجی از نود شرط، برچسب قابل ویرایش بگذار
+        const src = nSt(e.from);
+        if (!src || src.kind !== "condition") return "";
+        return e.label || "";
+      }
+
+      function stEditEdgeLabel(from, to) {
+        const e = STG.edges.find((x) => x.from === from && x.to === to);
+        if (!e) return;
+        const label = prompt("برچسب سیم (مثلاً: بله، خیر، true، false):", e.label || "");
+        if (label !== null) {
+          e.label = label.trim().slice(0, 20);
+          stDirty(1);
+          stRender();
+        }
+      }      
+
       function stMini() {
         const m = $("stMini"); if (!m || !STG) return;
         if (!STG.nodes.length) { m.innerHTML = ""; return; }
@@ -1561,25 +1592,51 @@
           body = stField("کلیدواژه‌ها (با ویرگول)", `<input class="in" id="eKw" value="${esc((nd.keywords || []).join("، "))}" placeholder="قیمت، تعرفه، هزینه" oninput="st.editing.nd.keywords=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean);stUpdPrev()">`)
             + stField("نوع تطبیق", `<div class="btype" style="max-width:260px">${[["contains", "شامل"], ["exact", "دقیق"], ["regex", "الگو"]].map(([k, t]) => `<button class="${(nd.mode || "contains") === k ? "on" : ""}" onclick="st.editing.nd.mode='${k}';stDrawEdit()">${t}</button>`).join("")}</div>`)
             + stField("متن پاسخ", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`);
+
+        } else if (K === "variable") {
+          body = stField("نام متغیر", `<input class="in mono ltr" id="eVarName" value="${esc(nd.var_name || "")}" placeholder="user_name" oninput="st.editing.nd.var_name=this.value;stUpdPrev()">`)
+            + stField("مقدار", `<textarea class="in" id="eVarVal" rows="2" oninput="st.editing.nd.value=this.value;stUpdPrev()" placeholder="مثلاً: {{name}} یا مقدار ثابت">${esc(nd.value || "")}</textarea>`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">💡 از <code>{{var_name}}</code> در متن پیام‌ها استفاده کنید. متغیرها برای هر کاربر ذخیره می‌شوند.</p>`;
         } else if (K === "condition") {
-          body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="بررسی امتیاز" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
-            + stField("نام متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="points" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
-            + stField("عملگر", `<select class="in" id="eOp" onchange="st.editing.nd.op=this.value;stDrawEdit()">${Object.entries(VAR_OPS).map(([k, v]) => `<option value="${k}" ${nd.op === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)
-            + (["exists", "nexists"].includes(nd.op) ? "" : stField("مقدار مقایسه", `<input class="in ltr mono" id="eVal" value="${esc(nd.value || "")}" placeholder="10" oninput="st.editing.nd.value=this.value;stUpdPrev()">`))
-            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مسیرِ بعدی را بر اساس متغیر کاربر دو شاخه می‌کند. <b style="color:#22c55e">اولین</b> سیم خروجی = وقتی شرط درست است، <b style="color:var(--red)">دومین</b> سیم = وقتی نادرست است.</p>`;
-        } else if (K === "setvar") {
-          body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="ثبت امتیاز" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
-            + stField("نام متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="points" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
-            + stField("عملیات", `<select class="in" id="eOp" onchange="st.editing.nd.op=this.value;stDrawEdit()">${Object.entries(SET_OPS).map(([k, v]) => `<option value="${k}" ${nd.op === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)
-            + stField("مقدار", `<input class="in ltr mono" id="eVal" value="${esc(nd.value || "")}" placeholder="1" oninput="st.editing.nd.value=this.value;stUpdPrev()">`)
-            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مقدار را روی کاربر ذخیره می‌کند و بی‌صدا به سیم خروجی‌اش می‌رود. برای نمایش مقدار در متن پیام‌ها از <code class="mono">{{var.${esc(nd.var || "name")}}}</code> استفاده کن.</p>`;
+          body = stField("متغیر مورد بررسی", `<input class="in mono ltr" id="eCondVar" value="${esc(nd.var_name || "")}" placeholder="age" oninput="st.editing.nd.var_name=this.value;stUpdPrev()">`)
+            + stField("عملگر", `<select class="in" id="eCondOp" onchange="st.editing.nd.operator=this.value;stUpdPrev()">
+                <option value="==" ${nd.operator==='=='?'selected':''}>برابر است با (==)</option>
+                <option value="!=" ${nd.operator==='!='?'selected':''}>برابر نیست با (!=)</option>
+                <option value="contains" ${nd.operator==='contains'?'selected':''}>شامل است (contains)</option>
+                <option value=">" ${nd.operator==='>'?'selected':''}>بزرگتر از (>)</option>
+                <option value="<" ${nd.operator==='<'?'selected':''}>کوچکتر از (<)</option>
+              </select>`)
+            + stField("مقدار مقایسه", `<input class="in" id="eCondVal" value="${esc(nd.value || "")}" placeholder="18" oninput="st.editing.nd.value=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">🔀 از این نود دو سیم بکشید: یکی با برچسب <b>بله</b> و دیگری با برچسب <b>خیر</b>.</p>`;
+        } else if (K === "input") {
+          body = stField("سوال از کاربر", `<textarea class="in" id="eInputText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="نام خود را وارد کنید…">${esc(nd.text || "")}</textarea>`)
+            + stField("ذخیره در متغیر", `<input class="in mono ltr" id="eInputVar" value="${esc(nd.target_var || "")}" placeholder="user_name" oninput="st.editing.nd.target_var=this.value;stUpdPrev()">`)
+            + stField("نوع ورودی", `<select class="in" id="eInputType" onchange="st.editing.nd.type=this.value;stUpdPrev()">
+                <option value="text" ${nd.type==='text'?'selected':''}>متن آزاد</option>
+                <option value="number" ${nd.type==='number'?'selected':''}>فقط عدد</option>
+                <option value="phone" ${nd.type==='phone'?'selected':''}>شماره تلفن</option>
+                <option value="email" ${nd.type==='email'?'selected':''}>ایمیل</option>
+                <option value="regex" ${nd.type==='regex'?'selected':''}>الگوی سفارشی (regex)</option>
+              </select>`)
+            + (nd.type === "regex" ? stField("الگوی اعتبارسنجی", `<input class="in mono ltr" id="eInputVal" value="${esc(nd.validation || "")}" placeholder="^[a-z]+$" oninput="st.editing.nd.validation=this.value;stUpdPrev()">`) : "")
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">⏳ ربات منتظر پاسخ کاربر می‌ماند و آن را در متغیر ذخیره می‌کند.</p>`;
+        } else if (K === "api") {
+          body = stField("آدرس API", `<input class="in ltr mono" id="eApiUrl" value="${esc(nd.url || "")}" placeholder="https://api.example.com/data" oninput="st.editing.nd.url=this.value;stUpdPrev()">`)
+            + stField("متد", `<select class="in" id="eApiMethod" onchange="st.editing.nd.method=this.value;stUpdPrev()">
+                <option value="GET" ${nd.method==='GET'?'selected':''}>GET</option>
+                <option value="POST" ${nd.method==='POST'?'selected':''}>POST</option>
+              </select>`)
+            + (nd.method === "POST" ? stField("بدنه درخواست (JSON)", `<textarea class="in mono ltr" id="eApiBody" rows="3" oninput="st.editing.nd.body=this.value;stUpdPrev()" placeholder='{"key": "{{var}}"}'>${esc(nd.body || "")}</textarea>`) : "")
+            + stField("ذخیره پاسخ در", `<input class="in mono ltr" id="eApiSave" value="${esc(nd.save_to || "api_result")}" placeholder="api_result" oninput="st.editing.nd.save_to=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">🌐 پاسخ API در متغیر ذخیره می‌شود. از <code>{{var}}</code> در body استفاده کنید.</p>`;
         }
+
         const rel = isNew ? "" : `<label>اتصالات</label>
           <div class="rel">
             <div class="rel-h">ورودی — چه کارت‌هایی این را صدا می‌زنند</div>
             ${inn.length ? inn.map((x) => `<div class="rel-r"><span class="badge">${esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${x.id}','${nd.id}')">${ic("x")}</span></div>`).join("") : `<small>— هیچ — یک سیم از کارت دیگر به این نقطه بکش</small>`}
-            <div class="rel-h" style="margin-top:10px">${K === "condition" ? "خروجی — مسیر بله/خیر" : K === "setvar" ? "خروجی — ادامهٔ مسیر" : "خروجی — محتوای همین پیام"}</div>
-            ${out.length ? out.map((x, i) => `<div class="rel-r"><span class="badge" ${K === "condition" ? `style="color:${i === 0 ? "#22c55e" : "var(--red)"}"` : ""}>${K === "condition" ? (i === 0 ? "بله" : i === 1 ? "خیر" : "؟") : esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${nd.id}','${x.id}')">${ic("x")}</span></div>`).join("") : `<small>— هنوز چیزی وصل نکرده‌ای —</small>`}
+            <div class="rel-h" style="margin-top:10px">خروجی — محتوای همین پیام</div>
+            ${out.length ? out.map((x) => `<div class="rel-r"><span class="badge">${esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${nd.id}','${x.id}')">${ic("x")}</span></div>`).join("") : `<small>— هنوز چیزی وصل نکرده‌ای —</small>`}
             ${canSend(nd) ? `<button class="btn line sm" style="margin-top:10px;width:100%" onclick="stQuickAdd('${nd.id}')">${ic("plus")} ساخت و اتصال کارت جدید</button>` : ""}
           </div>`;
         $("sheet").innerHTML = `<div class="sh-h"><span>${isGroup(nd) ? "گروه" : (ST_KIND[K] || {}).t || "کارت"}${isNew ? " تازه" : ""}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
@@ -1591,7 +1648,7 @@
         stUpdPrev();
         if (K === "image") stImgPrev();
       }
-      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || (nd.kind === "image" ? "رسانه" : nd.kind === "link" ? "پیوند" : (nd.kind === "condition" || nd.kind === "setvar") ? (nd.var ? "⚙ " + nd.var : (nd.kind === "condition" ? "شرط" : "متغیر")) : "کارت"));
+      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || (nd.kind === "image" ? "رسانه" : nd.kind === "link" ? "پیوند" : "کارت"));
       function stSetVal(el, key, v) { const e = $(el); if (e) e.value = v; st.editing.nd[key] = v; }
       function stUpdPrev() {
         const E = st.editing; if (!E) return;
@@ -1607,9 +1664,7 @@
           (cb.length ? `<div class="bubrow">${cb.map((x) => `<i>${esc(x.label || x.name || x.text || "ادامه")}</i>`).join("")}</div>` : "") +
           ur.map((x) => `<div class="bubrow"><i style="border-color:color-mix(in srgb,var(--amber) 40%,transparent);color:var(--amber)">🔗 ${esc(x.text || "پیوند")}</i></div>`).join("") +
           (nd.kind === "trigger" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با ${(nd.keywords || []).map((k) => `<span class="kw">${esc(k)}</span>`).join(" ") || "—"} فعال می‌شود</div>` : "") +
-          (nd.kind === "ticket" && (nd.words || []).length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔒 فقط پیام‌هایی که با ${(nd.words || []).map((w) => `<span class="kw">${esc(w)}</span>`).join(" ")} شروع شوند ثبت می‌شوند</div>` : "") +
-          (nd.kind === "condition" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔀 اگر <span class="kw">${esc(nd.var || "…")}</span> ${esc(VAR_OPS[nd.op] || "")} ${esc(nd.value || "")} → مسیر بله، وگرنه مسیر خیر</div>` : "") +
-          (nd.kind === "setvar" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⚙ ${esc(SET_OPS[nd.op] || "")} <span class="kw">${esc(nd.var || "…")}</span> = ${esc(nd.value || "")} و بی‌صدا ادامه می‌دهد</div>` : "");
+          (nd.kind === "ticket" && (nd.words || []).length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔒 فقط پیام‌هایی که با ${(nd.words || []).map((w) => `<span class="kw">${esc(w)}</span>`).join(" ")} شروع شوند ثبت می‌شوند</div>` : "");
       }
       function stImgPrev() { const e = $("ePrev"), nd = st.editing.nd; const u = nd.url || ""; if (e) e.innerHTML = /^https?:\/\//.test(u) ? (nd.mediaType === "photo" ? `<div style="margin-top:12px"><img src="${esc(u)}" style="max-width:100%;border-radius:12px;border:1px solid var(--hair)" onerror="this.replaceWith(Object.assign(document.createElement('i'),{textContent:'پیش‌نمایش در دسترس نیست',style:'color:var(--mu);font-size:12px'}))"/></div>` : `<div style="color:var(--mu);font-size:12px;margin-top:10px">${ic("link")} <span class="mono ltr">${esc(u.slice(0, 70))}</span></div>`) : ""; }
       const stUpFile = guard(async (f) => { if (!f) return; toast("در حال آپلود…"); const d = await _upload(f); st.editing.nd.url = d.url; st.editing.nd.mediaType = d.type; stDrawEdit(); toast("آپلود شد"); });
@@ -1651,11 +1706,28 @@
           if (!nd.keywords.length) return toast("حداقل یک کلیدواژه بنویس", 1);
         }
         if (nd.kind === "ticket") nd.words = (nd.words || []).map((w) => String(w).trim().slice(0, 30)).filter(Boolean).slice(0, 12);
-        if (nd.kind === "condition" || nd.kind === "setvar") {
-          nd.var = (nd.var || "").trim().replace(/[^A-Za-z0-9_.]/g, "").slice(0, 40);
-          if (!nd.var) return toast("نام متغیر را بنویس", 1);
-          nd.value = String(nd.value || "").slice(0, 200);
-          nd.label = (nd.label || "").slice(0, ST_LIM.label);
+        if (nd.kind === "variable") {
+          if (!(nd.var_name || "").trim()) return toast("نام متغیر را بنویس", 1);
+          nd.var_name = nd.var_name.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+        }
+        if (nd.kind === "condition") {
+          if (!(nd.var_name || "").trim()) return toast("نام متغیر را بنویس", 1);
+          nd.var_name = nd.var_name.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+          nd.operator = nd.operator || "==";
+        }
+        if (nd.kind === "input") {
+          if (!(nd.text || "").trim()) return toast("سوال را بنویس", 1);
+          if (!(nd.target_var || "").trim()) return toast("نام متغیر مقصد را بنویس", 1);
+          nd.target_var = nd.target_var.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+          nd.type = nd.type || "text";
+        }
+        if (nd.kind === "api") {
+          let u = (nd.url || "").trim();
+          if (!u) return toast("آدرس API را بنویس", 1);
+          if (!/^https?:\/\//.test(u)) u = "https://" + u;
+          nd.url = u.slice(0, 500);
+          nd.method = nd.method || "GET";
+          nd.save_to = (nd.save_to || "api_result").trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64) || "api_result";
         }
         if (nd.kind === "reply" && nd.role !== "group" && (nd.label || "").length > ST_LIM.label) return toast("برچسب دکمه بیش از ۶۴ نویسه", 1);
         if ((nd.text || "").length > ST_LIM.text) return toast("متن بیش از ۴۰۰۰ نویسه است", 1);
@@ -1692,39 +1764,7 @@
         $("scrim").classList.add("on");
       }
       /* شبیه‌ساز محلی موتور (برای حالت سازگار) — هم‌راستا با Flow.render/parts/match_keyword */
-      /* حالت آفلاین: شبیه‌سازی سبک شرط/متغیر با یک انبار محلی فقط برای تست */
-      const stLocalVars = () => (st.testVars || (st.testVars = {}));
-      function stEvalCond(nd) {
-        const v = stLocalVars()[nd.var], val = nd.value;
-        switch (nd.op) {
-          case "exists": return v !== undefined;
-          case "nexists": return v === undefined;
-          case "contains": return String(v ?? "").includes(String(val ?? ""));
-          case "gt": return (+v || 0) > (+val || 0);
-          case "lt": return (+v || 0) < (+val || 0);
-          case "neq": return String(v ?? "") !== String(val ?? "");
-          default: return String(v ?? "") === String(val ?? "");
-        }
-      }
-      function stApplySet(nd) {
-        const vars = stLocalVars(); const cur = vars[nd.var];
-        if (nd.op === "inc") vars[nd.var] = (+cur || 0) + (+nd.value || 0);
-        else if (nd.op === "dec") vars[nd.var] = (+cur || 0) - (+nd.value || 0);
-        else if (nd.op === "append") vars[nd.var] = String(cur ?? "") + String(nd.value ?? "");
-        else vars[nd.var] = nd.value;
-      }
-      function stResolveLogic(nd, depth) {
-        depth = depth || 0;
-        while (nd && (nd.kind === "condition" || nd.kind === "setvar") && depth < 12) {
-          depth++;
-          const outs = outOf(nd.id);
-          if (nd.kind === "setvar") { stApplySet(nd); nd = outs[0] || null; }
-          else nd = stEvalCond(nd) ? (outs[0] || null) : (outs[1] || null);
-        }
-        return nd;
-      }
       function stLocalRender(nd) {
-        nd = stResolveLogic(nd);
         if (!nd || nd.kind === "link") return null;
         if (nd.kind === "image") {
           if (!nd.url) return null;
@@ -1754,9 +1794,8 @@
         if (inp.startsWith("gs:")) {
           const p = inp.slice(3).split(":");
           const tgt = p[2] ? nSt(p[2]) : null, src = nSt(p[1]);
-          const raw = tgt || src;
-          const nd = raw ? (stResolveLogic(raw) || raw) : null;
-          return nd ? { matched: true, node: { id: nd.id, kind: nd.kind, label: nd.name || nd.label }, result: stLocalRender(raw) } : { matched: false };
+          const nd = tgt || src;
+          return nd ? { matched: true, node: { id: nd.id, kind: nd.kind, label: nd.name || nd.label }, result: stLocalRender(nd) } : { matched: false };
         }
         const t = inp.toLowerCase();
         const trg = STG.nodes.find((n) => {
@@ -2095,7 +2134,7 @@
         if (e.key === "f" || e.key === "F") { stFit(); return; }
         if (e.key === "v" || e.key === "V") { st.mode = "select"; $("stSel") && $("stSel").classList.add("on"); $("fc").classList.add("selmode"); return; }
         if (e.key === "l" || e.key === "L") { st.mode = "link"; $("stSel") && $("stSel").classList.remove("on"); $("fc").classList.remove("selmode"); return; }
-        const quick = { c: "cmd", r: "reply", g: "group", i: "image", k: "link", t: "ticket", w: "trigger" }[e.key.toLowerCase()];
+        const quick = { c: "cmd", r: "reply", g: "group", i: "image", k: "link", t: "ticket", w: "trigger", v: "variable", b: "condition", a: "input", p: "api" }[e.key.toLowerCase()];
         if (quick) { e.preventDefault(); stEdit(null, quick); }
       });
       window.addEventListener("beforeunload", (e) => { if (STG && st.dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -2109,6 +2148,13 @@
       }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
+
+      // آیکون‌های نودهای منطقی جدید — اضافه به آبجکت I
+      I.save = '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>';
+      I.branch = '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>';
+      I.ask = '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+      I.webhook = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>';
+    
     </script>
   </body>
 </html>
