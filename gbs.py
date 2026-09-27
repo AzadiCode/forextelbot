@@ -1525,7 +1525,9 @@ class Flow:
         if kind == "image":
             if not nd.get("url"):
                 return None
-            return {"mtype": nd.get("mediaType") or "photo", "url": nd["url"],
+            # asFile: رسانه به‌جای نوع اصلی، به‌عنوان فایل (document) ارسال می‌شود
+            mtype = "document" if nd.get("asFile") else (nd.get("mediaType") or "photo")
+            return {"mtype": mtype, "url": nd["url"],
                     "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": [],
                     "spoiler": bool(nd.get("spoiler")), "asFile": bool(nd.get("asFile")),
                     "node": nd}
@@ -1552,6 +1554,7 @@ class Flow:
 
         text = _tpl(_html(nd.get("text") or nd.get("response") or ""), ctx)
         cb = []
+        reply_items = []
         for t in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
@@ -1560,13 +1563,27 @@ class Flow:
                 urlb = {"text": label, "act": t.get("act"), "url": t.get("url"),
                         "webapp": t.get("webapp"), "shareText": t.get("shareText")}
                 urls.append(urlb)
+                # پیوند شیشه‌ای می‌تواند هم اینلاین باشد هم زیر صفحه چت
+                if nd.get("btnMode") == "reply":
+                    reply_items.append({"text": label, "node": t, "link": urlb})
                 continue
-            cb.append({"text": label, "data": self.cid("go", nd, t),
-                       "node": t, "parent": nd})
+            item = {"text": label, "data": self.cid("go", nd, t),
+                    "node": t, "parent": nd}
+            cb.append(item)
+            # btnMode=reply: دکمه‌ها به‌جای اینلاین، در کیبورد دائمی زیر صفحه چت می‌روند
+            if nd.get("btnMode") == "reply":
+                reply_items.append(item)
+        # دکمهٔ شیشه‌ای روی خودِ این کارت (webapp مستقل از پیوندها)
+        glass = None
+        wa = (nd.get("webapp") or "").strip()
+        if wa.startswith("https://"):
+            glass = {"text": nd.get("label") or "منو", "webapp": wa}
         return {"mtype": (media or {}).get("mediaType") or "photo",
                 "url": (media or {}).get("url"), "text": text,
                 "cb": cb, "urlb": urls, "ready": True,
-                "node": nd}
+                "node": nd,
+                "reply_items": reply_items or None,
+                "glass": glass}
 
     def _render_menu(self, nd, btns, urls, ctx):
         """کارت منوی تعاملی / کیبورد دائمی — سه حالت: شیشه‌ای، دائمی، شناور.
@@ -3237,10 +3254,26 @@ def api_sync_menu(bot_id):
     if not sub_bot:
         return jsonify({"error": "ربات خاموش است — اول روشنش کن"}), 400
     cmds = b.get("commands", {})
+    # منبع حقیقت گراف جریان است: showInMenu روی کارت دستور مشخص می‌کند کدام دستورها
+    # در منوی رسمی تلگرام بیایند.
+    flow = flow_from(b)
+    hidden = {n.get("name") for n in flow.cmd_nodes()
+              if n.get("showInMenu") is False}
+    flow_desc = {n.get("name"): (n.get("description") or "").strip()
+                 for n in flow.cmd_nodes()}
     menu = []
     for name, cmd in cmds.items():
-        desc = (cmd.get("description") or "").strip() or name
+        if name in hidden:
+            continue
+        desc = (cmd.get("description") or "").strip() or flow_desc.get(name) or name
         menu.append(BotCommand(command=name[:32], description=desc[:48]))
+    # دستورهایی که فقط در گراف هستند و در commands قدیمی نیستند
+    for n in flow.cmd_nodes():
+        nm = (n.get("name") or "").strip().lstrip("/").lower()
+        if not nm or nm in cmds or nm in hidden:
+            continue
+        desc = (n.get("description") or "").strip() or nm
+        menu.append(BotCommand(command=nm[:32], description=desc[:48]))
     try:
         # این endpoint ترد Flask است، پس نتیجه‌گرفتن همزمان از حلقهٔ ربات بی‌خطر است.
         loop = factory.get_loop(bot_id)
@@ -3266,9 +3299,18 @@ SET_OPS = ("set", "inc", "dec", "append")
 
 def _clean_send_opts(clean, nd):
     """گزینه‌های مشترک ارسال برای کارت‌های پیام‌دهنده (cmd/reply):
-    ظاهر دکمه، جایگاه دکمه، ویرایش پیام قبلی، خاموش، قالب‌بندی، محافظت از محتوا."""
+    ظاهر دکمه، جایگاه دکمه، ویرایش پیام قبلی، خاموش، قالب‌بندی، محافظت از محتوا.
+
+    نکته: دکمهٔ شیشه‌ای در تلگرام فقط با WebAppInfo ممکن است، پس btnStyle=glass
+    بدون webapp بی‌معنی است و به default تبدیل می‌شود."""
+    webapp = str(nd.get("webapp") or "").strip()
+    if webapp and not webapp.startswith("https://"):
+        webapp = ""
     style = str(nd.get("btnStyle") or "default").strip()
+    if style == "glass" and not webapp:
+        style = "default"          # دکمهٔ شیشه‌ای بدون مینی‌اپ در تلگرام ممکن نیست
     clean["btnStyle"] = style if style in BTN_STYLES else "default"
+    clean["webapp"] = webapp
     mode = str(nd.get("btnMode") or "inline").strip()
     clean["btnMode"] = mode if mode in BTN_MODES else "inline"
     em = str(nd.get("editMode") or "new").strip()
@@ -3277,10 +3319,6 @@ def _clean_send_opts(clean, nd):
     clean["parseMode"] = pm if pm in PARSE_MODES else "HTML"
     clean["silent"] = bool(nd.get("silent"))
     clean["protect"] = bool(nd.get("protect"))
-    webapp = str(nd.get("webapp") or "").strip()
-    if webapp and not webapp.startswith("https://"):
-        webapp = ""
-    clean["webapp"] = webapp
 
 
 def _clean_flow(raw):
