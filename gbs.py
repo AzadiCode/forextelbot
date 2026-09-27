@@ -22,6 +22,7 @@ import requests as req_lib
 
 # ── python-telegram-bot ──
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, WebAppInfo, BotCommand
+from telegram import ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
@@ -1248,12 +1249,20 @@ async def bot_call(bot_id: str, coro_fn):
 # ══════════════════════════════════════════════════════════════════════
 # موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
 # ══════════════════════════════════════════════════════════════════════
-FLOW_VERSION = 2
+FLOW_VERSION = 3
 TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
 CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
 KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
-         "input", "random", "notify"}
+         "input", "random", "notify", "menu", "keyboard"}
 LOGIC_KINDS = {"condition", "setvar", "random", "notify"}  # پیام نیستند، فقط مسیر می‌سازند/عارضهٔ جانبی دارند
+# ── کارت‌های تعاملی جدید: منو و کیبورد دائمی ──
+MENU_MODES  = ("glass", "persistent", "popup")   # شیشه‌ای / دائمی / شناور
+BTN_STYLES  = ("default", "glass")               # ساده / شیشه‌ای
+BTN_MODES   = ("inline", "reply")                # اینلاین / زیر صفحه چت
+EDIT_MODES  = ("new", "edit")                    # پیام جدید / ویرایش پیام قبلی
+PARSE_MODES = ("HTML", "Markdown", "none")       # قالب‌بندی متن
+LINK_ACTS   = ("url", "webapp", "share")         # اکشن‌های کارت پیوند
+TICKET_PRIO = ("low", "normal", "high")          # اولویت تیکت
 _TPL_RE = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}")
 
 
@@ -1356,6 +1365,10 @@ class Flow:
         for n in self.cmd_nodes():
             if (n.get("name") or "").strip().lstrip("/").lower() == name:
                 return n
+            # نام‌های مستعار دستور
+            for a in (n.get("aliases") or []):
+                if str(a).strip().lstrip("/").lower() == name:
+                    return n
         return None
 
     def keyword_nodes(self):
@@ -1386,11 +1399,12 @@ class Flow:
     # ── رندر: نود + سیم‌های خروجی‌اش → پیام آمادهٔ ارسال ───────────────
     def parts(self, nd, depth=0):
         """سیم‌های خروجی یک نود = محتوای همان پیام: دکمه/لینک/رسانه.
-        نود reply با role=group مثل پوشش عمل می‌کند: عضوهایش به پیام والد اضافه می‌شوند."""
+        نود reply با role=group مثل پوشش عمل می‌کند: عضوهایش به پیام والد اضافه می‌شوند.
+        کارت‌های menu و keyboard هم سیم‌های خروجی‌شان = آیتم‌های منو/دکمه‌ها هستند."""
         btns, urls, media = [], [], None
         for t in self.outs(nd["id"]):
             k = t.get("kind")
-            if k == "link" and t.get("url"):
+            if k == "link" and (t.get("url") or t.get("webapp")):
                 urls.append(t)
             elif k == "image" and t.get("url") and media is None:
                 media = t
@@ -1401,7 +1415,7 @@ class Flow:
                 if media is None and sub_m:
                     media = sub_m
             elif k in ("reply", "cmd", "ticket", "trigger", "condition", "setvar",
-                       "input", "random", "notify"):
+                       "input", "random", "notify", "menu", "keyboard"):
                 btns.append(t)
         return btns, urls, media
 
@@ -1495,7 +1509,8 @@ class Flow:
             if not nd:
                 return None
         kind = nd.get("kind")
-        if kind not in ("cmd", "reply", "image", "ticket", "trigger", "input"):
+        if kind not in ("cmd", "reply", "image", "ticket", "trigger", "input",
+                        "menu", "keyboard"):
             return None
         chain = chain or set()
         if nd["id"] in chain:
@@ -1507,7 +1522,9 @@ class Flow:
             if not nd.get("url"):
                 return None
             return {"mtype": nd.get("mediaType") or "photo", "url": nd["url"],
-                    "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": []}
+                    "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": [],
+                    "spoiler": bool(nd.get("spoiler")), "asFile": bool(nd.get("asFile")),
+                    "node": nd}
 
         if kind == "ticket":
             words = [str(w).strip() for w in (nd.get("words") or []) if str(w).strip()]
@@ -1525,35 +1542,130 @@ class Flow:
                     "text": _tpl(_html(nd.get("text") or "پاسخ خود را بنویسید."), ctx),
                     "cb": cb, "urlb": urls}
 
+        # ── کارت‌های تعاملی جدید: منو و کیبورد دائمی ──
+        if kind in ("menu", "keyboard"):
+            return self._render_menu(nd, btns, urls, ctx)
+
         text = _tpl(_html(nd.get("text") or nd.get("response") or ""), ctx)
         cb = []
         for t in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
-            cb.append({"text": label, "data": self.cid("go", nd, t)})
+            cb.append({"text": label, "data": self.cid("go", nd, t),
+                       "node": t, "parent": nd})
         return {"mtype": (media or {}).get("mediaType") or "photo",
                 "url": (media or {}).get("url"), "text": text,
-                "cb": cb, "urlb": urls, "ready": True}
+                "cb": cb, "urlb": urls, "ready": True,
+                "node": nd}
 
+    def _render_menu(self, nd, btns, urls, ctx):
+        """کارت منوی تعاملی / کیبورد دائمی — سه حالت: شیشه‌ای، دائمی، شناور.
+
+        سیم‌های خروجی = آیتم‌های منو. هر آیتم یک دکمه است که به کارت مقصد وصل است.
+        در حالت glass/persistent دکمه‌ها در ReplyKeyboardMarkup می‌روند (زیر صفحه چت یا
+        دکمه شیشه‌ای بالای کیبورد سیستم) و در حالت popup به‌صورت اینلاین نمایش داده می‌شوند."""
+        mode = nd.get("mode") or ("glass" if nd.get("kind") == "menu" else "persistent")
+        text = _tpl(_html(nd.get("text") or nd.get("title") or ""), ctx)
+        webapp = (nd.get("webapp") or "").strip()
+
+        # آیتم‌های منو = دکمه‌هایی که به کارت‌های مقصد وصل‌اند
+        items = []
+        for t in btns:
+            label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
+            label = str(label).strip().splitlines()[0][:64] or "ادامه"
+            items.append({"text": label, "data": self.cid("go", nd, t), "node": t})
+
+        # حالت شیشه‌ای: یک دکمه WebApp روی کیبورد سیستم + آیتم‌ها زیر صفحه چت
+        if mode == "glass" and webapp:
+            glass = {"text": nd.get("title") or "منو", "webapp": webapp}
+            return {"mtype": None, "url": None, "ready": True, "text": text,
+                    "cb": [], "urlb": [], "menu_mode": "glass", "glass": glass,
+                    "reply_items": items, "node": nd}
+
+        # حالت دائمی: همهٔ آیتم‌ها در کیبورد زیر صفحه چت
+        if mode in ("glass", "persistent"):
+            return {"mtype": None, "url": None, "ready": True, "text": text,
+                    "cb": [], "urlb": [], "menu_mode": "persistent",
+                    "reply_items": items, "node": nd}
+
+        # حالت شناور: آیتم‌ها به‌صورت اینلاین
+        return {"mtype": None, "url": None, "ready": True, "text": text,
+                "cb": items, "urlb": urls, "menu_mode": "popup", "node": nd}
+
+    # ── دکمه‌های اینلاین (شامل پیوندها و دکمه‌های شیشه‌ای WebApp) ──
     def rows(self, msg):
         """دکمه‌های رندرشده → سطرها اینلاین (لینک‌ها هرکدام یک ردیف)"""
         out = []
         for u in msg.get("urlb") or []:
-            out.append([InlineKeyboardButton((u.get("text") or "لینک").strip()[:64] or "لینک",
-                                             url=u["url"])])
+            out.append([self._url_button(u)])
         cbs = msg.get("cb") or []
         for i in range(0, len(cbs), 3):
             out.append([InlineKeyboardButton(b["text"], callback_data=b["data"])
                         for b in cbs[i:i + 3]])
         return out[:10]
 
+    @staticmethod
+    def _url_button(u):
+        """ساخت دکمهٔ پیوند/شیشه‌ای: url، webapp یا اشتراک‌گذاری"""
+        label = (u.get("text") or "لینک").strip()[:64] or "لینک"
+        act = u.get("act") or "url"
+        if act == "webapp" and u.get("webapp"):
+            return InlineKeyboardButton(label, web_app=WebAppInfo(url=u["webapp"]))
+        if act == "share":
+            q = (u.get("shareText") or "").strip()
+            return InlineKeyboardButton(label, switch_inline_query=q)
+        return InlineKeyboardButton(label, url=u.get("url") or "https://telegram.org")
+
+    # ── کیبورد دائمی زیر صفحه چت (ReplyKeyboardMarkup) ──
+    @staticmethod
+    def rows_reply(msg):
+        """آیتم‌های کیبورد دائمی → سطرها (هر ردیف ۲ دکمه)"""
+        items = msg.get("reply_items") or []
+        if not items:
+            return None
+        out = []
+        for i in range(0, len(items), 2):
+            row = []
+            for b in items[i:i + 2]:
+                label = (b.get("text") or "دکمه").strip()[:64] or "دکمه"
+                row.append(KeyboardButton(label))
+            out.append(row)
+        return out
+
+    @staticmethod
+    def glass_button(msg):
+        """دکمهٔ شیشه‌ای (WebApp روی کیبورد سیستم) — یا None"""
+        g = msg.get("glass")
+        if not g or not g.get("webapp"):
+            return None
+        return KeyboardButton((g.get("text") or "منو").strip()[:64],
+                              web_app=WebAppInfo(url=g["webapp"]))
+
     def markup(self, msg):
         rows = self.rows(msg)
         return InlineKeyboardMarkup(rows) if rows else None
 
+    def reply_markup_kb(self, msg):
+        """کیبورد دائمی + دکمهٔ شیشه‌ای — یا None"""
+        glass = self.glass_button(msg)
+        rows = self.rows_reply(msg) or []
+        if glass:
+            rows = [[glass]] + rows
+        if not rows:
+            return None
+        nd = msg.get("node") or {}
+        return ReplyKeyboardMarkup(
+            rows,
+            resize_keyboard=bool(nd.get("resize", True)),
+            one_time_keyboard=bool(nd.get("oneTime", False)),
+        )
+
     # ── سازگاری رو به پایین: گراف → commands/callbacks قدیمی ──────────
     def compile_commands(self):
-        """گراف را به ساختار commands/callbacks نسخهٔ ۱ تبدیل می‌کند (برای export/بک‌آپ)"""
+        """گراف را به ساختار commands/callbacks نسخهٔ ۱ تبدیل می‌کند (برای export/بک‌آپ).
+
+        دکمه‌های جدید به نزدیک‌ترین معادل قدیمی تبدیل می‌شوند:
+        webapp → url، share → url خالی، کیبورد دائمی → نادیده گرفته می‌شود."""
         result = {}
         for nd in self.cmd_nodes():
             name = (nd.get("name") or "start").strip().lstrip("/").lower() or "start"
@@ -1561,10 +1673,15 @@ class Flow:
             if not r:
                 continue
             btns = [{"text": b["text"], "id": b["data"]} for b in r["cb"]]
-            urls = [{"text": (u.get("text") or "لینک"), "url": u["url"]} for u in r["urlb"]]
+            urls = []
+            for u in r["urlb"]:
+                # دکمهٔ شیشه‌ای/اشتراک در ساختار قدیمی فقط url دارد
+                urls.append({"text": (u.get("text") or "لینک"),
+                             "url": u.get("url") or u.get("webapp") or ""})
             rows = [btns[i:i + 3] for i in range(0, len(btns), 3)]
             for u in urls:
-                rows.append([u])
+                if u.get("url"):
+                    rows.append([u])
             callbacks = {}
             for b in r["cb"]:
                 # callback_data شامل پیشوند gs: است؛ parse خودش آن را می‌زداید
@@ -1578,6 +1695,10 @@ class Flow:
                 "photo": None,
                 "callbacks": callbacks,
             }
+            # نام‌های مستعار دستور هم در ساختار قدیمی ثبت می‌شوند
+            for alias in (nd.get("aliases") or [])[:6]:
+                if alias and alias not in result:
+                    result[alias] = dict(result[name])
         return result
 
     def stats(self):
@@ -1648,33 +1769,61 @@ class Engine:
         self.flow = flow_from(bot_rec)
 
     # ── ارسال ─────────────────────────────────────────────────────────
+    @staticmethod
+    def _parse_mode(msg):
+        """parseMode کارت: none یعنی بدون قالب‌بندی (متن خام)"""
+        pm = (msg.get("parseMode") or "HTML").strip()
+        if pm.lower() == "none":
+            return None
+        return ParseMode.HTML if pm == "HTML" else ParseMode.MARKDOWN
+
     async def deliver(self, ctx, chat_id, msg, message=None):
         if not msg:
             return False
+        nd = msg.get("node") or {}
         kb = self.flow.markup(msg)
+        # کیبورد دائمی / دکمهٔ شیشه‌ای — اولویت با کیبورد دائمی است
+        rkb = self.flow.reply_markup_kb(msg)
+        reply_markup = rkb or kb
         text = msg.get("text") or ""
+        pm = self._parse_mode(msg)
+        silent = bool(nd.get("silent"))
+        protect = bool(nd.get("protect"))
+        edit_mode = (nd.get("editMode") or "new").strip()
+        send_kw = {"reply_markup": reply_markup, "parse_mode": pm,
+                   "disable_notification": silent or None,
+                   "protect_content": protect or None}
+        send_kw = {k: v for k, v in send_kw.items() if v is not None}
         try:
             if msg.get("url"):
                 fn = {"video": ctx.bot.send_video, "audio": ctx.bot.send_audio,
                       "animation": ctx.bot.send_animation,
                       "document": ctx.bot.send_document}.get(msg["mtype"], ctx.bot.send_photo)
                 await fn(chat_id, msg["url"], caption=text or None,
-                         reply_markup=kb, parse_mode=ParseMode.HTML)
-            elif message is not None:
-                await message.edit_text(text or "…", reply_markup=kb, parse_mode=ParseMode.HTML)
+                         has_spoiler=bool(msg.get("spoiler")) or None,
+                         **send_kw)
+            elif message is not None and edit_mode == "edit":
+                # ویرایش پیام قبلی — کیبورد دائمی روی پیام ویرایش‌شده جا نمی‌شود
+                await message.edit_text(text or "…", reply_markup=kb, parse_mode=pm)
             else:
-                await ctx.bot.send_message(chat_id, text or "…",
-                                           reply_markup=kb, parse_mode=ParseMode.HTML)
+                await ctx.bot.send_message(chat_id, text or "…", **send_kw)
             storage.update_bot_stats(self.bot_id, sent=1)
             storage.record_daily(self.bot_id, "messages_out", 1)
             return True
         except BadRequest as e:
             if message is not None and "text was not changed" in str(e).lower():
                 return True
+            if edit_mode == "edit" and message is not None:
+                # پیام قبلی قابل ویرایش نیست (مثلاً رسانه دارد) → پیام جدید
+                try:
+                    await ctx.bot.send_message(chat_id, text or "…", **send_kw)
+                    storage.update_bot_stats(self.bot_id, sent=1)
+                    return True
+                except Exception:
+                    pass
             if msg.get("url") and text:
                 try:
-                    await ctx.bot.send_message(chat_id, text, reply_markup=kb,
-                                               parse_mode=ParseMode.HTML)
+                    await ctx.bot.send_message(chat_id, text, **send_kw)
                     storage.update_bot_stats(self.bot_id, sent=1)
                     return True
                 except Exception:
@@ -1731,7 +1880,35 @@ class Engine:
         await self._deliver_flow(ctx, chat_id, nd, self._vctx(chat_id, user))
         return True
 
+    def _match_reply_button(self, text):
+        """دکمهٔ کیبورد دائمی (ReplyKeyboard) پیام متنی است، نه callback.
+        این متد کارت menu/keyboard ای را پیدا می‌کند که دکمه‌ای با همین متن دارد."""
+        t = (text or "").strip()
+        if not t:
+            return None, None
+        for nd in self.flow.nodes.values():
+            if nd.get("kind") not in ("menu", "keyboard"):
+                continue
+            msg = self.flow.render(nd)
+            if not msg:
+                continue
+            for it in (msg.get("reply_items") or []):
+                if (it.get("text") or "").strip() == t:
+                    return nd, it
+        return None, None
+
     async def on_keyword(self, ctx, chat_id, text, user=None):
+        # اول: آیا این متن، دکمهٔ کیبورد دائمی یک منو است؟
+        mnd, item = self._match_reply_button(text)
+        if mnd and item:
+            tgt = item.get("node")
+            if tgt:
+                vctx = self._vctx(chat_id, user)
+                msg = self.flow.render(tgt, ctx=vctx)
+                if msg and msg.get("ready"):
+                    await self.deliver(ctx, chat_id, msg)
+                    await self._flush_notify(vctx)
+                    return True
         nd = self.flow.match_keyword(text)
         if not nd:
             return False
@@ -1877,17 +2054,25 @@ class Engine:
             meta = {"name": u.full_name or "", "username": u.username or ""}
         except Exception:
             pass
+        tk_meta = {
+            "department": (nd or {}).get("department") or "",
+            "priority": (nd or {}).get("priority") or "normal",
+        }
         storage.ticket_add(self.bot_id, tid, {
             "id": tid, "uid": chat_id, "node": pend["node"], "t": time.time(),
-            "text": body[:4000], "status": "new", **meta})
+            "text": body[:4000], "status": "new", **meta, **tk_meta})
+        auto_reply = ((nd or {}).get("autoReply") or "").strip()
         await ctx.bot.send_message(
             chat_id,
-            f"🎟 <b>تیکت ثبت شد</b>\nکد پیگیری: <code>{tid}</code>\n"
-            f"پاسخ را از همین ربات دریافت می‌کنید.",
+            auto_reply or (f"🎟 <b>تیکت ثبت شد</b>\nکد پیگیری: <code>{tid}</code>\n"
+                           f"پاسخ را از همین ربات دریافت می‌کنید."),
             parse_mode=ParseMode.HTML)
-        alert = (f"🎯 <b>تیکت جدید — {tid}</b>\n"
+        prio_mark = {"high": "🔴", "low": "🔵"}.get(tk_meta["priority"], "🟡")
+        dept = f"🏷 دپارتمان: {h_escape(tk_meta['department'])}\n" if tk_meta["department"] else ""
+        alert = (f"🎯 <b>تیکت جدید — {tid}</b> {prio_mark}\n"
                  f"👤 {h_escape(meta.get('name') or '—')}\n"
                  f"🆔 <code>{chat_id}</code>\n"
+                 f"{dept}"
                  f"📝\n{h_escape(body[:1500])}\n\n"
                  f" برای پاسخ، کد تیکت را در پنل بفرستید یا در تلگرام:\n"
                  f"<code>/reply {tid} متن پاسخ</code>")
@@ -3047,9 +3232,28 @@ def api_sync_menu(bot_id):
 MAX_NODES = 400
 MAX_EDGES = 800
 NODE_KINDS = ("cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
-              "input", "random", "notify")
+              "input", "random", "notify", "menu", "keyboard")
 VAR_OPS = ("eq", "neq", "contains", "gt", "lt", "exists", "nexists")
 SET_OPS = ("set", "inc", "dec", "append")
+
+
+def _clean_send_opts(clean, nd):
+    """گزینه‌های مشترک ارسال برای کارت‌های پیام‌دهنده (cmd/reply):
+    ظاهر دکمه، جایگاه دکمه، ویرایش پیام قبلی، خاموش، قالب‌بندی، محافظت از محتوا."""
+    style = str(nd.get("btnStyle") or "default").strip()
+    clean["btnStyle"] = style if style in BTN_STYLES else "default"
+    mode = str(nd.get("btnMode") or "inline").strip()
+    clean["btnMode"] = mode if mode in BTN_MODES else "inline"
+    em = str(nd.get("editMode") or "new").strip()
+    clean["editMode"] = em if em in EDIT_MODES else "new"
+    pm = str(nd.get("parseMode") or "HTML").strip()
+    clean["parseMode"] = pm if pm in PARSE_MODES else "HTML"
+    clean["silent"] = bool(nd.get("silent"))
+    clean["protect"] = bool(nd.get("protect"))
+    webapp = str(nd.get("webapp") or "").strip()
+    if webapp and not webapp.startswith("https://"):
+        webapp = ""
+    clean["webapp"] = webapp
 
 
 def _clean_flow(raw):
@@ -3094,11 +3298,20 @@ def _clean_flow(raw):
             clean.update({"name": name,
                           "text": s(nd.get("text") or nd.get("response"), 4000),
                           "description": s(nd.get("description"), 60)})
+            # نام‌های مستعار دستور (مثلاً start + shoro)
+            aliases = nd.get("aliases")
+            if isinstance(aliases, list):
+                clean["aliases"] = [re.sub(r"[^a-z0-9_]", "", str(a).strip().lstrip("/").lower())
+                                    for a in aliases if str(a).strip()][:6]
+            clean["showInMenu"] = bool(nd.get("showInMenu", True))
+            self._clean_send_opts(clean, nd)
         elif kind == "reply":
             clean["text"] = s(nd.get("text"), 4000)
             clean["label"] = s(nd.get("label"), 64)
             if nd.get("role") == "group":
                 clean["role"] = "group"
+            else:
+                self._clean_send_opts(clean, nd)
         elif kind == "trigger":
             kws = nd.get("keywords")
             if not isinstance(kws, list) or not [k for k in kws if str(k).strip()]:
@@ -3125,22 +3338,69 @@ def _clean_flow(raw):
             clean["mode"] = mode
             clean["label"] = s(nd.get("label"), 64)
             clean["text"] = s(nd.get("text") or nd.get("response"), 4000)
-        elif kind in ("image", "link"):
+        elif kind == "link":
+            # کارت پیوند ارتقا یافت: url / webapp / share
+            act = s(nd.get("act"), 12) or "url"
+            if act not in LINK_ACTS:
+                return None, f"کارت «{nid}»: اکشن پیوند نامعتبر است"
+            clean["act"] = act
+            url = s(nd.get("url"), 500).strip()
+            webapp = s(nd.get("webapp"), 500).strip()
+            if act == "url":
+                if url and not url.startswith(("http://", "https://")):
+                    return None, f"کارت «{nid}»: پیوند باید با http شروع شود"
+            elif act == "webapp":
+                if not webapp.startswith("https://"):
+                    return None, f"کارت «{nid}»: آدرس مینی‌اپ باید با https شروع شود"
+            clean["url"] = url
+            clean["webapp"] = webapp
+            clean["shareText"] = s(nd.get("shareText"), 500)
+            clean["text"] = s(nd.get("text") or nd.get("caption"), 1024)
+            clean["caption"] = clean["text"]
+            clean["btnStyle"] = s(nd.get("btnStyle"), 12) or "default"
+            if clean["btnStyle"] not in BTN_STYLES:
+                clean["btnStyle"] = "default"
+        elif kind == "image":
             url = s(nd.get("url"), 500).strip()
             if url and not url.startswith(("http://", "https://")):
                 return None, f"کارت «{nid}»: پیوند باید با http شروع شود"
             clean["url"] = url
             clean["text"] = s(nd.get("text") or nd.get("caption"), 1024)
             clean["caption"] = clean["text"]
-            if kind == "image":
-                mt = s(nd.get("mediaType"), 12) or "photo"
-                clean["mediaType"] = mt if mt in MEDIA_TYPES else "photo"
+            mt = s(nd.get("mediaType"), 12) or "photo"
+            clean["mediaType"] = mt if mt in MEDIA_TYPES else "photo"
+            clean["spoiler"] = bool(nd.get("spoiler"))
+            clean["asFile"] = bool(nd.get("asFile"))
+            clean["silent"] = bool(nd.get("silent"))
         elif kind == "ticket":
             clean["text"] = s(nd.get("text"), 2000)
             words = nd.get("words")
             if words is not None and not isinstance(words, list):
                 return None, f"کارت «{nid}»: کلمات عبور نامعتبر است"
             clean["words"] = [s(w, 30).strip() for w in (words or []) if str(w).strip()][:12]
+            clean["department"] = s(nd.get("department"), 60)
+            prio = s(nd.get("priority"), 12) or "normal"
+            clean["priority"] = prio if prio in TICKET_PRIO else "normal"
+            clean["autoReply"] = s(nd.get("autoReply"), 1000)
+            clean["acceptPhoto"] = bool(nd.get("acceptPhoto"))
+        elif kind == "menu":
+            mode = s(nd.get("mode"), 12) or "glass"
+            if mode not in MENU_MODES:
+                return None, f"کارت «{nid}»: حالت منو نامعتبر است"
+            clean["mode"] = mode
+            clean["title"] = s(nd.get("title"), 64)
+            clean["text"] = s(nd.get("text"), 2000)
+            webapp = s(nd.get("webapp"), 500).strip()
+            if webapp and not webapp.startswith("https://"):
+                return None, f"کارت «{nid}»: آدرس مینی‌اپ باید با https شروع شود"
+            clean["webapp"] = webapp
+            clean["resize"] = bool(nd.get("resize", True))
+            clean["oneTime"] = bool(nd.get("oneTime", False))
+        elif kind == "keyboard":
+            clean["text"] = s(nd.get("text"), 2000)
+            clean["resize"] = bool(nd.get("resize", True))
+            clean["oneTime"] = bool(nd.get("oneTime", False))
+            clean["silent"] = bool(nd.get("silent"))
         elif kind in ("condition", "setvar"):
             var = re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("var"), 40).strip())
             if not var:
