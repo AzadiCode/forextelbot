@@ -1404,8 +1404,12 @@ class Flow:
         btns, urls, media = [], [], None
         for t in self.outs(nd["id"]):
             k = t.get("kind")
-            if k == "link" and (t.get("url") or t.get("webapp")):
+            # پیوند با act=url فقط در دکمه‌های اینلاین پیام می‌رود؛ ولی پیوند شیشه‌ای
+            # (webapp) یا اشتراک، مثل بقیه می‌تواند آیتمِ منو/کیبورد دائمی هم باشد.
+            if k == "link" and (t.get("act") or "url") == "url" and t.get("url"):
                 urls.append(t)
+            elif k == "link" and (t.get("act") or "url") != "url":
+                btns.append(t)
             elif k == "image" and t.get("url") and media is None:
                 media = t
             elif k == "reply" and t.get("role") == "group" and depth < 3:
@@ -1551,6 +1555,12 @@ class Flow:
         for t in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
+            # پیوند شیشه‌ای/اشتراک، دکمهٔ callback نیست — مستقیماً از همان سازنده ساخته می‌شود
+            if t.get("kind") == "link" and (t.get("act") or "url") != "url":
+                urlb = {"text": label, "act": t.get("act"), "url": t.get("url"),
+                        "webapp": t.get("webapp"), "shareText": t.get("shareText")}
+                urls.append(urlb)
+                continue
             cb.append({"text": label, "data": self.cid("go", nd, t),
                        "node": t, "parent": nd})
         return {"mtype": (media or {}).get("mediaType") or "photo",
@@ -1573,19 +1583,26 @@ class Flow:
         for t in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
+            # پیوند شیشه‌ای/اشتراک در کیبورد دائمی فقط یک دکمهٔ متنی ساده است
+            # (WebApp روی ReplyKeyboard مجاز است، ولی switch_inline_query هم کار می‌کند)
+            if t.get("kind") == "link" and (t.get("act") or "url") != "url":
+                items.append({"text": label, "node": t, "link": {
+                    "act": t.get("act"), "url": t.get("url"), "webapp": t.get("webapp"),
+                    "shareText": t.get("shareText")}})
+                continue
             items.append({"text": label, "data": self.cid("go", nd, t), "node": t})
 
         # حالت شیشه‌ای: یک دکمه WebApp روی کیبورد سیستم + آیتم‌ها زیر صفحه چت
         if mode == "glass" and webapp:
             glass = {"text": nd.get("title") or "منو", "webapp": webapp}
             return {"mtype": None, "url": None, "ready": True, "text": text,
-                    "cb": [], "urlb": [], "menu_mode": "glass", "glass": glass,
+                    "cb": [], "urlb": urls, "menu_mode": "glass", "glass": glass,
                     "reply_items": items, "node": nd}
 
         # حالت دائمی: همهٔ آیتم‌ها در کیبورد زیر صفحه چت
         if mode in ("glass", "persistent"):
             return {"mtype": None, "url": None, "ready": True, "text": text,
-                    "cb": [], "urlb": [], "menu_mode": "persistent",
+                    "cb": [], "urlb": urls, "menu_mode": "persistent",
                     "reply_items": items, "node": nd}
 
         # حالت شناور: آیتم‌ها به‌صورت اینلاین
@@ -1619,7 +1636,9 @@ class Flow:
     # ── کیبورد دائمی زیر صفحه چت (ReplyKeyboardMarkup) ──
     @staticmethod
     def rows_reply(msg):
-        """آیتم‌های کیبورد دائمی → سطرها (هر ردیف ۲ دکمه)"""
+        """آیتم‌های کیبورد دائمی → سطرها (هر ردیف ۲ دکمه).
+
+        دکمهٔ شیشه‌ای (webapp) هم در ReplyKeyboard مجاز است."""
         items = msg.get("reply_items") or []
         if not items:
             return None
@@ -1628,7 +1647,11 @@ class Flow:
             row = []
             for b in items[i:i + 2]:
                 label = (b.get("text") or "دکمه").strip()[:64] or "دکمه"
-                row.append(KeyboardButton(label))
+                lnk = b.get("link") or {}
+                if lnk.get("act") == "webapp" and lnk.get("webapp"):
+                    row.append(KeyboardButton(label, web_app=WebAppInfo(url=lnk["webapp"])))
+                else:
+                    row.append(KeyboardButton(label))
             out.append(row)
         return out
 
@@ -1882,7 +1905,9 @@ class Engine:
 
     def _match_reply_button(self, text):
         """دکمهٔ کیبورد دائمی (ReplyKeyboard) پیام متنی است، نه callback.
-        این متد کارت menu/keyboard ای را پیدا می‌کند که دکمه‌ای با همین متن دارد."""
+        این متد کارت menu/keyboard ای را پیدا می‌کند که دکمه‌ای با همین متن دارد.
+        دکمهٔ شیشه‌ای (webapp) در کیبورد دائمی خودش مینی‌اپ را باز می‌کند و نیازی به
+        تطبیق متن ندارد، پس از اینجا نادیده گرفته می‌شود."""
         t = (text or "").strip()
         if not t:
             return None, None
@@ -1893,6 +1918,8 @@ class Engine:
             if not msg:
                 continue
             for it in (msg.get("reply_items") or []):
+                if it.get("link"):
+                    continue
                 if (it.get("text") or "").strip() == t:
                     return nd, it
         return None, None
@@ -3304,14 +3331,14 @@ def _clean_flow(raw):
                 clean["aliases"] = [re.sub(r"[^a-z0-9_]", "", str(a).strip().lstrip("/").lower())
                                     for a in aliases if str(a).strip()][:6]
             clean["showInMenu"] = bool(nd.get("showInMenu", True))
-            self._clean_send_opts(clean, nd)
+            _clean_send_opts(clean, nd)
         elif kind == "reply":
             clean["text"] = s(nd.get("text"), 4000)
             clean["label"] = s(nd.get("label"), 64)
             if nd.get("role") == "group":
                 clean["role"] = "group"
             else:
-                self._clean_send_opts(clean, nd)
+                _clean_send_opts(clean, nd)
         elif kind == "trigger":
             kws = nd.get("keywords")
             if not isinstance(kws, list) or not [k for k in kws if str(k).strip()]:
