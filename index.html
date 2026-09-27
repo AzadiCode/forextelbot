@@ -376,6 +376,16 @@
       .node .nchips span.u { color: var(--amber); }
       .node .nchips span.m { color: var(--ac); }
       .node .nchips span.i { color: var(--ok); }
+      /* ── کارت‌های تعاملی جدید: منو و کیبورد دائمی ── */
+      .node.menu .nicon { background: color-mix(in srgb, #22c55e 18%, transparent); color: #22c55e; }
+      .node.menu { border-style: dashed; border-color: color-mix(in srgb, #22c55e 45%, transparent); }
+      .node.kbd .nicon { background: color-mix(in srgb, #0ea5e9 18%, transparent); color: #38bdf8; }
+      .node.kbd { border-style: dashed; border-color: color-mix(in srgb, #0ea5e9 45%, transparent); }
+      /* سوییچِ داخل شیت ویرایش (استفاده از .sw روی .item) */
+      .item.static .sw { flex: none; }
+      /* انتخابگر حالتِ چندگانه — کنار هم، عرض کامل */
+      .btype { max-width: 100%; }
+      .btype button { padding: 8px 6px; font-size: 12px; }
       .node .nh b { letter-spacing: -.2px; }
       .flow-svg path.wire.hot { stroke: var(--ac); stroke-width: 2.6; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ac) 60%, transparent)); }
       .flow-svg path.wire.bad { stroke: var(--red); stroke-dasharray: 4 4; }
@@ -467,7 +477,9 @@
         var: '<path d="M7 4c-1.8 0-2.6.9-2.6 2.6v2.6c0 1.2-.8 2-2 2.3 1.2.3 2 1.1 2 2.3v2.6c0 1.7.8 2.6 2.6 2.6M17 4c1.8 0 2.6.9 2.6 2.6v2.6c0 1.2.8 2 2 2.3-1.2.3-2 1.1-2 2.3v2.6c0 1.7-.8 2.6-2.6 2.6"/>',
         dice: '<rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="8.5" cy="15.5" r="1.3"/><circle cx="15.5" cy="15.5" r="1.3"/>',
         bell: '<path d="M6 10a6 6 0 0112 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z"/><path d="M9.5 20a2.5 2.5 0 005 0"/>',
-        pencil: '<path d="M4 20l1-4.8L15.3 4.9a1.8 1.8 0 012.6 0l1.2 1.2a1.8 1.8 0 010 2.6L8.8 19 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>'
+        pencil: '<path d="M4 20l1-4.8L15.3 4.9a1.8 1.8 0 012.6 0l1.2 1.2a1.8 1.8 0 010 2.6L8.8 19 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>',
+        menu: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 14h4M7 16.5h7"/>',
+        kbd: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/>'
       };
 
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -726,7 +738,7 @@
         reply:   { t: "پاسخ",    ic: "msg",   d: "متن و دکمهٔ پیام" },
         group:   { t: "گروه",    ic: "folder", d: "دستهٔ دکمه‌ها و پیوندها" },
         image:   { t: "رسانه",   ic: "image", d: "عکس، ویدیو، صوت، فایل" },
-        link:    { t: "پیوند",   ic: "link",  d: "دکمهٔ لینک‌دار" },
+        link:    { t: "پیوند",   ic: "link",  d: "دکمهٔ لینک‌دار، شیشه‌ای یا اشتراک" },
         ticket:  { t: "تیکت",    ic: "ticket", d: "دریافت پیام کاربر و alert ادمین" },
         trigger: { t: "کلیدواژه", ic: "spark", d: "پاسخ خودکار به متن کاربر" },
         condition: { t: "شرط",   ic: "branch", d: "مسیر را بر اساس متغیر دو شاخه کن" },
@@ -734,16 +746,26 @@
         input:   { t: "دریافت ورودی", ic: "pencil", d: "پیام بعدیِ کاربر را بگیر و در متغیر ذخیره کن" },
         random:  { t: "شاخهٔ تصادفی", ic: "dice", d: "بین چند مسیر، یکی را تصادفی انتخاب کن (A/B)" },
         notify:  { t: "اعلان به ادمین", ic: "bell", d: "به پذیرنده‌های تیکت پیام بده و بی‌صدا رد شو" },
+        menu:    { t: "منوی تعاملی", ic: "menu", d: "منوی شیشه‌ای، دائمی یا شناور" },
+        keyboard:{ t: "کیبورد دائمی", ic: "kbd",  d: "دکمه‌های همیشگی زیر صفحه چت" },
       };
       /* دسته‌بندی پالت برای نمایش گروه‌بندی‌شده: پیام‌ها / تعامل / منطق و داده */
       const ST_CAT = { cmd: "msg", reply: "msg", group: "msg", image: "msg", link: "msg",
-                        ticket: "io", trigger: "io", input: "io",
+                        ticket: "io", trigger: "io", input: "io", menu: "io", keyboard: "io",
                         condition: "logic", setvar: "logic", random: "logic", notify: "logic" };
       const ST_CAT_LABEL = { msg: "پیام", io: "تعامل", logic: "منطق و داده" };
-      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1 };
-      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1 };
+      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1 };
+      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1 };
       const VAR_OPS = { eq: "برابر با", neq: "نابرابر با", contains: "شامل", gt: "بزرگ‌تر از", lt: "کوچک‌تر از", exists: "تعریف‌شده", nexists: "تعریف‌نشده" };
       const SET_OPS = { set: "قرار بده", inc: "افزایش بده", dec: "کاهش بده", append: "بچسبان" };
+      /* ── کارت‌های تعاملی جدید: مقادیر مجاز (هماهنگ با بک‌اند) ── */
+      const MENU_MODES = { glass: "شیشه‌ای", persistent: "دائمی", popup: "شناور" };
+      const BTN_STYLES = { default: "ساده", glass: "شیشه‌ای" };
+      const BTN_MODES  = { inline: "زیر پیام (اینلاین)", reply: "زیر صفحه چت" };
+      const EDIT_MODES = { new: "پیام جدید", edit: "ویرایش پیام قبلی" };
+      const PARSE_MODES = { HTML: "HTML", Markdown: "Markdown", none: "متن خام" };
+      const LINK_ACTS  = { url: "باز کردن لینک", webapp: "مینی‌اپ شیشه‌ای", share: "اشتراک‌گذاری" };
+      const TICKET_PRIO = { low: "کم", normal: "معمولی", high: "زیاد" };
       const isGroup = (nd) => !!nd && nd.kind === "reply" && nd.role === "group";
       const canSend = (nd) => !!nd && (ST_SEND[nd.kind] || isGroup(nd) ? 1 : 0);
       /* گروه هم مبدأ است هم مقصد: به پیام والد وصل می‌شود و عضوهایش را باز می‌کند */
@@ -776,7 +798,10 @@
           while (seen.has(id)) id = stSid(id.slice(0, 20) + Math.random().toString(36).slice(2, 5));
           seen.add(id); map[String(nd.id)] = id;
           const c = { id, kind, x: Math.round(+nd.x || 0), y: Math.round(+nd.y || 0) };
-          ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "var", "op", "value"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
+          ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "var", "op", "value",
+           "act", "webapp", "shareText", "btnStyle", "btnMode", "editMode", "silent", "parseMode", "protect",
+           "aliases", "showInMenu", "department", "priority", "autoReply", "acceptPhoto", "spoiler", "asFile",
+           "resize", "oneTime", "title"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
           if (Array.isArray(nd.keywords)) c.keywords = nd.keywords.map(String);
           if (Array.isArray(nd.words)) c.words = nd.words.map(String);
           if (kind === "group") { c.kind = "reply"; c.role = "group"; }
@@ -803,18 +828,20 @@
       const stAddNode = (kind, at) => {
         const p = at || stPos();
         const nd = { id: nid(), kind, x: p.x, y: p.y };
-        if (kind === "reply") { nd.text = ""; nd.label = ""; }
+        if (kind === "reply") { nd.text = ""; nd.label = ""; nd.btnStyle = "default"; nd.btnMode = "inline"; nd.editMode = "new"; nd.parseMode = "HTML"; }
         if (kind === "group") { nd.kind = "reply"; nd.role = "group"; nd.label = "گروه"; }
-        if (kind === "link") { nd.text = ""; nd.url = ""; }
+        if (kind === "link") { nd.text = ""; nd.url = ""; nd.act = "url"; nd.btnStyle = "default"; }
         if (kind === "image") { nd.mediaType = "photo"; nd.url = ""; nd.caption = ""; }
-        if (kind === "ticket") { nd.text = ""; nd.words = []; }
+        if (kind === "ticket") { nd.text = ""; nd.words = []; nd.priority = "normal"; }
         if (kind === "trigger") { nd.keywords = []; nd.mode = "contains"; nd.text = ""; nd.label = ""; }
-        if (kind === "cmd") { nd.name = ""; nd.text = ""; nd.description = ""; }
+        if (kind === "cmd") { nd.name = ""; nd.text = ""; nd.description = ""; nd.btnStyle = "default"; nd.btnMode = "inline"; nd.editMode = "new"; nd.parseMode = "HTML"; nd.showInMenu = true; }
         if (kind === "condition") { nd.label = ""; nd.var = ""; nd.op = "eq"; nd.value = ""; }
         if (kind === "setvar") { nd.label = ""; nd.var = ""; nd.op = "set"; nd.value = ""; }
         if (kind === "input") { nd.label = ""; nd.text = ""; nd.var = ""; }
         if (kind === "random") { nd.label = ""; }
         if (kind === "notify") { nd.label = ""; nd.text = ""; }
+        if (kind === "menu") { nd.mode = "glass"; nd.title = "منوی اصلی"; nd.text = ""; nd.webapp = ""; nd.resize = true; nd.oneTime = false; }
+        if (kind === "keyboard") { nd.text = ""; nd.resize = true; nd.oneTime = false; }
         return nd;
       };
 
@@ -865,20 +892,26 @@
         else st.saved = "ذخیره " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
         stStatus(); stRender();
       });
+      /* فیلدهایی که در گراف ذخیره/ارسال می‌شوند — شامل فیلدهای کارت‌های تعاملی جدید */
+      const ST_FIELDS = ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role",
+        "keywords", "words", "var", "op", "value", "act", "webapp", "shareText", "btnStyle", "btnMode",
+        "editMode", "silent", "parseMode", "protect", "aliases", "showInMenu", "department", "priority",
+        "autoReply", "acceptPhoto", "spoiler", "asFile", "resize", "oneTime", "title"];
+
       function exportGraph(g) {
-        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "keywords", "words", "var", "op", "value"].forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
+        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ST_FIELDS.forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
       }
       /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
       function stParts(nd, depth) {
         const btns = [], urls = []; let media = null;
         for (const t of outOf(nd.id)) {
-          if (t.kind === "link" && t.url) urls.push(t);
+          if (t.kind === "link" && (t.url || t.webapp)) urls.push(t);
           else if (t.kind === "image" && t.url && !media) media = t;
           else if (isGroup(t) && depth < 3) {
             const s = stParts(t, depth + 1);
             btns.push(...s.btns); urls.push(...s.urls);
             if (!media) media = s.media;
-          } else if (t.kind === "reply" || t.kind === "cmd" || t.kind === "ticket" || t.kind === "trigger" || t.kind === "condition" || t.kind === "setvar" || t.kind === "input" || t.kind === "random" || t.kind === "notify") btns.push(t);
+          } else if (t.kind === "reply" || t.kind === "cmd" || t.kind === "ticket" || t.kind === "trigger" || t.kind === "condition" || t.kind === "setvar" || t.kind === "input" || t.kind === "random" || t.kind === "notify" || t.kind === "menu" || t.kind === "keyboard") btns.push(t);
         }
         return { btns, urls, media };
       }
@@ -910,7 +943,7 @@
         const want = stCompileLegacy();
         if (!Object.keys(want).length) return toast("نقشه هیچ کارت دستوری ندارد — برای جلوگیری از حذف دستورها اعمال نشد", 1);
         let skip = 0;
-        STG.nodes.forEach((nd) => { if (nd.kind === "trigger" || nd.kind === "ticket" || nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input" || nd.kind === "random" || nd.kind === "notify") skip++; });
+        STG.nodes.forEach((nd) => { if (nd.kind === "trigger" || nd.kind === "ticket" || nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input" || nd.kind === "random" || nd.kind === "notify" || nd.kind === "menu" || nd.kind === "keyboard") skip++; });
         const old = Object.keys(cmds || {});
         for (const [name, c] of Object.entries(want)) {
           await api(`/api/bots/${botId}/commands/${name}`, {
@@ -926,7 +959,7 @@
         cmds = (await api(`/api/bots/${botId}/commands`)).commands || {};
         st.dirty = false; st.saved = "محلی"; stStatus();
         toast(`اعمال شد (حالت سازگار) — ${n(Object.keys(want).length)} دستور`);
-        if (skip) toast("کارت‌های تیکت/کلیدواژه/شرط/متغیر در بک‌اند قدیمی اجرا نمی‌شوند — gbs.py تازه را مستقر کن", 1);
+        if (skip) toast("کارت‌های تیکت/کلیدواژه/شرط/متغیر/منو/کیبورد در بک‌اند قدیمی اجرا نمی‌شوند — gbs.py تازه را مستقر کن", 1);
       }
       const stApply = guard(async () => {
         await stPersist(true);
@@ -1006,6 +1039,30 @@
             if (!(nd.text || "").trim()) iss.push({ lv: "err", m: "کارت اعلان بدون متن است", nd });
             if (!inOf(nd.id).length) iss.push({ lv: "warn", m: "کارت اعلان به هیچ دکمه‌ای وصل نیست", nd });
             if (outOf(nd.id).length > 1) iss.push({ lv: "err", m: "کارت اعلان بیش از یک مسیر ادامه دارد — فقط اولی اجرا می‌شود", nd });
+          }
+          if (nd.kind === "menu") {
+            if (!nd.mode) iss.push({ lv: "err", m: "حالت منو انتخاب نشده است", nd });
+            if (nd.mode === "glass" && !(nd.webapp || "").trim()) iss.push({ lv: "warn", m: "منوی شیشه‌ای بدون آدرس مینی‌اپ — به حالت دائمی تغییر می‌دهد", nd });
+            if ((nd.webapp || "").trim() && !/^https:\/\//.test(nd.webapp.trim())) iss.push({ lv: "err", m: "آدرس مینی‌اپ باید با https شروع شود", nd });
+            if (!outOf(nd.id).length) iss.push({ lv: "warn", m: "منو هیچ آیتمی ندارد — از این کارت سیم بکش", nd });
+          }
+          if (nd.kind === "keyboard" && !outOf(nd.id).length) {
+            iss.push({ lv: "warn", m: "کیبورد دائمی هیچ دکمه‌ای ندارد — از این کارت سیم بکش", nd });
+          }
+          if ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply" && nd.editMode === "edit") {
+            iss.push({ lv: "err", m: "ویرایش پیام قبلی با کیبورد دائمی هم‌زمان ممکن نیست", nd });
+          }
+          if (nd.kind === "link" && nd.act === "webapp" && !(nd.webapp || "").trim()) {
+            iss.push({ lv: "err", m: "دکمه شیشه‌ای بدون آدرس مینی‌اپ است", nd });
+          }
+          if (nd.kind === "link" && (!nd.act || nd.act === "url") && !(nd.url || "").trim()) {
+            iss.push({ lv: "warn", m: "پیوند بدون آدرس است", nd });
+          }
+          if (nd.kind === "cmd" && (nd.aliases || []).length) {
+            for (const a of nd.aliases) {
+              if (STG.nodes.some((x) => x.kind === "cmd" && (x.name === a || (x.aliases || []).includes(a)) && x.id !== nd.id))
+                iss.push({ lv: "err", m: `نام مستعار /${a} تکراری است`, nd });
+            }
           }
           if (nd.kind === "random") {
             if (!inOf(nd.id).length) iss.push({ lv: "warn", m: "کارت شاخهٔ تصادفی به هیچ دکمه‌ای وصل نیست", nd });
@@ -1208,6 +1265,8 @@
         if (nd.kind === "random") return { title: nd.label || "شاخهٔ تصادفی", sub: `${n(out.length)} مسیر ممکن`, badge: "A/B", icon: "dice", tone: "rnd" };
         if (nd.kind === "notify") return { title: nd.label || "اعلان به ادمین", sub: nd.text || "بی‌متن", badge: "ping", icon: "bell", tone: "ntf" };
         if (nd.kind === "trigger") return { title: "کلیدواژه", sub: (nd.keywords || []).slice(0, 3).join("، ") || "بدون کلیدواژه", badge: nd.mode || "kw", icon: "spark", tone: "trg" };
+        if (nd.kind === "menu") return { title: "منوی تعاملی", sub: MENU_MODES[nd.mode] || "شیشه‌ای", badge: nd.mode || "glass", icon: "menu", tone: "menu" };
+        if (nd.kind === "keyboard") return { title: "کیبورد دائمی", sub: (out.length ? n(out.length) + " دکمه" : "بدون دکمه"), badge: "kbd", icon: "kbd", tone: "kbd" };
         return { title: "کارت", sub: "", badge: nd.kind || "؟", icon: "gear", tone: "" };
       }
       function nodeH(nd) { const el = $("fw") && $("fw").querySelector(`.node[data-id="${CSS.escape(nd.id)}"]`); return (el && el.offsetHeight) || 76; }
@@ -1222,9 +1281,11 @@
           const s = nodeSummary(nd), bad = issBy[nd.id];
           const chips = [];
           const btns = outOf(nd.id);
-          if (btns.length) chips.push(`<span class="nchip">${n(btns.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger" || x.kind === "condition" || x.kind === "setvar" || x.kind === "input" || x.kind === "random" || x.kind === "notify").length)} btn</span>`);
+          if (btns.length) chips.push(`<span class="nchip">${n(btns.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger" || x.kind === "condition" || x.kind === "setvar" || x.kind === "input" || x.kind === "random" || x.kind === "notify" || x.kind === "menu" || x.kind === "keyboard").length)} btn</span>`);
           if (btns.some((x) => x.kind === "link")) chips.push(`<span class="nchip u">${n(btns.filter((x) => x.kind === "link").length)} url</span>`);
           if (btns.some((x) => x.kind === "image")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "image").length)} media</span>`);
+          if (nd.kind === "menu" && nd.mode) chips.push(`<span class="nchip i">${esc(nd.mode)}</span>`);
+          if ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply") chips.push(`<span class="nchip i">kbd</span>`);
           if (nd.kind === "cmd" && inOf(nd.id).length) chips.push(`<span class="nchip i">${n(inOf(nd.id).length)} in</span>`);
           return `<div class="node ${s.tone} ${st.sel.includes(nd.id) ? "sel" : ""} ${bad ? (bad.includes("err") ? "bad" : "meh") : ""}" data-id="${esc(nd.id)}" style="transform:translate(${nd.x}px,${nd.y}px)">` +
             (canSend(nd) ? `<i class="port out" data-port="${nd.id}"></i>` : "") +
@@ -1232,7 +1293,7 @@
             `<div class="nh"><span class="nicon">${ic(s.icon)}</span><b>${esc(s.title)}</b><span class="badge">${esc(String(s.badge))}</span></div>` +
             `<div class="nt">${esc(String(s.sub).replace(/\s+/g, " ").slice(0, 90))}</div>` +
             `<div class="nb"><span class="nchips">${chips.join("")}</span></div></div>`;
-        }).join("") + (STG.nodes.length ? "" : `<div class="flow-empty"><div class="big">${ic("map")}</div><b style="display:block;margin-top:10px;color:var(--tx)">نقشه خالی است</b><div style="margin-top:5px;font-size:12px">از نوار بالا یک کارت اضافه کن: دستور، پاسخ، رسانه، پیوند، تیکت یا کلیدواژه.</div></div>`);
+        }).join("") + (STG.nodes.length ? "" : `<div class="flow-empty"><div class="big">${ic("map")}</div><b style="display:block;margin-top:10px;color:var(--tx)">نقشه خالی است</b><div style="margin-top:5px;font-size:12px">از نوار بالا یک کارت اضافه کن: دستور، پاسخ، رسانه، پیوند، تیکت، کلیدواژه، منو یا کیبورد.</div></div>`);
         stWires(); stMini(); stInspector(); stStatus();
         const h = $("fhint"); if (h) h.innerHTML = `${n(STG.nodes.length)} کارت · ${n(STG.edges.length)} اتصال · <kbd>${Math.round(z * 100)}%</kbd>` + (stIssues.length ? ` · <b style="color:var(--amber)">${n(stIssues.length)} نکته</b>` : "");
       }
@@ -1561,6 +1622,29 @@
       /* ── ویرایشگر کارت (یک شیت برای همه نوع) ── */
       function stField(lb, inner) { return `<label>${lb}</label>${inner}`; }
       function stPrevBox(id) { return `<label>پیش‌نمایش</label><div class="pv" id="${id}"></div>`; }
+      /* انتخابگر حالت — دکمه‌های کنارهم برای فیلدهای چندحالته (مثل حالت منو) */
+      function stModeSel(key, opts, cur, hint) {
+        return `<div class="btype" style="max-width:100%">${Object.entries(opts).map(([k, t]) =>
+          `<button class="${(cur || "") === k ? "on" : ""}" onclick="st.editing.nd.${key}='${k}';stDrawEdit()">${t}</button>`).join("")}</div>` +
+          (hint ? `<p style="color:var(--mu);font-size:12px;margin-top:6px">${hint}</p>` : "");
+      }
+      /* یک سوییچ ساده روی/خاموش */
+      function stToggle(lb, key, hint) {
+        const on = !!st.editing.nd[key];
+        return `<label>${lb}</label><div class="item static" style="padding:10px 12px;margin-bottom:6px;cursor:pointer" onclick="st.editing.nd.${key}=!st.editing.nd.${key};stDrawEdit()"><div class="g"><b style="font-size:13px">${lb}</b>${hint ? `<small>${hint}</small>` : ""}</div><span class="sw ${on ? "on" : ""}"></span></div>`;
+      }
+      /* بلوک «رفتار دکمه» — مشترک بین کارت‌های cmd و reply */
+      function stBtnOpts(nd) {
+        return stField("ظاهر دکمه", stModeSel("btnStyle", BTN_STYLES, nd.btnStyle))
+          + stField("جایگاه دکمه", stModeSel("btnMode", BTN_MODES, nd.btnMode, nd.btnMode === "reply" ? "دکمه‌ها زیر صفحه چت (کیبورد دائمی) ظاهر می‌شوند." : "دکمه‌ها زیر همین پیام ظاهر می‌شوند."))
+          + stField("نحوهٔ ارسال", stModeSel("editMode", EDIT_MODES, nd.editMode, nd.editMode === "edit" ? "پیام قبلی کاربر ویرایش می‌شود به‌جای ارسال پیام جدید." : "هر بار یک پیام جدید ارسال می‌شود."));
+      }
+      /* بلوک «گزینه‌های ارسال» — مشترک بین کارت‌های cmd و reply */
+      function stSendOpts(nd) {
+        return stField("قالب‌بندی متن", stModeSel("parseMode", PARSE_MODES, nd.parseMode))
+          + stToggle("ارسال خاموش (بدون صدا)", "silent")
+          + stToggle("جلوگیری از فوروارد", "protect");
+      }
       function stEdit(id, kind, fromId) {
         if (!id && STG && STG.nodes.length >= ST_LIM.nodes) return toast(`حداکثر ${n(ST_LIM.nodes)} کارت مجاز است`, 1);
         const isNew = !id;
@@ -1580,25 +1664,46 @@
         if (K === "cmd") {
           body = stField("نام دستور", `<div class="pfx"><b>/</b><input class="mono ltr" id="eName" value="${esc(nd.name || "")}" placeholder="start" oninput="st.editing.nd.name=this.value;stUpdPrev()"></div><div class="chips">${["start", "help", "about", "rules", "contact", "support"].map((x) => `<span onclick="stSetVal('eName','name','${x}');stDrawEdit()">/${x}</span>`).join("")}</div>`)
             + stField("توضیح (منوی تلگرام)", `<input class="in" id="eDesc" value="${esc(nd.description || "")}" placeholder="مثلاً راهنمای ربات" oninput="st.editing.nd.description=this.value">`)
-            + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="چه چیزی به کاربر بگویی؟">${esc(nd.text || "")}</textarea>`);
+            + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="چه چیزی به کاربر بگویی؟">${esc(nd.text || "")}</textarea>`)
+            + stField("نام‌های مستعار (اختیاری)", `<input class="in ltr mono" id="eAliases" value="${esc((nd.aliases || []).join("، "))}" placeholder="shoro، begin" oninput="st.editing.nd.aliases=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean)">`)
+            + stToggle("نمایش در منوی رسمی تلگرام", "showInMenu", "دستور در منوی / تلگرام کاربران ظاهر می‌شود.")
+            + `<h2 style="margin-top:18px">رفتار دکمه</h2>` + stBtnOpts(nd)
+            + `<h2 style="margin-top:18px">گزینه‌های ارسال</h2>` + stSendOpts(nd);
         } else if (K === "reply" && nd.role === "group") {
           body = stField("نام گروه", `<input class="in" id="eLabel" value="${esc(nd.label || "")}" placeholder="دکمه‌های اصلی" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + `<p style="color:var(--mu);font-size:12.5px;margin-top:10px">گروه مثل یک پوشه است: کارت‌های وصل‌شده به آن، روی پیامِ والد نمایش داده می‌شوند. برای اضافه‌کردن، از نقطهٔ کارت گروه بکش.</p>`;
         } else if (K === "reply") {
           body = stField("برچسب دکمه", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="خرید" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
-            + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`);
+            + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`)
+            + `<h2 style="margin-top:18px">رفتار دکمه</h2>` + stBtnOpts(nd)
+            + `<h2 style="margin-top:18px">گزینه‌های ارسال</h2>` + stSendOpts(nd);
         } else if (K === "link") {
           body = stField("متن دکمه", `<input class="in" id="eLabel" value="${esc(nd.text || "")}" placeholder="کانال ما" oninput="st.editing.nd.text=this.value;stUpdPrev()">`)
-            + stField("آدرس", `<input class="in ltr mono" id="eUrl" value="${esc(nd.url || "")}" placeholder="https://t.me/…" oninput="st.editing.nd.url=this.value;stUpdPrev()"></div>`)
-            + `<div class="chips"><span onclick="stSetVal('eUrl','url','https://t.me/+CHANGEME')">کانال</span><span onclick="stSetVal('eUrl','url','https://t.me/username')">کاربر</span></div>`;
+            + stField("نوع اکشن", stModeSel("act", LINK_ACTS, nd.act || "url",
+                (nd.act === "webapp") ? "دکمه، یک مینی‌اپ شیشه‌ای را روی کیبورد سیستم باز می‌کند." :
+                (nd.act === "share") ? "کاربر می‌تواند ربات/متن را به دیگران ارسال کند." :
+                "دکمه، یک لینک را در مرورگر یا تلگرام باز می‌کند."))
+            + (nd.act === "webapp"
+                ? stField("آدرس مینی‌اپ (https)", `<input class="in ltr mono" id="eWp" value="${esc(nd.webapp || "")}" placeholder="https://app.example.com" oninput="st.editing.nd.webapp=this.value;stUpdPrev()">`)
+                : nd.act === "share"
+                  ? stField("متن اشتراک‌گذاری (اختیاری)", `<textarea class="in" id="eSh" rows="2" oninput="st.editing.nd.shareText=this.value;stUpdPrev()" placeholder="این ربات رو ببین!">${esc(nd.shareText || "")}</textarea>`)
+                  : stField("آدرس", `<input class="in ltr mono" id="eUrl" value="${esc(nd.url || "")}" placeholder="https://t.me/…" oninput="st.editing.nd.url=this.value;stUpdPrev()">`)
+                     + `<div class="chips"><span onclick="stSetVal('eUrl','url','https://t.me/+CHANGEME')">کانال</span><span onclick="stSetVal('eUrl','url','https://t.me/username')">کاربر</span></div>`)
+            + stField("ظاهر دکمه", stModeSel("btnStyle", BTN_STYLES, nd.btnStyle));
         } else if (K === "image") {
           body = stField("نوع رسانه", `<select class="in" id="eMt" onchange="st.editing.nd.mediaType=this.value;stUpdPrev()">${Object.entries(MT).map(([k, v]) => `<option value="${k}" ${nd.mediaType === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)
             + stField("فایل یا آدرس", `<input class="in ltr mono" id="eUrl" value="${esc(nd.url || "")}" placeholder="https://…" oninput="st.editing.nd.url=this.value;stUpdPrev()"><input type="file" id="eFile" hidden onchange="stUpFile(this.files[0])"><div style="display:flex;gap:8px;margin-top:8px"><button class="btn line sm" style="flex:1" onclick="$('eFile').click()">${ic("download")} آپلود فایل</button></div>`)
             + stField("کپشن", `<textarea class="in" id="eText" rows="2" oninput="st.editing.nd.caption=this.value;stUpdPrev()">${esc(nd.caption || "")}</textarea>`)
+            + stToggle("ارسال خاموش (بدون صدا)", "silent")
+            + stToggle("ارسال به‌عنوان فایل", "asFile", "رسانه به‌جای نوع اصلی، به‌عنوان فایل ارسال می‌شود.")
+            + stToggle("متن پنهان (اسپویلر)", "spoiler", "رسانه تا زمان لمس کاربر محو/پنهان می‌ماند.")
             + `<div id="ePrev"></div>`;
         } else if (K === "ticket") {
           body = stField("متن درخواست از کاربر", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="مشکل خود را بنویسید…">${esc(nd.text || "")}</textarea>`)
             + stField("کلمات عبور (اختیاری)", `<input class="in" id="eW" value="${esc((nd.words || []).join("، "))}" placeholder="پشتیبانی، اضطراری" oninput="st.editing.nd.words=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean);stUpdPrev()">`)
+            + stField("دپارتمان (اختیاری)", `<input class="in" id="eDept" value="${esc(nd.department || "")}" placeholder="فنی، مالی" oninput="st.editing.nd.department=this.value;stUpdPrev()">`)
+            + stField("اولویت", stModeSel("priority", TICKET_PRIO, nd.priority || "normal"))
+            + stField("پاسخ خودکار بعد از ثبت (اختیاری)", `<textarea class="in" id="eAr" rows="2" oninput="st.editing.nd.autoReply=this.value;stUpdPrev()" placeholder="تیکت شما ثبت شد، تا ساعات کاری پاسخ می‌دهیم.">${esc(nd.autoReply || "")}</textarea>`)
             + `<p style="color:var(--mu);font-size:12px;margin-top:6px">اگر کلمه‌ای بگذاری، پیام کاربر باید با یکی از آن‌ها شروع شود. تیکت‌ها برای پذیرنده‌ها ارسال و در صندوق «تیکت‌ها» ثبت می‌شوند.</p>`;
         } else if (K === "trigger") {
           body = stField("کلیدواژه‌ها (با ویرگول)", `<input class="in" id="eKw" value="${esc((nd.keywords || []).join("، "))}" placeholder="قیمت، تعرفه، هزینه" oninput="st.editing.nd.keywords=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean);stUpdPrev()">`)
@@ -1628,12 +1733,29 @@
           body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="خرید انجام شد" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + stField("متن اعلان به ادمین", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="یک کاربر جدید به این مرحله رسید: {{var.full_name}}">${esc(nd.text || "")}</textarea>`)
             + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: وقتی مسیر به آن برسد، متن بالا برای «پذیرنده‌های تیکت» (از منوی صندوق تیکت) فرستاده می‌شود و کاربر چیزی نمی‌بیند؛ بعد بی‌صدا به سیم خروجی‌اش می‌رود. می‌توانی از <code class="mono">{{var.name}}</code> برای نمایش مقدار متغیرها استفاده کنی.</p>`;
+        } else if (K === "menu") {
+          body = stField("حالت منو", stModeSel("mode", MENU_MODES, nd.mode || "glass",
+              (nd.mode === "glass") ? "یک دکمه شیشه‌ای روی کیبورد سیستم ظاهر می‌شود که مینی‌اپ را باز می‌کند." :
+              (nd.mode === "persistent") ? "دکمه‌ها به‌صورت دائمی زیر صفحه چت (کیبورد تلگرام) می‌مانند." :
+              "دکمه‌ها به‌صورت اینلاین زیر پیام ظاهر می‌شوند."))
+            + stField("عنوان دکمه شیشه‌ای", `<input class="in" id="eTitle" maxlength="64" value="${esc(nd.title || "")}" placeholder="منوی اصلی" oninput="st.editing.nd.title=this.value;stUpdPrev()">`)
+            + (nd.mode === "glass" ? stField("آدرس مینی‌اپ (https)", `<input class="in ltr mono" id="eWp" value="${esc(nd.webapp || "")}" placeholder="https://app.example.com/menu" oninput="st.editing.nd.webapp=this.value;stUpdPrev()">`) : "")
+            + stField("متن همراه (اختیاری)", `<textarea class="in" id="eText" rows="2" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="یکی از گزینه‌ها را انتخاب کن">${esc(nd.text || "")}</textarea>`)
+            + stToggle("کیبورد جمع‌شونده", "resize", "کیبورد دائمی فقط به اندازهٔ دکمه‌ها جا می‌گیرد.")
+            + stToggle("یک‌بار مصرف", "oneTime", "کیبورد بعد از یک بار استفاده پنهان می‌شود.")
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">آیتم‌های منو = سیم‌های خروجی این کارت. از نقطهٔ سبز این کارت به سمت کارت‌های مقصد (پاسخ، پیوند و…) سیم بکش تا دکمه‌های منو ساخته شوند.</p>`;
+        } else if (K === "keyboard") {
+          body = stField("متن همراه (اختیاری)", `<textarea class="in" id="eText" rows="2" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="یکی از دکمه‌ها را بزن">${esc(nd.text || "")}</textarea>`)
+            + stToggle("کیبورد جمع‌شونده", "resize", "کیبورد دائمی فقط به اندازهٔ دکمه‌ها جا می‌گیرد.")
+            + stToggle("یک‌بار مصرف", "oneTime", "کیبورد بعد از یک بار استفاده پنهان می‌شود.")
+            + stToggle("ارسال خاموش (بدون صدا)", "silent")
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">دکمه‌های کیبورد = سیم‌های خروجی این کارت. از نقطهٔ سبز به سمت کارت‌های مقصد سیم بکش. وقتی کاربر دکمه را بزند، پیامِ کارت مقصد برایش ارسال می‌شود.</p>`;
         }
         const rel = isNew ? "" : `<label>اتصالات</label>
           <div class="rel">
             <div class="rel-h">ورودی — چه کارت‌هایی این را صدا می‌زنند</div>
             ${inn.length ? inn.map((x) => `<div class="rel-r"><span class="badge">${esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${x.id}','${nd.id}')">${ic("x")}</span></div>`).join("") : `<small>— هیچ — یک سیم از کارت دیگر به این نقطه بکش</small>`}
-            <div class="rel-h" style="margin-top:10px">${K === "condition" ? "خروجی — مسیر بله/خیر" : K === "setvar" || K === "notify" ? "خروجی — ادامهٔ مسیر" : K === "input" ? "خروجی — بعد از ثبت پاسخ" : K === "random" ? "خروجی — مسیرهای تصادفی" : "خروجی — محتوای همین پیام"}</div>
+            <div class="rel-h" style="margin-top:10px">${K === "condition" ? "خروجی — مسیر بله/خیر" : K === "setvar" || K === "notify" ? "خروجی — ادامهٔ مسیر" : K === "input" ? "خروجی — بعد از ثبت پاسخ" : K === "random" ? "خروجی — مسیرهای تصادفی" : K === "menu" ? "خروجی — آیتم‌های منو" : K === "keyboard" ? "خروجی — دکمه‌های کیبورد" : "خروجی — محتوای همین پیام"}</div>
             ${out.length ? out.map((x, i) => `<div class="rel-r"><span class="badge" ${K === "condition" ? `style="color:${i === 0 ? "#22c55e" : "var(--red)"}"` : ""}>${K === "condition" ? (i === 0 ? "بله" : i === 1 ? "خیر" : "؟") : K === "random" ? "مسیر " + n(i + 1) : esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${nd.id}','${x.id}')">${ic("x")}</span></div>`).join("") : `<small>— هنوز چیزی وصل نکرده‌ای —</small>`}
             ${canSend(nd) ? `<button class="btn line sm" style="margin-top:10px;width:100%" onclick="stQuickAdd('${nd.id}')">${ic("plus")} ساخت و اتصال کارت جدید</button>` : ""}
           </div>`;
@@ -1646,7 +1768,7 @@
         stUpdPrev();
         if (K === "image") stImgPrev();
       }
-      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || (nd.kind === "image" ? "رسانه" : nd.kind === "link" ? "پیوند" : (nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input") ? (nd.var ? "⚙ " + nd.var : (nd.kind === "condition" ? "شرط" : nd.kind === "input" ? "دریافت ورودی" : "متغیر")) : nd.kind === "random" ? "شاخهٔ تصادفی" : nd.kind === "notify" ? "اعلان به ادمین" : "کارت"));
+      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || nd.title || (nd.kind === "image" ? "رسانه" : nd.kind === "link" ? "پیوند" : (nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input") ? (nd.var ? "⚙ " + nd.var : (nd.kind === "condition" ? "شرط" : nd.kind === "input" ? "دریافت ورودی" : "متغیر")) : nd.kind === "random" ? "شاخهٔ تصادفی" : nd.kind === "notify" ? "اعلان به ادمین" : nd.kind === "menu" ? "منوی تعاملی" : nd.kind === "keyboard" ? "کیبورد دائمی" : "کارت"));
       function stSetVal(el, key, v) { const e = $(el); if (e) e.value = v; st.editing.nd[key] = v; }
       function stUpdPrev() {
         const E = st.editing; if (!E) return;
@@ -1664,8 +1786,11 @@
           (nd.kind === "trigger" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با ${(nd.keywords || []).map((k) => `<span class="kw">${esc(k)}</span>`).join(" ") || "—"} فعال می‌شود</div>` : "") +
           (nd.kind === "ticket" && (nd.words || []).length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔒 فقط پیام‌هایی که با ${(nd.words || []).map((w) => `<span class="kw">${esc(w)}</span>`).join(" ")} شروع شوند ثبت می‌شوند</div>` : "") +
           (nd.kind === "condition" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔀 اگر <span class="kw">${esc(nd.var || "…")}</span> ${esc(VAR_OPS[nd.op] || "")} ${esc(nd.value || "")} → مسیر بله، وگرنه مسیر خیر</div>` : "") +
-          (nd.kind === "setvar" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⚙ ${esc(SET_OPS[nd.op] || "")} <span class="kw">${esc(nd.var || "…")}</span> = ${esc(nd.value || "")} و بی‌صدا ادامه می‌دهد</div>` : "");
-      }
+          (nd.kind === "setvar" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⚙ ${esc(SET_OPS[nd.op] || "")} <span class="kw">${esc(nd.var || "…")}</span> = ${esc(nd.value || "")} و بی‌صدا ادامه می‌دهد</div>` : "") +
+          (nd.kind === "menu" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🎛 حالت: <span class="kw">${esc(MENU_MODES[nd.mode] || "شیشه‌ای")}</span>${nd.mode === "glass" && nd.webapp ? ` · <span class="mono ltr">${esc(nd.webapp.slice(0, 40))}</span>` : ""}</div>` : "") +
+          (nd.kind === "keyboard" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⌨ دکمه‌ها زیر صفحه چت ${nd.oneTime ? "(یک‌بار مصرف)" : "(دائمی)"}</div>` : "") +
+          ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⌨ دکمه‌ها زیر صفحه چت می‌روند (کیبورد دائمی)</div>` : "");
+        }
       function stImgPrev() { const e = $("ePrev"), nd = st.editing.nd; const u = nd.url || ""; if (e) e.innerHTML = /^https?:\/\//.test(u) ? (nd.mediaType === "photo" ? `<div style="margin-top:12px"><img src="${esc(u)}" style="max-width:100%;border-radius:12px;border:1px solid var(--hair)" onerror="this.replaceWith(Object.assign(document.createElement('i'),{textContent:'پیش‌نمایش در دسترس نیست',style:'color:var(--mu);font-size:12px'}))"/></div>` : `<div style="color:var(--mu);font-size:12px;margin-top:10px">${ic("link")} <span class="mono ltr">${esc(u.slice(0, 70))}</span></div>`) : ""; }
       const stUpFile = guard(async (f) => { if (!f) return; toast("در حال آپلود…"); const d = await _upload(f); st.editing.nd.url = d.url; st.editing.nd.mediaType = d.type; stDrawEdit(); toast("آپلود شد"); });
       function stQuickAdd(fromId) {
@@ -1693,8 +1818,39 @@
         }
         if (nd.kind === "link") {
           if (!(nd.text || "").trim()) return toast("متن دکمه را بنویس", 1);
-          let u = (nd.url || "").trim(); if (!u) return toast("آدرس را بنویس", 1);
-          if (!/^https?:\/\//.test(u)) u = "https://" + u;
+          if (nd.act === "webapp") {
+            let w = (nd.webapp || "").trim();
+            if (!w) return toast("آدرس مینی‌اپ را بنویس", 1);
+            if (!/^https:\/\//.test(w)) return toast("آدرس مینی‌اپ باید با https شروع شود", 1);
+          } else if (nd.act === "share") {
+            /* shareText اختیاری است — نیازی به آدرس نیست */
+          } else {
+            let u = (nd.url || "").trim(); if (!u) return toast("آدرس را بنویس", 1);
+            if (!/^https?:\/\//.test(u)) u = "https://" + u;
+            nd.url = u;
+          }
+        }
+        if (nd.kind === "menu") {
+          if (!(nd.title || "").trim()) return toast("عنوان منو را بنویس", 1);
+          if ((nd.mode || "glass") === "glass" && !(nd.webapp || "").trim())
+            return toast("منوی شیشه‌ای نیاز به آدرس مینی‌اپ (https) دارد", 1);
+          if ((nd.webapp || "").trim() && !/^https:\/\//.test(nd.webapp.trim()))
+            return toast("آدرس مینی‌اپ باید با https شروع شود", 1);
+        }
+        if (nd.kind === "keyboard") {
+          /* متن و دکمه‌ها اختیاری‌اند — ولی بدون دکمه فایده‌ای ندارد؛ هشدار می‌دهیم */
+          if (!outOf(nd.id).length && !st.pendingParent) toast("کارت کیبورد دائمی هنوز دکمه‌ای ندارد — از نقطهٔ سبز سیم بکش", 1);
+        }
+        if ((nd.kind === "cmd" || nd.kind === "reply") && nd.btnMode === "reply" && nd.editMode === "edit") {
+          return toast("ویرایش پیام قبلی با کیبورد دائمی هم‌زمان ممکن نیست — یکی را انتخاب کن", 1);
+        }
+        if (nd.kind === "cmd") {
+          /* نام‌های مستعار باید معتبر باشند */
+          nd.aliases = (nd.aliases || []).map((a) => String(a).trim().toLowerCase().replace(/^\//, "").replace(/[^a-z0-9_]/g, "")).filter(Boolean).slice(0, 6);
+          for (const a of nd.aliases) {
+            if (STG.nodes.some((x) => x.kind === "cmd" && (x.name === a || (x.aliases || []).includes(a)) && x.id !== nd.id))
+              return toast(`نام مستعار /${a} تکراری است`, 1);
+          }
           nd.url = u.slice(0, 500);
         }
         if (nd.kind === "image") {
