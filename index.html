@@ -486,7 +486,8 @@
         bell: '<path d="M6 10a6 6 0 0112 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z"/><path d="M9.5 20a2.5 2.5 0 005 0"/>',
         pencil: '<path d="M4 20l1-4.8L15.3 4.9a1.8 1.8 0 012.6 0l1.2 1.2a1.8 1.8 0 010 2.6L8.8 19 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>',
         menu: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 14h4M7 16.5h7"/>',
-        kbd: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/>'
+        kbd: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/>',
+        globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.4 4 5.7 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.7-4-9s1.4-6.6 4-9z"/>'
       };
 
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -755,14 +756,17 @@
         notify:  { t: "اعلان به ادمین", ic: "bell", d: "به پذیرنده‌های تیکت پیام بده و بی‌صدا رد شو" },
         menu:    { t: "منوی تعاملی", ic: "menu", d: "منوی شیشه‌ای، دائمی یا شناور" },
         keyboard:{ t: "کیبورد دائمی", ic: "kbd",  d: "دکمه‌های همیشگی زیر صفحه چت" },
+        api:     { t: "فراخوانی API", ic: "globe", d: "یک آدرس HTTP را GET/POST بزن و نتیجه را ذخیره کن" },
+        ai:      { t: "هوش مصنوعی",  ic: "spark",  d: "متن را به هوش مصنوعی بده و پاسخ بگیر" },
       };
-      /* دسته‌بندی پالت برای نمایش گروه‌بندی‌شده: پیام‌ها / تعامل / منطق و داده */
+      /* دسته‌بندی پالت برای نمایش گروه‌بندی‌شده: پیام‌ها / تعامل / منطق و داده / یکپارچه‌سازی */
       const ST_CAT = { cmd: "msg", reply: "msg", group: "msg", image: "msg", link: "msg",
                         ticket: "io", trigger: "io", input: "io", menu: "io", keyboard: "io",
-                        condition: "logic", setvar: "logic", random: "logic", notify: "logic" };
-      const ST_CAT_LABEL = { msg: "پیام", io: "تعامل", logic: "منطق و داده" };
-      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1 };
-      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1 };
+                        condition: "logic", setvar: "logic", random: "logic", notify: "logic",
+                        api: "intg", ai: "intg" };
+      const ST_CAT_LABEL = { msg: "پیام", io: "تعامل", logic: "منطق و داده", intg: "یکپارچه‌سازی" };
+      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1 };
+      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1 };
       const VAR_OPS = { eq: "برابر با", neq: "نابرابر با", contains: "شامل", gt: "بزرگ‌تر از", lt: "کوچک‌تر از", exists: "تعریف‌شده", nexists: "تعریف‌نشده" };
       const SET_OPS = { set: "قرار بده", inc: "افزایش بده", dec: "کاهش بده", append: "بچسبان" };
       /* ── کارت‌های تعاملی جدید: مقادیر مجاز (هماهنگ با بک‌اند) ── */
@@ -808,7 +812,7 @@
           ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "var", "op", "value",
            "act", "webapp", "shareText", "btnStyle", "btnMode", "editMode", "silent", "parseMode", "protect",
            "aliases", "showInMenu", "department", "priority", "autoReply", "acceptPhoto", "spoiler", "asFile",
-           "resize", "oneTime", "title"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
+           "resize", "oneTime", "title", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
           if (Array.isArray(nd.keywords)) c.keywords = nd.keywords.map(String);
           if (Array.isArray(nd.words)) c.words = nd.words.map(String);
           if (kind === "group") { c.kind = "reply"; c.role = "group"; }
@@ -853,6 +857,8 @@
         if (kind === "notify") { nd.label = ""; nd.text = ""; }
         if (kind === "menu") { nd.mode = "glass"; nd.title = "منوی اصلی"; nd.text = ""; nd.webapp = ""; nd.resize = true; nd.oneTime = false; }
         if (kind === "keyboard") { nd.text = ""; nd.resize = true; nd.oneTime = false; }
+        if (kind === "api") { nd.label = ""; nd.url = ""; nd.method = "GET"; nd.body = ""; nd.save_to = ""; }
+        if (kind === "ai") { nd.label = ""; nd.text = ""; nd.save_to = ""; }
         return nd;
       };
 
@@ -907,7 +913,8 @@
       const ST_FIELDS = ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role",
         "keywords", "words", "var", "op", "value", "act", "webapp", "shareText", "btnStyle", "btnMode",
         "editMode", "silent", "parseMode", "protect", "aliases", "showInMenu", "department", "priority",
-        "autoReply", "acceptPhoto", "spoiler", "asFile", "resize", "oneTime", "title"];
+        "autoReply", "acceptPhoto", "spoiler", "asFile", "resize", "oneTime", "title",
+        "method", "body", "save_to"];
 
       function exportGraph(g) {
         return {
@@ -1017,6 +1024,8 @@
           }
           if (nd.kind === "image" && !/^https?:\/\//.test(nd.url || "")) iss.push({ lv: "err", m: "رسانه بدون فایل/آدرس", nd });
           if (nd.kind === "trigger" && !(nd.keywords || []).filter((k) => String(k).trim()).length) iss.push({ lv: "err", m: "کلیدواژه‌ای وارد نشده", nd });
+          if (nd.kind === "api" && !/^https?:\/\//.test(nd.url || "")) iss.push({ lv: "err", m: "فراخوانی API بدون آدرس معتبر", nd });
+          if (nd.kind === "ai" && !(nd.text || "").trim()) iss.push({ lv: "err", m: "هوش مصنوعی بدون پرامپت", nd });
           if (isGroup(nd) && !outOf(nd.id).length) iss.push({ lv: "warn", m: "گروه خالی است", nd });
         }
         const seen = new Set();
@@ -1233,7 +1242,7 @@
             <div class="ib" onclick="stMenu()" title="منو">${ic("more")}</div>
           </div>
           <div class="st-pal" id="stPal">
-            ${["msg", "io", "logic"].map((cat) => `<span class="pal-cat">${esc(ST_CAT_LABEL[cat])}</span>` +
+            ${["msg", "io", "logic", "intg"].map((cat) => `<span class="pal-cat">${esc(ST_CAT_LABEL[cat])}</span>` +
               Object.entries(ST_KIND).filter(([k]) => ST_CAT[k] === cat).map(([k, v]) => `<button class="pal" data-k="${k}" title="${esc(v.d)}"><span class="pal-i">${ic(v.ic)}</span><span>${v.t}</span></button>`).join("")).join("")}
           </div>
           <div class="flow-canvas st-canvas" id="fc">
@@ -1299,6 +1308,8 @@
         if (nd.kind === "trigger") return { title: "کلیدواژه", sub: (nd.keywords || []).slice(0, 3).join("، ") || "بدون کلیدواژه", badge: nd.mode || "kw", icon: "spark", tone: "trg" };
         if (nd.kind === "menu") return { title: "منوی تعاملی", sub: MENU_MODES[nd.mode] || "شیشه‌ای", badge: nd.mode || "glass", icon: "menu", tone: "menu" };
         if (nd.kind === "keyboard") return { title: "کیبورد دائمی", sub: (out.length ? n(out.length) + " دکمه" : "بدون دکمه"), badge: "kbd", icon: "kbd", tone: "kbd" };
+        if (nd.kind === "api") return { title: nd.label || "فراخوانی API", sub: (nd.method || "GET") + " " + ((nd.url || "").replace(/^https?:\/\//, "").slice(0, 30) || "بی‌آدرس"), badge: nd.method || "GET", icon: "globe", tone: "url" };
+        if (nd.kind === "ai") return { title: nd.label || "هوش مصنوعی", sub: (nd.text || "بدون پرامپت").slice(0, 40), badge: "ai", icon: "spark", tone: "trg" };
         return { title: "کارت", sub: "", badge: nd.kind || "؟", icon: "gear", tone: "" };
       }
       function nodeH(nd) { const el = $("fw") && $("fw").querySelector(`.node[data-id="${CSS.escape(nd.id)}"]`); return (el && el.offsetHeight) || 76; }
@@ -1644,6 +1655,8 @@
         random: [{ id: "p1", label: "مسیر ۱" }, { id: "p2", label: "مسیر ۲" },
                  { id: "p3", label: "مسیر ۳" }, { id: "p4", label: "مسیر ۴" },
                  { id: "p5", label: "مسیر ۵" }],
+        api: [{ id: "ok", label: "موفق" }, { id: "fail", label: "ناموفق" }],
+        ai: [{ id: "ok", label: "موفق" }, { id: "fail", label: "ناموفق" }],
       };
       const stPortsOf = (nd) => (nd && ST_PORTS[nd.kind]) || [{ id: "run", label: "ادامه" }];
 
@@ -1713,6 +1726,18 @@
       }
 
       /* ── ویرایشگر کارت (یک شیت برای همه نوع) ── */
+      /* فاز ۲: راهنمای قالب‌بندی — {{input}}، {{var.x}}، {{temp.x}}، {{user.x}} */
+      function stTplHint(nd) {
+        const v = (nd.var || "").trim();
+        const hasIn = STG.edges.some((e) => e.to === nd.id && nSt(e.from) && nSt(e.from).kind === "input");
+        return `<details class="med" style="margin-top:4px"><summary>${ic("spark")} متغیرها در متن</summary>` +
+          `<div style="color:var(--mu);font-size:12px;line-height:2">` +
+          (hasIn ? `<div>📥 <code class="mono ltr">{{input}}</code> — آخرین متنی که کاربر فرستاده</div>` : "") +
+          (v ? `<div>📦 <code class="mono ltr">{{var.${esc(v)}}}</code> — مقدار ذخیره‌شده در این کارت</div>` : "") +
+          `<div>👤 <code class="mono ltr">{{user.first_name}}</code> — نام کاربر</div>` +
+          `<div>💾 <code class="mono ltr">{{var.name}}</code> — هر متغیر ذخیره‌شدهٔ دیگر</div>` +
+          `</div></details>`;
+      }
       function stField(lb, inner) { return `<label>${lb}</label>${inner}`; }
       function stPrevBox(id) { return `<label>پیش‌نمایش</label><div class="pv" id="${id}"></div>`; }
       /* انتخابگر حالت — دکمه‌های کنارهم برای فیلدهای چندحالته (مثل حالت منو) */
@@ -1764,6 +1789,7 @@
           body = stField("نام دستور", `<div class="pfx"><b>/</b><input class="mono ltr" id="eName" value="${esc(nd.name || "")}" placeholder="start" oninput="st.editing.nd.name=this.value;stUpdPrev()"></div><div class="chips">${["start", "help", "about", "rules", "contact", "support"].map((x) => `<span onclick="stSetVal('eName','name','${x}');stDrawEdit()">/${x}</span>`).join("")}</div>`)
             + stField("توضیح (منوی تلگرام)", `<input class="in" id="eDesc" value="${esc(nd.description || "")}" placeholder="مثلاً راهنمای ربات" oninput="st.editing.nd.description=this.value">`)
             + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="چه چیزی به کاربر بگویی؟">${esc(nd.text || "")}</textarea>`)
+            + stTplHint(nd)
             + stField("نام‌های مستعار (اختیاری)", `<input class="in ltr mono" id="eAliases" value="${esc((nd.aliases || []).join("، "))}" placeholder="shoro، begin" oninput="st.editing.nd.aliases=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean)">`)
             + stToggle("نمایش در منوی رسمی تلگرام", "showInMenu", "دستور در منوی / تلگرام کاربران ظاهر می‌شود.")
             + `<h2 style="margin-top:18px">رفتار دکمه</h2>` + stBtnOpts(nd)
@@ -1774,6 +1800,7 @@
         } else if (K === "reply") {
           body = stField("برچسب دکمه", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="خرید" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + stField("متن پاسخ", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`)
+            + stTplHint(nd)
             + `<h2 style="margin-top:18px">رفتار دکمه</h2>` + stBtnOpts(nd)
             + `<h2 style="margin-top:18px">گزینه‌های ارسال</h2>` + stSendOpts(nd);
         } else if (K === "link") {
@@ -1810,21 +1837,23 @@
             + stField("متن پاسخ", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()">${esc(nd.text || "")}</textarea>`);
         } else if (K === "condition") {
           body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="بررسی امتیاز" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
-            + stField("نام متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="points" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
+            + stField("نام متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="points یا temp.last_input" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
+            + `<div class="chips"><span onclick="stSetVal('eVar','var','temp.last_input')">📥 آخرین ورودی</span></div>`
             + stField("عملگر", `<select class="in" id="eOp" onchange="st.editing.nd.op=this.value;stDrawEdit()">${Object.entries(VAR_OPS).map(([k, v]) => `<option value="${k}" ${nd.op === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)
             + (["exists", "nexists"].includes(nd.op) ? "" : stField("مقدار مقایسه", `<input class="in ltr mono" id="eVal" value="${esc(nd.value || "")}" placeholder="10" oninput="st.editing.nd.value=this.value;stUpdPrev()">`))
-            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مسیرِ بعدی را بر اساس متغیر کاربر دو شاخه می‌کند. <b style="color:#22c55e">اولین</b> سیم خروجی = وقتی شرط درست است، <b style="color:var(--red)">دومین</b> سیم = وقتی نادرست است.</p>`;
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مسیرِ بعدی را بر اساس متغیر کاربر دو شاخه می‌کند. سیمِ <b style="color:#22c55e">«اگر درست»</b> = وقتی شرط درست است، سیمِ <b style="color:var(--red)">«اگر نادرست»</b> = وقتی نادرست است. روی برچسبِ هر سیم در بوم کلیک کن تا پورتش را عوض کنی. با <code class="mono ltr">temp.x</code> هم می‌توانی به جای متغیر دائمی، دادهٔ موقت کارت قبلی را بررسی کنی.</p>`;
         } else if (K === "setvar") {
           body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="ثبت امتیاز" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + stField("نام متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="points" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
             + stField("عملیات", `<select class="in" id="eOp" onchange="st.editing.nd.op=this.value;stDrawEdit()">${Object.entries(SET_OPS).map(([k, v]) => `<option value="${k}" ${nd.op === k ? "selected" : ""}>${v}</option>`).join("")}</select>`)
-            + stField("مقدار", `<input class="in ltr mono" id="eVal" value="${esc(nd.value || "")}" placeholder="1" oninput="st.editing.nd.value=this.value;stUpdPrev()">`)
-            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مقدار را روی کاربر ذخیره می‌کند و بی‌صدا به سیم خروجی‌اش می‌رود. برای نمایش مقدار در متن پیام‌ها از <code class="mono">{{var.${esc(nd.var || "name")}}}</code> استفاده کن.</p>`;
+            + stField("مقدار", `<input class="in ltr mono" id="eVal" value="${esc(nd.value || "")}" placeholder="1 یا temp.last_input" oninput="st.editing.nd.value=this.value;stUpdPrev()">`)
+            + `<div class="chips"><span onclick="stSetVal('eVal','value','temp.last_input')">📥 آخرین ورودی</span></div>`
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: مقدار را روی کاربر ذخیره می‌کند و بی‌صدا به سیم خروجی‌اش می‌رود. برای نمایش مقدار در متن پیام‌ها از <code class="mono">{{var.${esc(nd.var || "name")}}}</code> استفاده کن. برای ذخیرهٔ آخرین ورودی کاربر، مقدار را <code class="mono ltr">temp.last_input</code> بگذار.</p>`;
         } else if (K === "input") {
           body = stField("برچسب دکمه (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="ثبت‌نام" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + stField("متنی که از کاربر می‌خواهی", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="نام و نام خانوادگی‌ات را بفرست">${esc(nd.text || "")}</textarea>`)
             + stField("ذخیره در متغیر", `<input class="in ltr mono" id="eVar" value="${esc(nd.var || "")}" placeholder="full_name" oninput="st.editing.nd.var=this.value;stUpdPrev()">`)
-            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">کاربر پیام تو را با دکمهٔ «✏️ پاسخ بده» می‌بیند، می‌زند، و پیام بعدی‌اش عیناً در متغیر بالا ذخیره می‌شود. سپس اگر سیمی خروجی داشته باشی، خودکار ادامه می‌دهد؛ برای فرم چندمرحله‌ای چند کارت «دریافت ورودی» را زنجیر کن.</p>`;
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">کاربر پیام تو را با دکمهٔ «✏️ پاسخ بده» می‌بیند، می‌زند، و پیام بعدی‌اش عیناً در متغیر بالا ذخیره می‌شود. سپس اگر سیمی خروجی داشته باشی، خودکار ادامه می‌دهد؛ برای فرم چندمرحله‌ای چند کارت «دریافت ورودی» را زنجیر کن. در کارت‌های بعدی می‌توانی با <code class="mono ltr">{{input}}</code> یا <code class="mono ltr">{{var.${esc(nd.var || "name")}}}</code> به این متن دسترسی داشته باشی.</p>`;
         } else if (K === "random") {
           body = stField("برچسب کارت (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="تست A/B خوش‌آمدگویی" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
             + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: هر بار که مسیر به آن برسد، <b style="color:var(--tx)">یکی از سیم‌های خروجی را کاملاً تصادفی</b> انتخاب می‌کند و همان را ادامه می‌دهد — مناسب پیام‌های متنوع، تست A/B، یا شانسی‌کردن جایزه. حداقل دو مسیر وصل کن.</p>`;
@@ -1849,12 +1878,28 @@
             + stToggle("یک‌بار مصرف", "oneTime", "کیبورد بعد از یک بار استفاده پنهان می‌شود.")
             + stToggle("ارسال خاموش (بدون صدا)", "silent")
             + `<p style="color:var(--mu);font-size:12px;margin-top:6px">دکمه‌های کیبورد = سیم‌های خروجی این کارت. از نقطهٔ سبز به سمت کارت‌های مقصد سیم بکش. وقتی کاربر دکمه را بزند، پیامِ کارت مقصد برایش ارسال می‌شود.</p>`;
+        } else if (K === "api") {
+          body = stField("برچسب کارت (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="بررسی وضعیت سفارش" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
+            + stField("آدرس API", `<input class="in ltr mono" id="eUrl" value="${esc(nd.url || "")}" placeholder="https://api.example.com/status" oninput="st.editing.nd.url=this.value;stUpdPrev()">`)
+            + stField("روش", `<div class="btype" style="max-width:200px">${[["GET", "GET"], ["POST", "POST"]].map(([k, t]) => `<button class="${(nd.method || "GET") === k ? "on" : ""}" onclick="st.editing.nd.method='${k}';stDrawEdit()">${t}</button>`).join("")}</div>`)
+            + (nd.method === "POST"
+                ? stField("بدنهٔ درخواست (JSON)", `<textarea class="in ltr mono" id="eBody" rows="3" oninput="st.editing.nd.body=this.value;stUpdPrev()" placeholder='{"id": "{{var.order_id}}"}'>${esc(nd.body || "")}</textarea>`)
+                  + stTplHint(nd)
+                : "")
+            + stField("ذخیرهٔ نتیجه در متغیر (اختیاری)", `<input class="in ltr mono" id="eSaveTo" value="${esc(nd.save_to || "")}" placeholder="order_status" oninput="st.editing.nd.save_to=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: وقتی مسیر به آن برسد، آدرس بالا را می‌زند و بی‌صدا ادامه می‌دهد. پاسخ در <code class="mono ltr">{{temp.api_result}}</code> و وضعیت در <code class="mono ltr">{{temp.api_ok}}</code> می‌نشیند. دو خروجی دارد: سیمِ <b style="color:#22c55e">«موفق»</b> برای وضعیت ۲xx و سیمِ <b style="color:var(--red)">«ناموفق»</b> برای خطا.</p>`;
+        } else if (K === "ai") {
+          body = stField("برچسب کارت (اختیاری)", `<input class="in" id="eLabel" maxlength="64" value="${esc(nd.label || "")}" placeholder="پاسخ به سوال کاربر" oninput="st.editing.nd.label=this.value;stUpdPrev()">`)
+            + stField("متن درخواست (پرامپت)", `<textarea class="in" id="eText" rows="4" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="به این متن پاسخ بده: {{input}}">${esc(nd.text || "")}</textarea>`)
+            + stTplHint(nd)
+            + stField("ذخیرهٔ پاسخ در متغیر (اختیاری)", `<input class="in ltr mono" id="eSaveTo" value="${esc(nd.save_to || "")}" placeholder="ai_answer" oninput="st.editing.nd.save_to=this.value;stUpdPrev()">`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام نیست: پرامپت بالا را به هوش مصنوعی می‌دهد و پاسخ را در <code class="mono ltr">{{temp.ai}}</code> می‌نویسد. برای استفاده از پاسخ، یک کارت «پاسخ» به خروجیِ موفقِ آن وصل کن و <code class="mono ltr">{{temp.ai}}</code> را در متنش بنویس.</p>`;
         }
         const rel = isNew ? "" : `<label>اتصالات</label>
           <div class="rel">
             <div class="rel-h">ورودی — چه کارت‌هایی این را صدا می‌زنند</div>
             ${inn.length ? inn.map((x) => `<div class="rel-r"><span class="badge">${esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${x.id}','${nd.id}')">${ic("x")}</span></div>`).join("") : `<small>— هیچ — یک سیم از کارت دیگر به این نقطه بکش</small>`}
-            <div class="rel-h" style="margin-top:10px">${K === "condition" ? "خروجی — مسیر بله/خیر" : K === "setvar" || K === "notify" ? "خروجی — ادامهٔ مسیر" : K === "input" ? "خروجی — بعد از ثبت پاسخ" : K === "random" ? "خروجی — مسیرهای تصادفی" : K === "menu" ? "خروجی — آیتم‌های منو" : K === "keyboard" ? "خروجی — دکمه‌های کیبورد" : "خروجی — محتوای همین پیام"}</div>
+            <div class="rel-h" style="margin-top:10px">${K === "condition" ? "خروجی — مسیر بله/خیر" : K === "setvar" || K === "notify" ? "خروجی — ادامهٔ مسیر" : K === "input" ? "خروجی — بعد از ثبت پاسخ" : K === "random" ? "خروجی — مسیرهای تصادفی" : K === "menu" ? "خروجی — آیتم‌های منو" : K === "keyboard" ? "خروجی — دکمه‌های کیبورد" : K === "api" || K === "ai" ? "خروجی — مسیر موفق/ناموفق" : "خروجی — محتوای همین پیام"}</div>
             ${out.length ? out.map((x, i) => `<div class="rel-r"><span class="badge" ${K === "condition" ? `style="color:${i === 0 ? "#22c55e" : "var(--red)"}"` : ""}>${K === "condition" ? (i === 0 ? "بله" : i === 1 ? "خیر" : "؟") : K === "random" ? "مسیر " + n(i + 1) : esc(ST_KIND[x.kind].t)}</span><b onclick="stCloseEditThen('${x.id}')">${esc(stTitle(x))}</b><span class="del" onclick="stUnlink('${nd.id}','${x.id}')">${ic("x")}</span></div>`).join("") : `<small>— هنوز چیزی وصل نکرده‌ای —</small>`}
             ${canSend(nd) ? `<button class="btn line sm" style="margin-top:10px;width:100%" onclick="stQuickAdd('${nd.id}')">${ic("plus")} ساخت و اتصال کارت جدید</button>` : ""}
           </div>`;
@@ -1974,6 +2019,22 @@
         }
         if (nd.kind === "notify") {
           if (!(nd.text || "").trim()) return toast("متن اعلان را بنویس", 1);
+          nd.label = (nd.label || "").slice(0, ST_LIM.label);
+        }
+        if (nd.kind === "api") {
+          let u = (nd.url || "").trim();
+          if (!u) return toast("آدرس API را بنویس", 1);
+          if (!/^https?:\/\//i.test(u)) return toast("آدرس API باید با http:// یا https:// شروع شود", 1);
+          nd.url = u.slice(0, ST_LIM.url);
+          nd.method = (nd.method || "GET").toUpperCase() === "POST" ? "POST" : "GET";
+          nd.body = String(nd.body || "").slice(0, ST_LIM.text);
+          nd.save_to = (nd.save_to || "").trim().replace(/[^A-Za-z0-9_.]/g, "").slice(0, 40);
+          nd.label = (nd.label || "").slice(0, ST_LIM.label);
+        }
+        if (nd.kind === "ai") {
+          if (!(nd.text || "").trim()) return toast("متن درخواست هوش مصنوعی را بنویس", 1);
+          nd.text = String(nd.text || "").slice(0, ST_LIM.text);
+          nd.save_to = (nd.save_to || "").trim().replace(/[^A-Za-z0-9_.]/g, "").slice(0, 40);
           nd.label = (nd.label || "").slice(0, ST_LIM.label);
         }
         if (nd.kind === "random") nd.label = (nd.label || "").slice(0, ST_LIM.label);
