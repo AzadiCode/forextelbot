@@ -388,6 +388,13 @@
       .btype button { padding: 8px 6px; font-size: 12px; }
       .node .nh b { letter-spacing: -.2px; }
       .flow-svg path.wire.hot { stroke: var(--ac); stroke-width: 2.6; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ac) 60%, transparent)); }
+      /* برچسب پورت روی سیم (بله/خیر/مسیر ۱...) — فاز ۱ */
+      .flow-svg text.wtag {
+        font: 600 10px/1 var(--mono); fill: var(--mu);
+        paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round;
+        pointer-events: none;
+      }
+      .flow-svg text.wtag:hover { fill: var(--ac); }
       .flow-svg path.wire.bad { stroke: var(--red); stroke-dasharray: 4 4; }
       .flow-svg path.wire.grp { stroke: var(--amber); }
       .flow-svg circle.tip { fill: var(--hair2); }
@@ -812,10 +819,14 @@
           if (!e) continue;
           const f = map[String(e.from)], t = map[String(e.to)];
           if (!f || !t || f === t) continue;
-          const k = f + "\u0000" + t;
+          const fp = String(e.from_port || ""), tp = String(e.to_port || "");
+          const k = f + "\u0000" + fp + "\u0000" + t + "\u0000" + tp;
           if (eset.has(k)) continue;
           eset.add(k);
-          g.edges.push({ from: f, to: t });
+          const out = { from: f, to: t };
+          if (fp) out.from_port = fp;
+          if (tp) out.to_port = tp;
+          g.edges.push(out);
         }
         if (raw && raw.view) g.view = stView(raw.view);
         return g;
@@ -899,7 +910,22 @@
         "autoReply", "acceptPhoto", "spoiler", "asFile", "resize", "oneTime", "title"];
 
       function exportGraph(g) {
-        return { nodes: g.nodes.map((nd) => { const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y }; ST_FIELDS.forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; }); return o; }), edges: g.edges.map((e) => ({ from: e.from, to: e.to })), view: g.view };
+        return {
+          nodes: g.nodes.map((nd) => {
+            const o = { id: nd.id, kind: isGroup(nd) ? "reply" : nd.kind, x: nd.x, y: nd.y };
+            ST_FIELDS.forEach((k) => { if (nd[k] != null && nd[k] !== "" && !(Array.isArray(nd[k]) && !nd[k].length)) o[k] = nd[k]; });
+            return o;
+          }),
+          /* یال‌ها پورت‌هایشان را هم همراه می‌کنند (فاز ۱) — یال‌های قدیمی
+             بدون پورت روی سرور خودکار "run" می‌گیرند */
+          edges: g.edges.map((e) => {
+            const o = { from: e.from, to: e.to };
+            if (e.from_port) o.from_port = e.from_port;
+            if (e.to_port) o.to_port = e.to_port;
+            return o;
+          }),
+          view: g.view
+        };
       }
       /* بک‌اند قدیمی /flow را ندارد: گراف را همین‌جا به commands+callbacks کامپایل می‌کند */
       function stParts(nd, depth) {
@@ -997,11 +1023,15 @@
         for (const e of STG.edges) {
           const a = nSt(e.from), b = nSt(e.to);
           if (!a || !b) { iss.push({ lv: "err", m: "اتصال به کارت حذف‌شده" }); continue; }
-          if (seen.has(e.from + ">" + e.to)) { iss.push({ lv: "err", m: "اتصال تکراری", nd: a }); continue; }
-          seen.add(e.from + ">" + e.to);
+          const fp = e.from_port || "run";
+          if (seen.has(e.from + ">" + fp + ">" + e.to)) { iss.push({ lv: "err", m: "اتصال تکراری", nd: a }); continue; }
+          seen.add(e.from + ">" + fp + ">" + e.to);
           if (!canSend(a)) iss.push({ lv: "err", m: `${ST_KIND[a.kind].t} نمی‌تواند فرستنده باشد`, nd: a });
           if (a.kind === "image") iss.push({ lv: "err", m: "رسانه فقط مقصد است", nd: a });
           if (!canRecv(b)) iss.push({ lv: "err", m: "کارت مقصد نامعتبر", nd: b });
+          /* پورت مبدأ باید یکی از پورت‌های این کارت باشد */
+          const okPort = stPortsOf(a).some((p) => p.id === fp);
+          if (!okPort) iss.push({ lv: "err", m: `اتصال به پورت نامعتبر «${fp}»`, nd: a });
         }
         /* سرور مثل موتور فقط یک رسانه به هر پیام می‌چسباند → دومی بی‌صدا حذف می‌شود */
         for (const nd of STG.nodes) {
@@ -1019,10 +1049,12 @@
           if (nd.kind === "condition") {
             if (!(nd.var || "").trim()) iss.push({ lv: "err", m: "شرط بدون نام متغیر است", nd });
             if (!inOf(nd.id).length) iss.push({ lv: "warn", m: "شرط به هیچ دکمه‌ای وصل نیست", nd });
-            const oc = outOf(nd.id).length;
-            if (oc === 0) iss.push({ lv: "warn", m: "شرط هیچ مسیر بله/خیری ندارد", nd });
-            else if (oc === 1) iss.push({ lv: "warn", m: "شرط فقط مسیر «بله» دارد — مسیر «خیر» را هم وصل کن", nd });
-            else if (oc > 2) iss.push({ lv: "err", m: "شرط بیش از دو مسیر دارد — فقط دوتای اول (بله/خیر) اجرا می‌شود", nd });
+            /* نسل ۲: مسیرها از روی پورت yes/no تشخیص داده می‌شوند */
+            const hasYes = STG.edges.some((e) => e.from === nd.id && (e.from_port || "run") === "yes");
+            const hasNo = STG.edges.some((e) => e.from === nd.id && (e.from_port || "run") === "no");
+            if (!hasYes && !hasNo) iss.push({ lv: "warn", m: "شرط هیچ مسیر بله/خیری ندارد", nd });
+            else if (!hasNo) iss.push({ lv: "warn", m: "شرط فقط مسیر «بله» دارد — مسیر «خیر» را هم وصل کن", nd });
+            else if (!hasYes) iss.push({ lv: "warn", m: "شرط فقط مسیر «خیر» دارد — مسیر «بله» را هم وصل کن", nd });
           }
           if (nd.kind === "setvar") {
             if (!(nd.var || "").trim()) iss.push({ lv: "err", m: "کارت متغیر بدون نام متغیر است", nd });
@@ -1286,6 +1318,13 @@
           if (btns.some((x) => x.kind === "image")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "image").length)} media</span>`);
           if (nd.kind === "menu" && nd.mode) chips.push(`<span class="nchip i">${esc(nd.mode)}</span>`);
           if ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply") chips.push(`<span class="nchip i">kbd</span>`);
+          /* کارت‌های چندپورتی: نشان بده کدام پورت‌ها وصل‌اند (فاز ۱) */
+          if (ST_PORTS[nd.kind]) {
+            const used = STG.edges.filter((e) => e.from === nd.id).map((e) => e.from_port || "run");
+            (ST_PORTS[nd.kind] || []).forEach((p) => {
+              if (used.includes(p.id)) chips.push(`<span class="nchip ${p.id === "yes" ? "i" : "u"}">${esc(p.label)}</span>`);
+            });
+          }
           if (nd.kind === "cmd" && inOf(nd.id).length) chips.push(`<span class="nchip i">${n(inOf(nd.id).length)} in</span>`);
           return `<div class="node ${s.tone} ${st.sel.includes(nd.id) ? "sel" : ""} ${bad ? (bad.includes("err") ? "bad" : "meh") : ""}" data-id="${esc(nd.id)}" style="transform:translate(${nd.x}px,${nd.y}px)">` +
             (canSend(nd) ? `<i class="port out" data-port="${nd.id}"></i>` : "") +
@@ -1309,12 +1348,42 @@
           const bad = !canSend(a) || !canRecv(b);
           const cls = (bad ? "bad" : hot ? "hot" : "") + (isGroup(a) || isGroup(b) ? " grp" : "");
           const d = `M${x1},${y1}C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+          /* برچسب پورت روی سیم — فقط کارت‌های چندپورتی (شرط/تصادفی) */
+          const fp = e.from_port || "run";
+          const prts = ST_PORTS[a.kind] || [];
+          const pl = (prts.find((p) => p.id === fp) || {}).label;
+          const tag = pl ? `<text class="wtag" data-ef="${esc(e.from)}" data-et="${esc(e.to)}" x="${x1 + 10}" y="${y1 - 6}">${esc(pl)}</text>` : "";
           return `<path class="wire-hit" d="${d}" data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>` +
             `<path class="wire ${cls}" d="${d}"/>` +
+            tag +
             `<circle class="tip" cx="${x2}" cy="${y2}" r="3.2"/>`;
         }).join("");
         const d = st.act && st.act.mode === "link" ? `<path class="wire draft" d="M${st.act.sx},${st.act.sy}C${st.act.sx + 60},${st.act.sy} ${st.act.mx - 60},${st.act.my} ${st.act.mx},${st.act.my}"/>` : "";
         svg.innerHTML = paths + d;
+        /* کلیک روی برچسب پورت → چرخاندن پورتِ یال (yes ↔ no) */
+        svg.querySelectorAll("text.wtag").forEach((t) => {
+          t.style.pointerEvents = "auto";
+          t.style.cursor = "pointer";
+          t.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const e = STG.edges.find((x) => x.from === t.dataset.ef && x.to === t.dataset.et);
+            if (!e) return;
+            const a = nSt(e.from);
+            const prts = ST_PORTS[a.kind] || [];
+            if (prts.length < 2) return;
+            const cur = e.from_port || "run";
+            const i = prts.findIndex((p) => p.id === cur);
+            const nx = prts[(i + 1) % prts.length].id;
+            /* اگر مقصدِ پورتِ جدید تکراری شد، جلوگیری کن */
+            if (STG.edges.some((x) => x.from === e.from && x.to !== e.to && (x.from_port || "run") === nx)) {
+              return toast(`پورت «${(prts.find((p) => p.id === nx) || {}).label}» قبلاً وصل شده`, 1);
+            }
+            stDirty(1);
+            e.from_port = nx;
+            stRender(); hap("light");
+            toast(`این سیم الان «${(prts.find((p) => p.id === nx) || {}).label}» است`);
+          });
+        });
       }
       function stMini() {
         const m = $("stMini"); if (!m || !STG) return;
@@ -1568,17 +1637,41 @@
         if (e.ctrlKey || e.metaKey) stZoomAt(e.deltaY > 0 ? 0.92 : 1.08, e.clientX, e.clientY);
         else { STG.view.x -= e.deltaX || (e.shiftKey ? e.deltaY : 0); STG.view.y -= e.deltaY; requestAnimationFrame(stRender); stMirror(); }
       }
-      function stLink(from, to) {
+      /* پورت‌های خروجی یک کارت — هماهنگ با PORTS در gbs-1.py.
+         کارتی که اینجا نیست فقط پورت "run" را دارد. */
+      const ST_PORTS = {
+        condition: [{ id: "yes", label: "اگر درست" }, { id: "no", label: "اگر نادرست" }],
+        random: [{ id: "p1", label: "مسیر ۱" }, { id: "p2", label: "مسیر ۲" },
+                 { id: "p3", label: "مسیر ۳" }, { id: "p4", label: "مسیر ۴" },
+                 { id: "p5", label: "مسیر ۵" }],
+      };
+      const stPortsOf = (nd) => (nd && ST_PORTS[nd.kind]) || [{ id: "run", label: "ادامه" }];
+
+      function stLink(from, to, port) {
         const a = nSt(from), b = nSt(to);
         if (!a || !b) return;
         if (!canSend(a)) return toast(`${ST_KIND[a.kind].t} نمی‌تواند مبدأ اتصال باشد`, 1);
         if (!canRecv(b)) return toast(`${ST_KIND[b.kind].t} فقط مبدأ است، نمی‌شود به آن وصل کرد`, 1);
         if (a.kind === "image") return toast("کارت رسانه فقط مقصد است", 1);
         if (a.kind === "cmd" && b.kind === "image" && outOf(a.id).some((x) => x.kind === "image")) return toast("روی یک پیام فقط یک رسانه مجاز است", 1);
-        if (STG.edges.some((x) => x.from === from && x.to === to)) { toast("این اتصال از قبل وجود دارد", 1); stWires(); return; }
+        const ports = stPortsOf(a);
+        /* کارت چندپورتی: اگر پورتی گفته نشد، اولین پورتِ خالی را بگیر.
+           این یعنی وصل کردنِ شرط به ترتیب yes بعد no — مثل رفتار قدیمی. */
+        let fp = port || "";
+        if (!fp) {
+          const used = new Set(STG.edges.filter((x) => x.from === from).map((x) => x.from_port || "run"));
+          const free = ports.find((p) => !used.has(p.id));
+          fp = free ? free.id : ports[0].id;
+        }
+        if (STG.edges.some((x) => x.from === from && x.to === to && (x.from_port || "run") === fp)) {
+          toast("این اتصال از قبل وجود دارد", 1); stWires(); return;
+        }
         stDirty(1);
-        STG.edges.push({ from, to });
-        stRender(); hap("success"); toast("متصل شد");
+        const e = { from, to };
+        if (fp && fp !== "run") e.from_port = fp;
+        STG.edges.push(e);
+        stRender(); hap("success");
+        toast(ports.length > 1 && fp !== "run" ? `متصل شد — پورت «${(ports.find((p) => p.id === fp) || {}).label || fp}»` : "متصل شد");
       }
       function stDelSel() {
         if (!st.sel.length) return;
@@ -1633,9 +1726,15 @@
         const on = !!st.editing.nd[key];
         return `<label>${lb}</label><div class="item static" style="padding:10px 12px;margin-bottom:6px;cursor:pointer" onclick="st.editing.nd.${key}=!st.editing.nd.${key};stDrawEdit()"><div class="g"><b style="font-size:13px">${lb}</b>${hint ? `<small>${hint}</small>` : ""}</div><span class="sw ${on ? "on" : ""}"></span></div>`;
       }
-      /* بلوک «رفتار دکمه» — مشترک بین کارت‌های cmd و reply */
+      /* بلوک «رفتار دکمه» — مشترک بین کارت‌های cmd و reply.
+         دکمهٔ شیشه‌ای فقط وقتی پیشنهاد می‌شود که آدرس مینی‌اپ وارد شده باشد،
+         چون تلگرام فقط دکمهٔ WebApp را شیشه‌ای می‌کند. */
       function stBtnOpts(nd) {
-        return stField("ظاهر دکمه", stModeSel("btnStyle", BTN_STYLES, nd.btnStyle))
+        const hasWp = !!(nd.webapp || "").trim();
+        const styles = hasWp ? BTN_STYLES : { default: BTN_STYLES.default };
+        return stField("آدرس مینی‌اپ (اختیاری، https)", `<input class="in ltr mono" id="eWp" value="${esc(nd.webapp || "")}" placeholder="https://app.example.com" oninput="st.editing.nd.webapp=this.value;stDrawEdit()">`)
+          + stField("ظاهر دکمه", stModeSel("btnStyle", styles, nd.btnStyle) +
+              (hasWp ? "" : `<p style="color:var(--mu);font-size:11.5px;margin-top:5px">برای دکمهٔ شیشه‌ای، اول آدرس مینی‌اپ را بالا بنویس.</p>`))
           + stField("جایگاه دکمه", stModeSel("btnMode", BTN_MODES, nd.btnMode, nd.btnMode === "reply" ? "دکمه‌ها زیر صفحه چت (کیبورد دائمی) ظاهر می‌شوند." : "دکمه‌ها زیر همین پیام ظاهر می‌شوند."))
           + stField("نحوهٔ ارسال", stModeSel("editMode", EDIT_MODES, nd.editMode, nd.editMode === "edit" ? "پیام قبلی کاربر ویرایش می‌شود به‌جای ارسال پیام جدید." : "هر بار یک پیام جدید ارسال می‌شود."));
       }
