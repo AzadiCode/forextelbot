@@ -1249,7 +1249,8 @@ async def bot_call(bot_id: str, coro_fn):
 # ══════════════════════════════════════════════════════════════════════
 # موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
 # ══════════════════════════════════════════════════════════════════════
-FLOW_VERSION = 3
+FLOW_VERSION = 4
+PORT_RUN = "run"               # پورت پیش‌فرض — هر یال/کارتی که پورت ندارد این را می‌گیرد
 TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
 CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
 KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
@@ -1265,6 +1266,42 @@ LINK_ACTS   = ("url", "webapp", "share")         # اکشن‌های کارت پ
 TICKET_PRIO = ("low", "normal", "high")          # اولویت تیکت
 _TPL_RE = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}")
 
+# ── پورت‌های خروجی هر کارت — نسل ۲ (فاز ۱) ──
+# کارتی که اینجا نیست یا None می‌دهد، فقط پورت پیش‌فرض "run" را دارد.
+# این یعنی کارت‌های تک‌خروجی مثل قبل رفتار می‌کنند — هیچ تغییری در گراف‌های قدیمی نیست.
+PORTS = {
+    "condition": [{"id": "yes", "label": "اگر درست"},
+                  {"id": "no",  "label": "اگر نادرست"}],
+    "random":    [{"id": "p1", "label": "مسیر ۱"}, {"id": "p2", "label": "مسیر ۲"},
+                  {"id": "p3", "label": "مسیر ۳"}, {"id": "p4", "label": "مسیر ۴"},
+                  {"id": "p5", "label": "مسیر ۵"}],
+}
+
+
+def node_ports(nd) -> list:
+    """پورت‌های خروجی یک کارت — همیشه حداقل ["run"] برمی‌گرداند."""
+    if not isinstance(nd, dict):
+        return [PORT_RUN]
+    declared = nd.get("outputs")
+    if isinstance(declared, list) and declared:
+        out = []
+        for p in declared:
+            pid = (p or {}).get("id") if isinstance(p, dict) else str(p)
+            pid = str(pid or "").strip()[:24]
+            if pid:
+                out.append({"id": pid,
+                            "label": str((p or {}).get("label") or pid)[:48] if isinstance(p, dict) else pid})
+        if out:
+            return out
+    return PORTS.get(nd.get("kind")) or [PORT_RUN]
+
+
+def _port_id(p):
+    """پورت (dict یا رشته) → شناسهٔ آن"""
+    if isinstance(p, dict):
+        return str(p.get("id") or PORT_RUN)
+    return str(p or PORT_RUN)
+
 
 def _html(t: str) -> str:
     """متن کاربر را امن می‌کند؛ اگر تگ معتبر داشته باشد دست نمی‌زند"""
@@ -1275,19 +1312,32 @@ def _html(t: str) -> str:
 
 
 def _tpl(text: str, ctx: Optional[dict]) -> str:
-    """جای‌گذاری {{var.x}} و {{user.x}} در متن — بدون ctx دست‌نخورده برمی‌گردد"""
+    """جای‌گذاری در متن — فاز ۲: var. / user. / temp. / input
+
+    - {{var.name}}     متغیر دائمی کاربر
+    - {{user.field}}   فیلد شیء کاربر تلگرام
+    - {{temp.key}}     دادهٔ موقت این اجرا (خروجی کارت قبلی)
+    - {{input}}        میانبر {{temp.last_input}} — آخرین ورودی کاربر
+    بدون ctx دست‌نخورده برمی‌گردد."""
     if not text or "{{" not in text or not ctx:
         return text
     get_var = ctx.get("get_var")
+    get_temp = ctx.get("get_temp")
     user = ctx.get("user") or {}
 
     def _sub(m):
         path = m.group(1)
+        if path == "input" and get_temp:
+            v = get_temp("last_input")
+            return "" if v is None else str(v)
         if path.startswith("var.") and get_var:
             v = get_var(path[4:])
             return "" if v is None else str(v)
         if path.startswith("user."):
             v = user.get(path[5:])
+            return "" if v is None else str(v)
+        if path.startswith("temp.") and get_temp:
+            v = get_temp(path[5:])
             return "" if v is None else str(v)
         return m.group(0)
 
@@ -1311,21 +1361,75 @@ class Flow:
             if isinstance(e, dict):
                 f, t = str(e.get("from") or ""), str(e.get("to") or "")
                 if f in self.nodes and t in self.nodes and f != t:
-                    self.edges.append({"from": f, "to": t})
+                    fp = str(e.get("from_port") or "").strip()[:24]
+                    tp = str(e.get("to_port") or "").strip()[:24]
+                    self.edges.append({"from": f, "to": t,
+                                       "from_port": fp or PORT_RUN,
+                                       "to_port": tp or PORT_RUN})
+        # ── مهاجرت در زمان خواندن (نسخهٔ ۳ و قدیمی‌تر) ──
+        # یال‌های قدیمی پورت ندارند. کارت شرط با «ترتیب» یال‌ها کار می‌کرد:
+        # اولین یال = yes، دومی = no. اینجا همان قانون را به پورت تبدیل می‌کنیم
+        # تا گراف‌های قدیمی بدون تغییر داده، با معنای جدید کار کنند.
+        for nid, nd in self.nodes.items():
+            if nd.get("kind") not in PORTS:
+                continue
+            ports = [_port_id(p) for p in PORTS[nd["kind"]]]
+            mine = [e for e in self.edges if e["from"] == nid]
+            if not mine:
+                continue
+            # یال‌هایی که پورت صریح دارند را رزرو کن
+            taken = {e["from_port"] for e in mine if e["from_port"] != PORT_RUN}
+            need = [p for p in ports if p not in taken]
+            for e in mine:
+                if e["from_port"] != PORT_RUN:
+                    continue
+                if not need:
+                    break
+                e["from_port"] = need.pop(0)
+        self._reindex()
+
+    def _reindex(self):
+        """ساختارهای دسترسی سریع — کلید (node, port) به‌جای node خالی"""
         self._out, self._in = {}, {}
         for e in self.edges:
-            self._out.setdefault(e["from"], []).append(e["to"])
-            self._in.setdefault(e["to"], []).append(e["from"])
+            self._out.setdefault((e["from"], e["from_port"]), []).append(
+                (e["to"], e["to_port"]))
+            self._in.setdefault((e["to"], e["to_port"]), []).append(
+                (e["from"], e["from_port"]))
+            # کلید بدون پورت هم همهٔ یال‌ها را ببیند (برای ins/edge قدیمی)
+            self._out.setdefault((e["from"], PORT_RUN), [])
+            self._in.setdefault((e["to"], PORT_RUN), [])
 
     # ── دسترسی ───────────────────────────────────────────────────────
     def node(self, nid):
         return self.nodes.get(str(nid)) if nid is not None else None
 
-    def outs(self, nid):
-        return [self.nodes[i] for i in self._out.get(str(nid), [])]
+    def outs(self, nid, port=PORT_RUN):
+        """کارتهای مقصدِ یک پورت خاص. بدون port = همهٔ یال‌های خروجی (رفتار قدیمی)."""
+        n = str(nid)
+        if port is None:
+            return [self.nodes[t] for t in {t for t, _ in
+                    [p for k, v in self._out.items() if k[0] == n for p in v]}]
+        return [self.nodes[t] for t, _ in self._out.get((n, port), [])]
+
+    def out_edges(self, nid, port=PORT_RUN):
+        """یال‌های خروجی یک پورت — برای ساختن دکمه با مقصدِ پورت‌دار"""
+        n = str(nid)
+        return [{"to": t, "to_port": tp, "from": n, "from_port": port}
+                for t, tp in self._out.get((n, port), [])]
 
     def ins(self, nid):
-        return [self.nodes[i] for i in self._in.get(str(nid), [])]
+        """همهٔ کارت‌هایی که به این کارت وصل‌اند (بدون توجه به پورت)"""
+        n = str(nid)
+        seen, out = set(), []
+        for (t, _tp), srcs in self._in.items():
+            if t != n:
+                continue
+            for f, _fp in srcs:
+                if f not in seen:
+                    seen.add(f)
+                    out.append(self.nodes[f])
+        return out
 
     def edge(self, src_id, tgt_id):
         for e in self.edges:
@@ -1335,13 +1439,17 @@ class Flow:
 
     # ── شناسهٔ دکمه‌ها ────────────────────────────────────────────────
     @staticmethod
-    def cid(act, src, tgt=None):
+    def cid(act, src, tgt=None, port=None):
+        """callback_data: act:src:tgt@port — پورت مقصد هم کد می‌شود تا دکمهٔ
+        «اگر درست» واقعاً از پورت yes بیاید."""
         sid = src["id"] if isinstance(src, dict) else (src or "_")
         tid = tgt["id"] if isinstance(tgt, dict) else (tgt or "")
-        return f"{CB_PREFIX}{act}:{sid}:{tid}"[:64]
+        port = str(port or "").strip()
+        tail = f"{tid}@{port}" if port and port != PORT_RUN else tid
+        return f"{CB_PREFIX}{act}:{sid}:{tail}"[:64]
 
     def parse(self, data):
-        """callback_data → {act, src, tgt, raw} | None  (اعتبارسنجی با گراف زنده)"""
+        """callback_data → {act, src, tgt, port, raw} | None  (اعتبارسنجی با گراف زنده)"""
         s = str(data or "")
         if not s.startswith(CB_PREFIX):
             return None
@@ -1353,8 +1461,12 @@ class Flow:
         if src is None:
             return None
         raw = parts[2] if len(parts) > 2 else ""
+        port = PORT_RUN
+        if "@" in raw:
+            raw, port = raw.rsplit("@", 1)
+            port = port.strip()[:24] or PORT_RUN
         tgt = self.node(raw) if raw else None
-        return {"act": act, "src": src, "tgt": tgt, "raw": raw}
+        return {"act": act, "src": src, "tgt": tgt, "port": port, "raw": raw}
 
     # ── ورودی‌ها ──────────────────────────────────────────────────────
     def cmd_nodes(self):
@@ -1400,16 +1512,20 @@ class Flow:
     def parts(self, nd, depth=0):
         """سیم‌های خروجی یک نود = محتوای همان پیام: دکمه/لینک/رسانه.
         نود reply با role=group مثل پوشش عمل می‌کند: عضوهایش به پیام والد اضافه می‌شوند.
-        کارت‌های menu و keyboard هم سیم‌های خروجی‌شان = آیتم‌های منو/دکمه‌ها هستند."""
+        کارت‌های menu و keyboard هم سیم‌های خروجی‌شان = آیتم‌های منو/دکمه‌ها هستند.
+
+        خروجی: لیست دکمه‌ها هر آیتم یک تاپل (کارتمقصد, پورت) است — پورت برای
+        ساختن callback_dataِ درست لازم است."""
         btns, urls, media = [], [], None
-        for t in self.outs(nd["id"]):
+        for e in self.out_edges(nd["id"]):
+            t, tp = self.nodes[e["to"]], e["to_port"]
             k = t.get("kind")
             # پیوند با act=url فقط در دکمه‌های اینلاین پیام می‌رود؛ ولی پیوند شیشه‌ای
             # (webapp) یا اشتراک، مثل بقیه می‌تواند آیتمِ منو/کیبورد دائمی هم باشد.
             if k == "link" and (t.get("act") or "url") == "url" and t.get("url"):
                 urls.append(t)
             elif k == "link" and (t.get("act") or "url") != "url":
-                btns.append(t)
+                btns.append((t, tp))
             elif k == "image" and t.get("url") and media is None:
                 media = t
             elif k == "reply" and t.get("role") == "group" and depth < 3:
@@ -1420,7 +1536,7 @@ class Flow:
                     media = sub_m
             elif k in ("reply", "cmd", "ticket", "trigger", "condition", "setvar",
                        "input", "random", "notify", "menu", "keyboard"):
-                btns.append(t)
+                btns.append((t, tp))
         return btns, urls, media
 
     # ── نودهای منطقی: شرط/متغیر — پیام نیستند، فقط مسیر واقعی را پیدا می‌کنند ──
@@ -1432,8 +1548,13 @@ class Flow:
             return None
 
     def _eval_condition(self, nd, ctx) -> bool:
+        """فاز ۲: شرط می‌تواند متغیر دائمی (var.x) یا دادهٔ موقت (temp.x) را بخواند.
+        اگر نام متغیر با temp. شروع شود، از کیسهٔ موقت خوانده می‌شود."""
         get_var = (ctx or {}).get("get_var") or (lambda _n: None)
-        v, val, op = get_var(nd.get("var")), nd.get("value"), nd.get("op") or "eq"
+        get_temp = (ctx or {}).get("get_temp") or (lambda _n, _d=None: None)
+        name = nd.get("var") or ""
+        v = get_temp(name[5:]) if name.startswith("temp.") else get_var(name)
+        val, op = nd.get("value"), nd.get("op") or "eq"
         if op == "exists":
             return v is not None
         if op == "nexists":
@@ -1450,13 +1571,19 @@ class Flow:
         return str(v if v is not None else "") == str(val if val is not None else "")
 
     def _apply_setvar(self, nd, ctx):
+        """فاز ۲: مقدار می‌تواند از temp بخواند — اگر value با temp. شروع شود،
+        مقدار موقتِ کارت قبلی در متغیر دائمی ذخیره می‌شود (مثلاً ذخیرهٔ ورودی)."""
         set_var = (ctx or {}).get("set_var")
         get_var = (ctx or {}).get("get_var") or (lambda _n: None)
+        get_temp = (ctx or {}).get("get_temp") or (lambda _n, _d=None: None)
         if not set_var:
             return
         name, op, val = nd.get("var"), nd.get("op") or "set", nd.get("value")
         if not name:
             return
+        # خواندن مقدار از کیسهٔ موقت: value = "temp.last_input"
+        if isinstance(val, str) and val.startswith("temp."):
+            val = get_temp(val[5:])
         if op in ("inc", "dec"):
             try:
                 cur = float(get_var(name) or 0)
@@ -1469,7 +1596,7 @@ class Flow:
             nv = cur + delta if op == "inc" else cur - delta
             set_var(name, nv if nv % 1 else int(nv))
         elif op == "append":
-            set_var(name, str(get_var(name) or "") + str(val or ""))
+            set_var(name, str(get_var(name) or "") + str(val if val is not None else ""))
         else:
             set_var(name, val)
 
@@ -1482,25 +1609,37 @@ class Flow:
             notify(text)
 
     def resolve_action(self, nd, ctx=None, depth=0):
-        """پیمایش نودهای منطقی (شرط/متغیر/تصادفی/اعلان) تا رسیدن به نودِ واقعاً قابل‌نمایش (یا None)"""
+        """پیمایش نودهای منطقی (شرط/متغیر/تصادفی/اعلان) تا رسیدن به نودِ واقعاً قابل‌نمایش.
+
+        نسل ۲: مسیرها از روی **پورت** انتخاب می‌شوند، نه ترتیب یال‌ها:
+        condition → yes/no، random → p1..p5، بقیه → run.
+        گراف‌های قدیمی در __init__ خودکار به پورت تبدیل شده‌اند."""
         seen = set()
         while nd and nd.get("kind") in LOGIC_KINDS and depth < 12:
             if nd["id"] in seen:
                 return None
             seen.add(nd["id"])
             depth += 1
-            outs = self.outs(nd["id"])
             if nd["kind"] == "setvar":
                 self._apply_setvar(nd, ctx)
-                nd = outs[0] if outs else None
+                nd = self.outs(nd["id"], PORT_RUN)[0] if self.outs(nd["id"], PORT_RUN) else None
             elif nd["kind"] == "notify":
                 self._apply_notify(nd, ctx)
-                nd = outs[0] if outs else None
+                nd = self.outs(nd["id"], PORT_RUN)[0] if self.outs(nd["id"], PORT_RUN) else None
             elif nd["kind"] == "random":
-                nd = random.choice(outs) if outs else None
+                # یک پورتِ متصل را تصادفی انتخاب کن، بعد مقصدش را
+                ports = [p["id"] for p in node_ports(nd)]
+                avail = [p for p in ports if self.outs(nd["id"], p)]
+                if not avail:
+                    nd = None
+                else:
+                    pick = random.choice(avail)
+                    nd = self.outs(nd["id"], pick)[0]
             else:
                 ok = self._eval_condition(nd, ctx)
-                nd = (outs[0] if outs else None) if ok else (outs[1] if len(outs) > 1 else None)
+                port = "yes" if ok else "no"
+                got = self.outs(nd["id"], port)
+                nd = got[0] if got else None
         return nd
 
     def render(self, nd, chain=None, ctx=None):
@@ -1555,7 +1694,7 @@ class Flow:
         text = _tpl(_html(nd.get("text") or nd.get("response") or ""), ctx)
         cb = []
         reply_items = []
-        for t in btns:
+        for t, tp in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
             # پیوند شیشه‌ای/اشتراک، دکمهٔ callback نیست — مستقیماً از همان سازنده ساخته می‌شود
@@ -1567,8 +1706,8 @@ class Flow:
                 if nd.get("btnMode") == "reply":
                     reply_items.append({"text": label, "node": t, "link": urlb})
                 continue
-            item = {"text": label, "data": self.cid("go", nd, t),
-                    "node": t, "parent": nd}
+            item = {"text": label, "data": self.cid("go", nd, t, tp),
+                    "node": t, "port": tp, "parent": nd}
             cb.append(item)
             # btnMode=reply: دکمه‌ها به‌جای اینلاین، در کیبورد دائمی زیر صفحه چت می‌روند
             if nd.get("btnMode") == "reply":
@@ -1597,7 +1736,7 @@ class Flow:
 
         # آیتم‌های منو = دکمه‌هایی که به کارت‌های مقصد وصل‌اند
         items = []
-        for t in btns:
+        for t, tp in btns:
             label = (t.get("label") or t.get("name") or t.get("text") or "ادامه")
             label = str(label).strip().splitlines()[0][:64] or "ادامه"
             # پیوند شیشه‌ای/اشتراک در کیبورد دائمی فقط یک دکمهٔ متنی ساده است
@@ -1607,7 +1746,8 @@ class Flow:
                     "act": t.get("act"), "url": t.get("url"), "webapp": t.get("webapp"),
                     "shareText": t.get("shareText")}})
                 continue
-            items.append({"text": label, "data": self.cid("go", nd, t), "node": t})
+            items.append({"text": label, "data": self.cid("go", nd, t, tp),
+                          "node": t, "port": tp})
 
         # حالت شیشه‌ای: یک دکمه WebApp روی کیبورد سیستم + آیتم‌ها زیر صفحه چت
         if mode == "glass" and webapp:
@@ -1875,9 +2015,16 @@ class Engine:
             return False
 
     # ── کارت‌های شرط/متغیر/اعلان: زمینهٔ اجرا برای هر کاربر ────────────────
-    def _vctx(self, chat_id, user=None) -> dict:
+    def _vctx(self, chat_id, user=None, temp=None) -> dict:
+        """کیسهٔ دادهٔ اجرا — فاز ۲: temp دادهٔ موقتِ بین کارت‌ها را نگه می‌دارد.
+
+        temp در یک اجرا زنده است. چون هر پیام کاربر یک اجرای جداگانه است،
+        temp باید در نشست (فاز ۳) ذخیره شود تا بین پیام‌ها زنده بماند.
+        فعلاً حداقلِ درونِ یک اجرا کار می‌کند: کارت input می‌نویسد،
+        کارت‌های بعدی در همان render می‌خوانند."""
         cache = {}
         notify_q = []
+        temp = temp if isinstance(temp, dict) else {}
 
         def get_var(name):
             if name not in cache:
@@ -1888,10 +2035,18 @@ class Engine:
             cache[name] = value
             storage.set_user_var(self.bot_id, chat_id, name, value)
 
+        def get_temp(name, default=None):
+            return temp.get(name, default)
+
+        def set_temp(name, value):
+            temp[name] = value
+
         def notify(text):
             notify_q.append(text)
 
-        return {"get_var": get_var, "set_var": set_var, "user": user or {},
+        return {"get_var": get_var, "set_var": set_var,
+                "get_temp": get_temp, "set_temp": set_temp, "temp": temp,
+                "user": user or {}, "chat_id": chat_id, "bot_id": self.bot_id,
                 "notify": notify, "_notify_q": notify_q}
 
     async def _flush_notify(self, vctx):
@@ -2124,18 +2279,25 @@ class Engine:
         return True
 
     async def _input_capture(self, ctx, chat_id, nd, text):
-        """متن آزاد کاربر را در متغیرِ کارت «دریافت ورودی» ذخیره می‌کند و بی‌صدا ادامه می‌دهد."""
+        """متن آزاد کاربر را در متغیرِ کارت «دریافت ورودی» ذخیره می‌کند و بی‌صدا ادامه می‌دهد.
+
+        فاز ۲: متن هم در temp.last_input و هم (اگر var دارد) در متغیر دائمی
+        ذخیره می‌شود تا کارت‌های بعدی بتوانند از {{input}} یا {{var.x}} بخوانند."""
         body = (text or "").strip()
         if not body:
             storage.ticket_set_pending(self.bot_id, chat_id, str(nd["id"]), TICKET_TTL)
             await ctx.bot.send_message(chat_id, "یک متن بفرست تا ثبت شود.")
             return True
+        vctx = self._vctx(chat_id)
+        vctx["set_temp"]("last_input", body[:4000])
+        vctx["set_temp"]("text", body[:4000])
         var = nd.get("var")
         if var:
             storage.set_user_var(self.bot_id, chat_id, var, body[:4000])
+            vctx["set_var"](var, body[:4000])
         outs = self.flow.outs(nd["id"])
         if outs:
-            await self._deliver_flow(ctx, chat_id, outs[0])
+            await self._deliver_flow(ctx, chat_id, outs[0], vctx)
         else:
             try:
                 await ctx.bot.send_message(chat_id, "✅ ثبت شد.")
@@ -3467,9 +3629,13 @@ def _clean_flow(raw):
             clean["oneTime"] = bool(nd.get("oneTime", False))
             clean["silent"] = bool(nd.get("silent"))
         elif kind in ("condition", "setvar"):
+            # فاز ۲: var می‌تواند temp.x باشد (دادهٔ موقت بین کارت‌ها).
+            # نقطه مجاز است چون temp. پیشوند است؛ بقیهٔ کاراکترها مثل قبل.
             var = re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("var"), 40).strip())
             if not var:
                 return None, f"کارت «{nid}»: نام متغیر لازم است"
+            if var.startswith("temp.") and len(var) <= 5:
+                return None, f"کارت «{nid}»: نام متغیر موقت ناقص است"
             ops = VAR_OPS if kind == "condition" else SET_OPS
             op = s(nd.get("op"), 12) or ("eq" if kind == "condition" else "set")
             if op not in ops:
@@ -3496,10 +3662,21 @@ def _clean_flow(raw):
         if not isinstance(e, dict):
             continue
         f, t = s(e.get("from"), 24), s(e.get("to"), 24)
-        if f not in nodes or t not in nodes or f == t or (f, t) in seen_edge:
+        if f not in nodes or t in (None, "") or f == t:
             continue
-        seen_edge.add((f, t))
-        edges.append({"from": f, "to": t})
+        if t not in nodes:
+            continue
+        fp = s(e.get("from_port"), 24) or PORT_RUN
+        tp = s(e.get("to_port"), 24) or PORT_RUN
+        # پورت مبدأ باید واقعاً یکی از پورت‌های این کارت باشد
+        valid = {_port_id(p) for p in node_ports(nodes[f])}
+        if fp not in valid:
+            fp = PORT_RUN
+        key = (f, fp, t, tp)
+        if key in seen_edge:
+            continue
+        seen_edge.add(key)
+        edges.append({"from": f, "to": t, "from_port": fp, "to_port": tp})
 
     # عمق تودرتویی گروه‌ها: موتور فقط ۳ سطح را باز می‌کند، سطح چهارم دور ریخته می‌شود
     kids = {}
