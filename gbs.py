@@ -8,6 +8,7 @@ GramSaz WebApp Edition — پلتفرم ربات‌ساز با رابط وب
 from __future__ import annotations
 import os, sys, json, time, hmac, hashlib, asyncio, logging, threading, copy, secrets, re
 import random
+import ipaddress
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from functools import wraps
@@ -614,6 +615,57 @@ class Storage:
                 self._bots[bot_id]["ticket_admins"] = uids
         else:
             self._bots.update_one({"bot_id": bot_id}, {"$set": {"ticket_admins": uids}})
+
+    # ── نشست کاربر (فاز ۳) — یادآوریِ اینکه کاربر کجاست + دادهٔ موقت مکالمه ──
+    def session_get(self, bot_id: str, uid: int) -> Optional[dict]:
+        """نشستِ فعالِ کاربر را برمی‌گرداند (یا None اگر منقضی شده/وجود ندارد).
+
+        نشست شامل: node_id (کجاست)، temp (دادهٔ موقت بین پیام‌ها)، expires."""
+        key = str(uid)
+        if self._is_memory:
+            bot = self._bots.get(bot_id) or {}
+            s = (bot.get("sessions") or {}).get(key)
+            return s if s and s.get("expires", 0) > time.time() else None
+        doc = self._bots.find_one({"bot_id": bot_id},
+                                 {f"sessions.{key}": 1}) or {}
+        s = (doc.get("sessions") or {}).get(key)
+        return s if s and s.get("expires", 0) > time.time() else None
+
+    def session_set(self, bot_id: str, uid: int, node_id: str = None,
+                    temp: dict = None, ttl: int = 900, merge: bool = True):
+        """نشست را به‌روز می‌کند. node_id=None یعنی فقط temp را ادغام کن.
+        ttl ثانیه مهلت دارد (پیش‌فرض ۱۵ دقیقه)."""
+        key = str(uid)
+        cur = self.session_get(bot_id, uid) or {}
+        new = {"expires": time.time() + ttl}
+        if node_id is not None:
+            new["node_id"] = str(node_id)
+        elif merge and cur.get("node_id"):
+            new["node_id"] = cur["node_id"]
+        t = dict(cur.get("temp") or {})
+        if merge:
+            t.update(temp or {})
+        else:
+            t = dict(temp or {})
+        new["temp"] = t
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if bot is not None:
+                bot.setdefault("sessions", {})[key] = new
+            return
+        self._bots.update_one({"bot_id": bot_id},
+                              {"$set": {f"sessions.{key}": new}})
+
+    def session_clear(self, bot_id: str, uid: int):
+        """نشست را پاک می‌کند — کاربر مکالمه را تمام کرد."""
+        key = str(uid)
+        if self._is_memory:
+            bot = self._bots.get(bot_id)
+            if bot is not None:
+                (bot.get("sessions") or {}).pop(key, None)
+            return
+        self._bots.update_one({"bot_id": bot_id},
+                              {"$unset": {f"sessions.{key}": ""}})
 
     # ── متغیرهای کاربر (برای کارت‌های شرط/متغیر در موتور جریان) ──────────
     def get_user_vars(self, bot_id: str, uid: int) -> dict:
@@ -1246,6 +1298,64 @@ async def bot_call(bot_id: str, coro_fn):
         return await coro_fn()
     return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coro_fn(), loop))
 
+# ── فاز ۴: کمک‌های شبکه برای کارت‌های یکپارچه‌سازی ──
+def _try_json(text):
+    """متن را به JSON تبدیل می‌کند؛ اگر نشد، خود متن را برمی‌گرداند."""
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return text
+
+
+def _is_local_url(url):
+    """آیا URL به یک میزبان محلی اشاره دارد؟ (loopback / link-local / private)
+
+    پروکسیِ سیستمی نباید چنین درخواستی را ببیند — بسیاری از پروکسی‌ها
+    loopback را با 502 رد می‌کنند."""
+    try:
+        host = (urllib.parse.urlparse(url or "").hostname or "").lower()
+    except Exception:
+        return False
+    if not host:
+        return False
+    if host in ("localhost",) or host.endswith(".localhost",):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_private
+    except ValueError:
+        return False
+
+
+async def _async_requests(method, url, **kw):
+    """درخواست HTTP به‌صورت async — req_lib را در thread اجرا می‌کند.
+
+    خروجی: {status, text} — هرگز exception نمی‌دهد (خطا → status 0).
+    میزبان‌های محلی از پروکسیِ سیستمی عبور نمی‌کنند (جلوگیری از 502 بی‌معنی)."""
+    if not url:
+        return {"status": 0, "text": ""}
+    try:
+        sess_kw = {}
+        if _is_local_url(url):
+            sess_kw["trust_env"] = False
+            sess_kw["proxies"] = {"http": None, "https": None}
+
+        def _do():
+            with req_lib.Session() as s:
+                for _k, _v in sess_kw.items():
+                    setattr(s, _k, _v)
+                if method == "POST":
+                    return s.post(url, timeout=kw.get("timeout", 20),
+                                  json=kw.get("json"))
+                return s.get(url, timeout=kw.get("timeout", 20))
+        resp = await asyncio.to_thread(_do)
+        return {"status": getattr(resp, "status_code", 0),
+                "text": getattr(resp, "text", "")}
+    except Exception as e:
+        return {"status": 0, "text": "", "error": str(e)[:200]}
+
+
 # ══════════════════════════════════════════════════════════════════════
 # موتور جریان (Flow Engine) — گراف نود/سیم واقعاً روی سرور اجرا می‌شود
 # ══════════════════════════════════════════════════════════════════════
@@ -1254,8 +1364,10 @@ PORT_RUN = "run"               # پورت پیش‌فرض — هر یال/کار
 TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
 CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
 KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
-         "input", "random", "notify", "menu", "keyboard"}
-LOGIC_KINDS = {"condition", "setvar", "random", "notify"}  # پیام نیستند، فقط مسیر می‌سازند/عارضهٔ جانبی دارند
+         "input", "random", "notify", "menu", "keyboard", "api", "ai"}
+LOGIC_KINDS = {"condition", "setvar", "random", "notify",
+               "api", "ai"}  # پیام نیستند: اجرا می‌شوند، نتیجه در temp می‌گذارند، مسیر می‌سازند
+INT_KINDS = {"api", "ai"}    # کارت‌های یکپارچه‌سازی — شبکه/await لازم دارند
 # ── کارت‌های تعاملی جدید: منو و کیبورد دائمی ──
 MENU_MODES  = ("glass", "persistent", "popup")   # شیشه‌ای / دائمی / شناور
 BTN_STYLES  = ("default", "glass")               # ساده / شیشه‌ای
@@ -1266,16 +1378,41 @@ LINK_ACTS   = ("url", "webapp", "share")         # اکشن‌های کارت پ
 TICKET_PRIO = ("low", "normal", "high")          # اولویت تیکت
 _TPL_RE = re.compile(r"\{\{\s*([a-zA-Z_][\w.]*)\s*\}\}")
 
-# ── پورت‌های خروجی هر کارت — نسل ۲ (فاز ۱) ──
-# کارتی که اینجا نیست یا None می‌دهد، فقط پورت پیش‌فرض "run" را دارد.
-# این یعنی کارت‌های تک‌خروجی مثل قبل رفتار می‌کنند — هیچ تغییری در گراف‌های قدیمی نیست.
-PORTS = {
-    "condition": [{"id": "yes", "label": "اگر درست"},
-                  {"id": "no",  "label": "اگر نادرست"}],
-    "random":    [{"id": "p1", "label": "مسیر ۱"}, {"id": "p2", "label": "مسیر ۲"},
-                  {"id": "p3", "label": "مسیر ۳"}, {"id": "p4", "label": "مسیر ۴"},
-                  {"id": "p5", "label": "مسیر ۵"}],
+# ── رجیستری مرکزی کارت‌ها (فاز ۴) ──
+# هر کارت در یک جا ثبت می‌شود: پورت‌ها، دسته، آیکون، برچسب.
+# این رجیستری منبعِ واحد است — بک‌اند و فرانت‌اند هر دو از آن می‌خوانند.
+# کارتی که اینجا نیست، فقط پورت پیش‌فرض "run" را دارد (سازگاری رو به عقب).
+CARD_REGISTRY = {
+    "cmd":       {"ports": None, "cat": "msg",  "label": "دستور",       "icon": "code"},
+    "reply":     {"ports": None, "cat": "msg",  "label": "پاسخ",        "icon": "msg"},
+    "image":     {"ports": None, "cat": "msg",  "label": "رسانه",       "icon": "image"},
+    "link":      {"ports": None, "cat": "msg",  "label": "پیوند",       "icon": "link"},
+    "ticket":    {"ports": None, "cat": "io",   "label": "تیکت",        "icon": "ticket"},
+    "trigger":   {"ports": None, "cat": "io",   "label": "کلیدواژه",    "icon": "spark"},
+    "input":     {"ports": None, "cat": "io",   "label": "دریافت ورودی", "icon": "pencil"},
+    "menu":      {"ports": None, "cat": "io",   "label": "منوی تعاملی", "icon": "menu"},
+    "keyboard":  {"ports": None, "cat": "io",   "label": "کیبورد دائمی", "icon": "kbd"},
+    "condition": {"ports": [{"id": "yes", "label": "اگر درست"},
+                            {"id": "no",  "label": "اگر نادرست"}],
+                  "cat": "logic", "label": "شرط", "icon": "branch"},
+    "setvar":    {"ports": None, "cat": "logic", "label": "متغیر",       "icon": "var"},
+    "random":    {"ports": [{"id": "p1", "label": "مسیر ۱"}, {"id": "p2", "label": "مسیر ۲"},
+                            {"id": "p3", "label": "مسیر ۳"}, {"id": "p4", "label": "مسیر ۴"},
+                            {"id": "p5", "label": "مسیر ۵"}],
+                  "cat": "logic", "label": "شاخهٔ تصادفی", "icon": "dice"},
+    "notify":    {"ports": None, "cat": "logic", "label": "اعلان به ادمین", "icon": "bell"},
+    # ── فاز ۴: کارت‌های یکپارچه‌سازی ──
+    "api":       {"ports": [{"id": "ok",   "label": "پاسخ موفق"},
+                            {"id": "fail", "label": "خطا"}],
+                  "cat": "int", "label": "فراخوانی API", "icon": "globe"},
+    "ai":        {"ports": [{"id": "ok",   "label": "پاسخ دریافت شد"},
+                            {"id": "fail", "label": "خطا"}],
+                  "cat": "int", "label": "هوش مصنوعی", "icon": "spark"},
 }
+
+# ── پورت‌های خروجی هر کارت — نسل ۲ (فاز ۱) ──
+# از رجیستری مرکزی مشتق می‌شود — دیگر دو جای جداگانه نیست.
+PORTS = {k: v["ports"] for k, v in CARD_REGISTRY.items() if v.get("ports")}
 
 
 def node_ports(nd) -> list:
@@ -1535,7 +1672,8 @@ class Flow:
                 if media is None and sub_m:
                     media = sub_m
             elif k in ("reply", "cmd", "ticket", "trigger", "condition", "setvar",
-                       "input", "random", "notify", "menu", "keyboard"):
+                       "input", "random", "notify", "menu", "keyboard",
+                       "api", "ai"):
                 btns.append((t, tp))
         return btns, urls, media
 
@@ -1608,18 +1746,52 @@ class Flow:
         if notify is not None and text:
             notify(text)
 
+    # ── فاز ۴: کارت‌های یکپارچه‌سازی (api / ai) ──
+    # این کارت‌ها شبکه می‌زنند، پس نمی‌توانند در resolve_actionِ sync اجرا شوند.
+    # موتور آن‌ها را در لایهٔ async (Engine) اجرا می‌کند. اینجا فقط آماده‌سازی است.
+    def integration_plan(self, nd, ctx):
+        """اگر این کارت یکپارچه‌سازی است، برنامهٔ اجرایش را برمی‌گرداند؛ وگرنه None.
+
+        کارت‌های api/ai پیام نیستند: درخواست را می‌فرستند، جواب را در temp می‌گذارند
+        و مسیر را بر اساس موفقیت/خطا انتخاب می‌کنند."""
+        if nd.get("kind") not in INT_KINDS:
+            return None
+        return {"kind": nd["kind"], "node": nd, "ctx": ctx}
+
+    def integration_apply(self, nd, ctx, result):
+        """نتیجهٔ اجرای یکپارچه‌سازی را در temp می‌نویسد و پورت بعدی را برمی‌گرداند."""
+        ok = bool(result.get("ok"))
+        set_temp = (ctx or {}).get("set_temp")
+        if set_temp:
+            set_temp("api_result", result.get("data"))
+            set_temp("api_ok", ok)
+            set_temp("api_error", result.get("error") if not ok else None)
+            # برای کارت AI: متن پاسخ هم در temp.ai و temp.last_input قرار می‌گیرد
+            if nd.get("kind") == "ai":
+                txt = result.get("text") or result.get("data")
+                set_temp("ai", txt)
+                set_temp("last_input", txt)
+        return "ok" if ok else "fail"
+
     def resolve_action(self, nd, ctx=None, depth=0):
         """پیمایش نودهای منطقی (شرط/متغیر/تصادفی/اعلان) تا رسیدن به نودِ واقعاً قابل‌نمایش.
 
         نسل ۲: مسیرها از روی **پورت** انتخاب می‌شوند، نه ترتیب یال‌ها:
-        condition → yes/no، random → p1..p5، بقیه → run.
-        گراف‌های قدیمی در __init__ خودکار به پورت تبدیل شده‌اند."""
+        condition → yes/no، random → p1..p5، api/ai → ok/fail، بقیه → run.
+        گراف‌های قدیمی در __init__ خودکار به پورت تبدیل شده‌اند.
+
+        کارت‌های api/ai شبکه می‌زنند و نمی‌توانند اینجا (sync) اجرا شوند —
+        موتور آن‌ها را در Engine._run_integration اجرا می‌کند. اینجا فقط
+        آن‌ها را برمی‌گردانیم تا لایهٔ async ببیند."""
         seen = set()
         while nd and nd.get("kind") in LOGIC_KINDS and depth < 12:
             if nd["id"] in seen:
                 return None
             seen.add(nd["id"])
             depth += 1
+            if nd.get("kind") in INT_KINDS:
+                # اجرا در لایهٔ async — کارت خودش را برمی‌گردانیم
+                return nd
             if nd["kind"] == "setvar":
                 self._apply_setvar(nd, ctx)
                 nd = self.outs(nd["id"], PORT_RUN)[0] if self.outs(nd["id"], PORT_RUN) else None
@@ -2016,15 +2188,19 @@ class Engine:
 
     # ── کارت‌های شرط/متغیر/اعلان: زمینهٔ اجرا برای هر کاربر ────────────────
     def _vctx(self, chat_id, user=None, temp=None) -> dict:
-        """کیسهٔ دادهٔ اجرا — فاز ۲: temp دادهٔ موقتِ بین کارت‌ها را نگه می‌دارد.
+        """کیسهٔ دادهٔ اجرا — فاز ۳: temp از نشستِ کاربر پر می‌شود.
 
-        temp در یک اجرا زنده است. چون هر پیام کاربر یک اجرای جداگانه است،
-        temp باید در نشست (فاز ۳) ذخیره شود تا بین پیام‌ها زنده بماند.
-        فعلاً حداقلِ درونِ یک اجرا کار می‌کند: کارت input می‌نویسد،
-        کارت‌های بعدی در همان render می‌خوانند."""
+        نشست در MongoDB ذخیره می‌شود و بین پیام‌های کاربر زنده می‌ماند.
+        این یعنی خروجی یک کارت واقعاً ورودی کارت بعدی است — حتی در پیام بعدی.
+        ذخیرهٔ نشست با session_save() انجام می‌شود (sync است، شبکه ندارد)."""
         cache = {}
         notify_q = []
-        temp = temp if isinstance(temp, dict) else {}
+        sess = storage.session_get(self.bot_id, chat_id) or {}
+        t = dict(sess.get("temp") or {})
+        # مقادیر پاس‌داده‌شده اولویت دارند (فراخوانی‌های درون-اجرایی)
+        if isinstance(temp, dict):
+            t.update(temp)
+        temp = t
 
         def get_var(name):
             if name not in cache:
@@ -2059,12 +2235,88 @@ class Engine:
             await self._alert_admins(f"🔔 <b>اعلان جریان</b>\n{text}")
         q.clear()
 
+    def _session_save(self, chat_id, vctx):
+        """فاز ۳: temp را در نشست کاربر ذخیره می‌کند تا پیام بعدی آن را ببیند.
+
+        اگر temp خالی است و نشستی هم نیست، چیزی نمی‌نویسیم (جلوگیری از زباله).
+        node_id را هم ذخیره می‌کنیم تا ربات بداند کاربر کجاست."""
+        t = (vctx or {}).get("temp")
+        if not isinstance(t, dict) or not t:
+            return
+        storage.session_set(self.bot_id, chat_id, temp=t)
+
+    # ── فاز ۴: اجرای کارت‌های یکپارچه‌سازی (api / ai) ──
+    async def _run_integration(self, ctx, chat_id, nd, vctx):
+        """یک کارت api/ai را اجرا می‌کند، نتیجه را در temp می‌نویسد و ادامه می‌دهد.
+
+        این تنها جایی است که Flow شبکه می‌زند — چون resolve_action کاملاً sync است،
+        کارت را به Engine می‌سپارد. بعد از اجرا، مسیر ok/fail را دنبال می‌کند."""
+        kind = nd.get("kind")
+        result = await self._do_integration(nd, vctx)
+        port = self.flow.integration_apply(nd, vctx, result)
+        # ذخیرهٔ نتیجه در متغیر دائمی هم اگر save_to دارد
+        save_to = nd.get("save_to")
+        if save_to and result.get("ok"):
+            val = result.get("text") or result.get("data")
+            if val is not None:
+                vctx["set_var"](save_to, str(val)[:4000])
+        # مسیر بعدی از روی پورت ok/fail
+        nxt = self.flow.outs(nd["id"], port)
+        if nxt:
+            await self._deliver_flow(ctx, chat_id, nxt[0], vctx)
+        else:
+            self._session_save(chat_id, vctx)
+        return True
+
+    async def _do_integration(self, nd, vctx):
+        """اجرای واقعیِ درخواست — api یا ai. خروجی: {ok, data/text, error}"""
+        kind = nd.get("kind")
+        try:
+            if kind == "api":
+                return await self._do_api(nd, vctx)
+            if kind == "ai":
+                return await self._do_ai(nd, vctx)
+        except Exception as e:
+            log.error(f"❌ integration {self.bot_id}: {e}")
+            return {"ok": False, "error": str(e)[:200]}
+        return {"ok": False, "error": "نوع ناشناخته"}
+
+    async def _do_api(self, nd, vctx):
+        """فراخوانی HTTP ساده — GET/POST. پاسخ در temp.api_result."""
+        url = _tpl(nd.get("url") or "", vctx)
+        method = (nd.get("method") or "GET").upper()
+        body = _tpl(nd.get("body") or "", vctx)
+        kw = {"timeout": 20}
+        if method == "POST":
+            kw["json"] = _try_json(body)
+        resp = await _async_requests(method, url, **kw)
+        ok = 200 <= resp.get("status", 0) < 300
+        data = resp.get("text", "")
+        return {"ok": ok, "data": data[:4000], "text": data[:4000],
+                "error": None if ok else f"HTTP {resp.get('status')}"}
+
+    async def _do_ai(self, nd, vctx):
+        """هوش مصنوعی — فعلاً یک چالهٔ تمیز که با تنظیمات ربات پر می‌شود.
+
+        پرامپت با {{input}} و {{var.x}} قالب‌بندی می‌شود. پاسخ در temp.ai."""
+        prompt = _tpl(nd.get("text") or "", vctx)
+        # TODO(فاز ۵): اتصال واقعی به OpenAI با کلیدِ ذخیره‌شده در تنظیمات ربات
+        return {"ok": False, "error": "هوش مصنوعی هنوز پیکربندی نشده — کلید API را در تنظیمات بگذار",
+                "text": None}
+
     async def _deliver_flow(self, ctx, chat_id, nd, vctx=None):
-        """رندر + ارسال + تخلیهٔ صفِ اعلان — مسیر مشترک همهٔ نقاط ورودی به موتور جریان."""
+        """رندر + ارسال + تخلیهٔ صفِ اعلان — مسیر مشترک همهٔ نقاط ورودی به موتور جریان.
+
+        فاز ۳: بعد از تحویل، temp در نشست ذخیره می‌شود.
+        فاز ۴: اگر مسیر به کارت api/ai برسد، اجرای async را شروع می‌کند."""
         vctx = vctx or self._vctx(chat_id)
+        # کارت‌های یکپارچه‌سازی پیام ندارند — اجرایشان async است
+        if nd is not None and nd.get("kind") in INT_KINDS:
+            return await self._run_integration(ctx, chat_id, nd, vctx)
         msg = self.flow.render(nd, ctx=vctx)
         ok = await self.deliver(ctx, chat_id, msg)
         await self._flush_notify(vctx)
+        self._session_save(chat_id, vctx)
         return ok
 
     # ── ورودی‌ها ──────────────────────────────────────────────────────
@@ -2299,6 +2551,7 @@ class Engine:
         if outs:
             await self._deliver_flow(ctx, chat_id, outs[0], vctx)
         else:
+            self._session_save(chat_id, vctx)
             try:
                 await ctx.bot.send_message(chat_id, "✅ ثبت شد.")
             except Exception:
@@ -3453,8 +3706,7 @@ def api_sync_menu(bot_id):
 # ══════════════════════════════════════════════════════════════════════
 MAX_NODES = 400
 MAX_EDGES = 800
-NODE_KINDS = ("cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
-              "input", "random", "notify", "menu", "keyboard")
+NODE_KINDS = tuple(CARD_REGISTRY.keys())
 VAR_OPS = ("eq", "neq", "contains", "gt", "lt", "exists", "nexists")
 SET_OPS = ("set", "inc", "dec", "append")
 
@@ -3655,6 +3907,30 @@ def _clean_flow(raw):
             if not txt:
                 return None, f"کارت «{nid}»: متن اعلان لازم است"
             clean.update({"text": txt, "label": s(nd.get("label"), 64)})
+        elif kind == "api":
+            # ── فاز ۴: فراخوانی API ──
+            url = s(nd.get("url"), 500).strip()
+            if not url:
+                return None, f"کارت «{nid}»: آدرس API لازم است"
+            if not url.startswith(("http://", "https://")):
+                return None, f"کارت «{nid}»: آدرس API باید با http شروع شود"
+            method = s(nd.get("method"), 10).upper() or "GET"
+            clean.update({
+                "url": url, "method": method if method in ("GET", "POST") else "GET",
+                "label": s(nd.get("label"), 64),
+                "body": s(nd.get("body"), 2000),
+                "save_to": re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("save_to"), 40).strip()),
+            })
+        elif kind == "ai":
+            # ── فاز ۴: هوش مصنوعی ──
+            prompt = s(nd.get("text") or nd.get("prompt"), 2000).strip()
+            if not prompt:
+                return None, f"کارت «{nid}»: پرامپت لازم است"
+            clean.update({
+                "text": prompt, "label": s(nd.get("label"), 64),
+                "model": s(nd.get("model"), 60) or "gpt-4o-mini",
+                "save_to": re.sub(r"[^A-Za-z0-9_.]", "", s(nd.get("save_to"), 40).strip()),
+            })
         nodes[nid] = clean
 
     edges, seen_edge = [], set()
