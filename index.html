@@ -23,6 +23,12 @@
         --sh: 0 1px 0 rgba(255,255,255,.02), 0 10px 24px -18px rgba(0,0,0,.8);
         --grid: repeating-linear-gradient(0deg, transparent 0 23px, color-mix(in srgb,var(--hair) 45%,transparent) 23px 24px);
         --mono: "JetBrains Mono", ui-monospace, monospace;
+        /* گلس‌مورفیسم ملایم و گرادیان محیطی ظریف */
+        --glass: color-mix(in srgb, var(--panel) 78%, transparent);
+        --glass-brd: color-mix(in srgb, var(--tx) 9%, transparent);
+        --ambient: radial-gradient(120% 70% at 88% -10%, color-mix(in srgb, var(--ac) 13%, transparent) 0%, transparent 60%),
+                   radial-gradient(90% 60% at 4% 4%, color-mix(in srgb, #6366f1 9%, transparent) 0%, transparent 62%);
+        --grad-ac: linear-gradient(135deg, color-mix(in srgb, var(--ac) 92%, #6ee7df) 0%, color-mix(in srgb, var(--ac) 70%, #3b82f6) 100%);
       }
       html[data-theme="light"] {
         --bg: #eef0f2; --panel: #ffffff; --panel2: #f3f5f7; --hair: #dfe3e8; --hair2: #cfd5dd;
@@ -30,9 +36,15 @@
         --ac: #159e97; --ac2: #159e97; --ac-soft: color-mix(in srgb, var(--ac) 10%, transparent);
         --ok: #0f9d63; --red: #c9483f; --amber: #9a6b12;
         --sh: 0 1px 0 rgba(255,255,255,.5), 0 8px 20px -16px rgba(20,23,28,.25);
+        --glass: color-mix(in srgb, var(--panel) 82%, transparent);
+        --glass-brd: color-mix(in srgb, var(--tx) 8%, transparent);
+        --ambient: radial-gradient(120% 70% at 88% -10%, color-mix(in srgb, var(--ac) 10%, transparent) 0%, transparent 62%),
+                   radial-gradient(90% 60% at 4% 4%, color-mix(in srgb, #6366f1 6%, transparent) 0%, transparent 64%);
       }
       * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
       html, body { background: var(--bg); color: var(--tx); font: 14.5px/1.7 Vazirmatn, system-ui, sans-serif; min-height: 100vh; min-height: 100dvh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+      body { background-image: var(--ambient); background-repeat: no-repeat; background-attachment: fixed; }
+      .glass { background: var(--glass); backdrop-filter: blur(18px) saturate(1.25); -webkit-backdrop-filter: blur(18px) saturate(1.25); border: 1px solid var(--glass-brd); }
       button, input, textarea, select { font: inherit; color: inherit; border: 0; outline: 0; background: none; }
       /* رفع باگ زوم خودکار سافاری/iOS: اگر فونت اینپوت زیر ۱۶px باشد، هنگام فوکوس صفحه زوم و بدریخت می‌شود */
       @media (pointer: coarse) { input, textarea, select { font-size: 16px !important; } }
@@ -60,11 +72,11 @@
       .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
       .pill.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
       .pill.off { color: var(--mu); background: var(--panel2); }
-      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 47px; padding: 0 18px; border-radius: var(--r2); background: var(--ac); color: #04121a; font-weight: 700; cursor: pointer; width: 100%; transition: transform .1s, opacity .1s; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 47px; padding: 0 18px; border-radius: var(--r2); background: var(--grad-ac); color: #04121a; font-weight: 700; cursor: pointer; width: 100%; transition: transform .1s, opacity .1s, box-shadow .18s; box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--ac) 70%, transparent); }
       .btn:active { transform: scale(.98); opacity: .92; }
       .btn:disabled { opacity: .45; }
-      .btn.line { background: var(--panel); color: var(--tx); border: 1px solid var(--hair2); }
-      .btn.red { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); border: 1px solid color-mix(in srgb,var(--red) 30%,transparent); }
+      .btn.line { background: var(--panel); color: var(--tx); border: 1px solid var(--hair2); box-shadow: none; }
+      .btn.red { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); border: 1px solid color-mix(in srgb,var(--red) 30%,transparent); box-shadow: none; }
       .btn.sm { height: 38px; width: auto; padding: 0 14px; font-size: 13px; }
       .btn svg { width: 18px; height: 18px; }
       .ib { width: 38px; height: 38px; border-radius: 11px; background: var(--panel); border: 1px solid var(--hair); display: grid; place-items: center; cursor: pointer; color: var(--mu); flex: none; transition: .15s; }
@@ -76,7 +88,7 @@
       #nav { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: none; gap: 2px; width: min(var(--maxw), calc(100vw - 22px)); background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--hair); border-radius: 16px; padding: 5px; z-index: 20; box-shadow: var(--sh); }
       #nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 0 7px; border-radius: 11px; color: var(--mu); font-size: 11px; font-weight: 600; cursor: pointer; transition: .16s; }
       #nav button svg { width: 21px; height: 21px; }
-      #nav button.on { color: var(--ac); background: var(--ac-soft); }
+      #nav button.on { color: var(--ac); background: var(--ac-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ac) 22%, transparent); }
       label { display: block; font-size: 12px; color: var(--mu); font-weight: 600; margin: 14px 3px 6px; }
       .in { width: 100%; background: var(--panel2); border: 1px solid var(--hair); border-radius: var(--r2); padding: 12px 13px; color: var(--tx); transition: .15s; }
       .in:focus { border-color: var(--ac); box-shadow: 0 0 0 3px var(--ac-soft); }
@@ -445,7 +457,8 @@
 
       const $ = (id) => document.getElementById(id);
       const app = () => $("app");
-      const n = (x) => String(+x || 0);                                  /* اعداد انگلیسی */
+      const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+      const n = (x) => String(+x || 0).replace(/\d/g, (d) => FA_DIGITS[+d]);   /* ارقام فارسی */
       const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
       const I = {
         x: '<path d="M6 6l12 12M18 6L6 18"/>', down: '<path d="M6 9l6 6 6-6"/>', msg: '<path d="M4 5h16v11H9l-5 4z"/>',
@@ -495,6 +508,103 @@
       let tt;
       function toast(m, e) { const t = $("toast"); t.textContent = m; t.className = "on" + (e ? " err" : ""); clearTimeout(tt); tt = setTimeout(() => (t.className = ""), 2600); hap(e ? "error" : "success"); }
       function hap(t) { try { const H = tg?.HapticFeedback; if (!H) return; ["light","medium","heavy","rigid","soft"].includes(t) ? H.impactOccurred(t) : H.notificationOccurred(t); } catch (e) {} }
+
+      /* ════ دکمه‌های بومی تلگرام: MainButton و BackButton ════
+         لایه‌ای نازک روی SDK تلگرام. اگر تلگرام در دسترس نباشد (مرورگر عادی)
+         هیچ کاری نمی‌کند و دکمه‌های داخل خود اپ کافی‌اند.
+         رنگ MainButton همیشه از تم فعلی گرفته می‌شود تا با تم کاربر سازگار بماند. */
+      const MB = () => tg?.MainButton || null;
+      const BB = () => tg?.BackButton || null;
+      let mbFn = null, bbFn = null, mbShown = false, bbShown = false;
+
+      function mbColor() {
+        const v = getComputedStyle(document.documentElement).getPropertyValue("--ac").trim();
+        return /^#[0-9a-fA-F]{3,8}$/.test(v) ? v : "#57c8c1";
+      }
+      function mbShow(text, fn) {
+        const b = MB(); if (!b) return;
+        try {
+          b.setText(String(text || "ادامه"));
+          b.setParams({ color: mbColor(), text_color: "#04121a", is_active: true });
+          if (mbFn) b.offClick(mbFn);
+          mbFn = () => { try { hap("light"); fn && fn(); } catch (e) { console.error(e); } };
+          b.onClick(mbFn);
+          b.show(); mbShown = true;
+        } catch (e) {}
+      }
+      function mbHide() {
+        const b = MB(); if (!b || !mbShown) return;
+        try { if (mbFn) { b.offClick(mbFn); mbFn = null; } b.hide(); } catch (e) {}
+        mbShown = false;
+      }
+      function bbShow(fn) {
+        const b = BB(); if (!b) return;
+        try {
+          if (bbFn) b.offClick(bbFn);
+          bbFn = () => { try { hap("light"); const r = fn ? fn() : null; if (r === false) return; closeSheet(); } catch (e) {} };
+          b.onClick(bbFn);
+          b.show(); bbShown = true;
+        } catch (e) {}
+      }
+      function bbHide() {
+        const b = BB(); if (!b || !bbShown) return;
+        try { if (bbFn) { b.offClick(bbFn); bbFn = null; } b.hide(); } catch (e) {}
+        bbShown = false;
+      }
+      /* همگام‌سازی رنگ دکمه پس از تعویض تم — بدون پرش رنگ */
+      function syncMainBtn() { if (!mbShown) return; const b = MB(); if (!b) return; try { b.setParams({ color: mbColor() }); } catch (e) {} }
+
+      const sheetOpen = () => !!($("scrim") && $("scrim").classList.contains("on"));
+      /* دکمهٔ اصلیِ شیت: اولویت با اکشنِ تأیید/اصلی است، نه انصراف.
+         ترتیب جستجو: #cfOk (تأیید) → .btn.red → .btn.primary → آخرین .btn در .sh-f */
+      const sheetMainBtn = () => {
+        const sh = $("sheet"); if (!sh) return null;
+        const f = sh.querySelector(".sh-f"); if (!f) return null;
+        return f.querySelector("#cfOk") || f.querySelector(".btn.red") || f.querySelector(".btn.primary") || f.querySelector(".btn:last-child") || f.querySelector(".btn");
+      };
+      let mbBound = null;
+
+      /* ════ همگام‌ساز دکمه‌های بومی ════
+         تنها منبع حقیقت: «شیت باز است؟» و «صفحه فعلی چیست؟» */
+      function syncChrome() {
+        if (sheetOpen()) {
+          const f = sheetMainBtn();
+          if (f) {
+            if (mbBound !== f) { mbBound = f; mbShow(f.textContent.trim() || "ادامه", () => f.click()); }
+          } else { mbHide(); mbBound = null; }
+          bbShow(() => { closeSheet(); return false; });
+          return;
+        }
+        mbBound = null;
+        const v = curView();
+        if (v === "home") { const b = $("mk"); if (b) { mbShow(b.textContent.trim() || "اتصال و ساخت", () => b.click()); bbHide(); return; } }
+        if (v === "studio") { mbShow("اعمال روی ربات", () => stPersist(true)); bbShow(() => { go("home"); return false; }); return; }
+        mbHide();
+        if (v === "bot" || v === "admin") { bbShow(() => { go("home"); return false; }); return; }
+        bbHide();
+      }
+      let _curView = "home";
+      const curView = () => _curView;
+
+      /* ═══<arg_value> شیت: انیمیشن بسته‌شدن روان (۶۰fps) ════ */
+      function closeSheet() {
+        const sc = $("scrim"), sh = $("sheet");
+        if (!sc || !sc.classList.contains("on")) return;
+        sh.style.transition = "transform .22s cubic-bezier(.3,.8,.3,1), opacity .18s";
+        sh.style.transform = "translateY(24px)"; sh.style.opacity = "0";
+        setTimeout(() => { sc.classList.remove("on"); sh.style.transition = ""; sh.style.transform = ""; sh.style.opacity = ""; syncChrome(); }, 190);
+      }
+      /* هر باز کردن شیتی از اینجا می‌گذرد: نمایش + همگام‌سازی دکمه‌های بومی */
+      function openSheetDone() {
+        const sc = $("scrim"), sh = $("sheet");
+        if (!sc || !sh) return;
+        sh.style.transition = ""; sh.style.transform = ""; sh.style.opacity = "";
+        sc.classList.add("on");
+        syncChrome();
+        /* کیبورد موبایل: فکوس ملایم روی اولین ورودی، بدون پرش صفحه */
+        const inp = sh.querySelector("input, textarea");
+        if (inp) setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch (e) {} }, 260);
+      }
       /* تأیید مخرب: Telegram WebApp روی iOS پنجرهٔ confirm مرورگر را بلوکه می‌کند و
          tg.showConfirm در API رسمی وجود ندارد؛ پس شیت داخلی می‌سازیم. */
       const sure = (m, f, okTxt, noTxt) => openConfirm(m, f, okTxt, noTxt);
@@ -534,6 +644,21 @@
         const c = t === "light" ? "#eef0f2" : "#0b0c0e";
         document.querySelector('meta[name="theme-color"]').content = c;
         try { tg?.setHeaderColor?.(c); tg?.setBackgroundColor?.(c); } catch (e) {}
+        tgTheme();
+        syncMainBtn();
+      }
+      /* هماهنگی رنگ‌ها با تم واقعی تلگرام کاربر — فقط متغیرهای __tg__ دیده می‌شوند،
+         پالت اختصاصی استودیو دست‌نخورده می‌ماند */
+      function tgTheme() {
+        const tp = tg?.themeParams || {};
+        const css = document.documentElement.style;
+        const set = (k, v) => { if (v && /^#[0-9a-fA-F]{6}$/.test(v)) css.setProperty(k, v); };
+        set("--tg-bg", tp.bg_color || tp.backgroundColor);
+        set("--tg-tx", tp.text_color || tp.textColor);
+        set("--tg-hint", tp.hint_color || tp.textColor);
+        set("--tg-link", tp.link_color || tp.accent_text_color);
+        set("--tg-btn", tp.button_color || tp.accent_text_color);
+        set("--tg-btn-tx", tp.button_text_color || tp.button_color);
       }
       function toggleTheme() { applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"); hap("light"); }
 
@@ -560,7 +685,7 @@
         $("nav").innerHTML = TABS.map(([k, t, i]) => `<button class="${v === k ? "on" : ""}" onclick="go('${k}')">${ic(i)}${t}</button>`).join("");
         $("fab").classList.add("hide");
       }
-      function go(v, a) { chrome(v); scrollTo(0, 0); hap("light"); ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin, studio: vStudio })[v](a); }
+      function go(v, a) { _curView = v; chrome(v); scrollTo(0, 0); hap("light"); ({ home: vHome, bot: vBot, dev: vDev, me: vMe, admin: vAdmin, studio: vStudio })[v](a); }
       const S = (k) => bots.reduce((t, b) => t + (b.stats?.[k] || 0), 0);
       const empty = (t, s, btn, icon) => `<div class="empty"><div class="ic">${ic(icon || "bot")}</div><b>${t}</b><div style="margin-top:5px">${s}</div>${btn ? `<div style="margin-top:18px">${btn}</div>` : ""}</div>`;
 
@@ -684,14 +809,14 @@
         $("sheet").innerHTML = `<div class="sh-h"><span>${title}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b"><label>متن پاسخ</label><textarea class="in" id="cfgv" rows="4" placeholder="${esc(ph)}">${esc(val)}</textarea></div>
           <div class="sh-f"><button class="btn" onclick="cfgSave('${key}','cfgv');closeSheet()">ذخیره</button></div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       function openBroadcast() {
         $("sheet").innerHTML = `<div class="sh-h"><span>پیام همگانی</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b"><label>متن پیام (HTML مجاز)</label><textarea class="in" id="bc" rows="4" placeholder="سلام! …"></textarea><div class="pv" style="margin-top:12px"><div class="bub" id="bcp">پیش‌نمایش پیام…</div></div></div>
           <div class="sh-f"><button class="btn" onclick="bcast()">${ic("send")} ارسال به ${n(bot.stats?.unique_users)}</button></div>`;
         const t = $("bc"); t.oninput = () => $("bcp").textContent = t.value || "پیش‌نمایش پیام…";
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
 
       /* ── قوانین کلیدواژه (منطق دست‌نخورده) ── */
@@ -701,7 +826,7 @@
       function openRule(i) {
         const r = i < 0 ? {} : rules[i];
         rd = { id: r.id || "", keywords: (r.keywords || []).join(", "), mode: r.mode || "contains", response: r.response || "", m: r.media ? { ...r.media } : { type: "photo", url: "" } };
-        drawRule(); $("scrim").classList.add("on");
+        drawRule(); openSheetDone();
       }
       const MT = { photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" };
       function rulePrev() { const p = $("rpv"); if (!p) return; const kw = rd.keywords.split(",").map((x) => x.trim()).filter(Boolean); p.innerHTML = (rd.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[rd.m.type]}</div>` : "") + `<div class="bub">${esc(rd.response) || '<span style="color:var(--mu)">پاسخ…</span>'}</div>` + (kw.length ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🔑 با پیام‌هایی که ${kw.map((k) => `<span class="kw">${esc(k)}</span>`).join(" ")} دارند جواب می‌دهد</div>` : ""); }
@@ -729,7 +854,7 @@
       });
       const cfgSave = guard(async (key, el) => { const v = $(el).value.trim(); const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: v } }); bot[key] = r[key]; toast("ذخیره شد"); });
       const setCfg = guard(async (key, val) => { const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [key]: val } }); bot[key] = r[key]; toast("ذخیره شد"); if (key === "auto_menu" && val) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); toast("منو همگام شد"); } catch (e) {} } tCmds(); setTab("plug"); });
-      const fjOn = () => { $("sheet").innerHTML = `<div class="sh-h"><span>عضویت اجباری</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div><div class="sh-b"><label>آیدی کانال</label><input class="in ltr" id="fj" placeholder="@channel" style="direction:ltr"></div><div class="sh-f"><button class="btn" onclick="fjSave()">فعال کردن</button></div>`; $("scrim").classList.add("on"); };
+      const fjOn = () => { $("sheet").innerHTML = `<div class="sh-h"><span>عضویت اجباری</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div><div class="sh-b"><label>آیدی کانال</label><input class="in ltr" id="fj" placeholder="@channel" style="direction:ltr"></div><div class="sh-f"><button class="btn" onclick="fjSave()">فعال کردن</button></div>`; openSheetDone(); };
       const fjOff = () => sure("عضویت اجباری غیرفعال شود؟", guard(async () => { await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: "" } }); bot.force_join_channel = ""; toast("غیرفعال شد"); tPlug(); }));
       const fjSave = guard(async () => { let c = $("fj").value.trim(); if (!c) return toast("آیدی کانال را وارد کن", 1); if (!/^[@\-0-9]/.test(c)) c = "@" + c; await api(`/api/bots/${botId}/force-join`, { method: "PATCH", body: { channel: c } }); bot.force_join_channel = c; closeSheet(); toast("فعال شد"); tPlug(); });
       const bcast = guard(async () => { const t = $("bc").value.trim(); if (!t) return toast("متن خالی است", 1); if (!bot.is_running) return toast("اول ربات را روشن کن", 1); sure(`به ${n(bot.stats?.unique_users)} کاربر ارسال شود؟`, guard(async () => { const r = await api(`/api/bots/${botId}/broadcast`, { method: "POST", body: { text: t } }); toast(r.message || "در صف ارسال"); closeSheet(); })); });
@@ -1001,6 +1126,12 @@
       });
 
       /* ── اعتبارسنجی محلی ── */
+      /* محدودیت‌های واقعی تلگرام — هشدار زنده پیش از اینکه ربات خطا بدهد:
+         • متن پیام: نهایتاً ۴۰۹۶ نویسه
+         • هر پیام نهایتاً ۱۰۰ دکمه (اینلاین/کیبورد) دارد
+         • callback_data نهایتاً ۶۴ بایت است (پیشوند gs:go: فضای زیادی می‌گیرد)
+         • برچسب دکمه نهایتاً ۶۴ نویسه است */
+      const TG_LIMITS = { text: 4096, buttons: 100, callback: 64, label: 64 };
       function stValidate() {
         const iss = [], ids = new Set(), names = new Set();
         if (!STG.nodes.length) return [{ lv: "warn", m: "نقشه خالی است — یک کارت دستور بساز.", }];
@@ -1052,6 +1183,20 @@
           if ((nd.kind === "reply" && !isGroup(nd)) && !inOf(nd.id).length) iss.push({ lv: "warn", m: "پاسخ به هیچ کارتی وصل نیست", nd });
           if (nd.kind === "reply" && !isGroup(nd) && (nd.label || "").length > ST_LIM.label) iss.push({ lv: "err", m: "برچسب دکمه بلند است", nd });
           if ((nd.text || "").length > ST_LIM.text) iss.push({ lv: "err", m: "متن بیش از ۴۰۰۰ نویسه", nd });
+          /* ── هشدارهای زندهٔ محدودیت‌های تلگرام ── */
+          const txt = (nd.text || "");
+          if (txt.length > TG_LIMITS.text) iss.push({ lv: "err", m: `متن ${n(txt.length)} نویسه است — تلگرام نهایتاً ${n(TG_LIMITS.text)} را می‌فرستد`, nd });
+          if (canSend(nd) && nd.kind !== "image") {
+            const parts = stParts(nd, 0);
+            const total = parts.btns.length + (parts.urls || []).length;
+            if (total > TG_LIMITS.buttons) iss.push({ lv: "err", m: `${n(total)} دکمه روی این پیام — تلگرام نهایتاً ${n(TG_LIMITS.buttons)} دکمه را نشان می‌دهد`, nd });
+            /* کیبورد دائمی: روی پیام ویرایش‌شده جا نمی‌شود و ردیف‌های زیاد روی گوشی بریده می‌شوند */
+            if (nd.btnMode === "reply") {
+              const rows = Math.ceil(total / 3);
+              if (total > 0 && nd.editMode === "edit") iss.push({ lv: "err", m: "کیبورد دائمی روی پیام ویرایش‌شده جا نمی‌شود", nd });
+              if (rows > 12) iss.push({ lv: "warn", m: `کیبورد دائمی ${n(rows)} ردیفی روی گوشی جا نمی‌شود — دکمه‌ها را کم کن`, nd });
+            }
+          }
           if (nd.kind === "trigger" && !inOf(nd.id).length && !outOf(nd.id).length) iss.push({ lv: "warn", m: "کلیدواژه بی‌استفاده است", nd });
           if (nd.kind === "image" && !inOf(nd.id).length) iss.push({ lv: "warn", m: "رسانه به هیچ پیامی وصل نیست", nd });
           if (nd.kind === "link" && !inOf(nd.id).length) iss.push({ lv: "warn", m: "پیوند به هیچ پیامی وصل نیست", nd });
@@ -1778,7 +1923,7 @@
         st.pendingParent = isNew ? (fromId || null) : null;
         st.editing = { id: isNew ? null : id, nd: JSON.parse(JSON.stringify(nd)), isNew, kind: nd.kind };
         stDrawEdit();
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       function stDrawEdit() {
         const E = st.editing; if (!E) return;
@@ -2078,7 +2223,7 @@
             <label style="margin-top:18px">تیکت‌ها (${n(list.length)})</label>
             ${list.length ? list.map((t) => `<div class="item static" style="align-items:flex-start"><div class="g"><b>${esc(t.name || t.username || "#" + t.uid)} <span class="badge mono">${esc(t.id)}</span></b><small style="white-space:normal;display:block;margin-top:4px">${esc((t.text || "").slice(0, 220))}</small>${t.reply ? `<small style="color:var(--ok);white-space:normal;display:block">پاسخ: ${esc(t.reply.slice(0, 120))}</small>` : ""}<small class="mono" style="margin-top:4px">${new Date((t.t || 0) * 1000).toLocaleString("fa-IR")}</small></div>${t.reply ? "" : `<button class="btn sm line" onclick="stReplyTicket('${esc(t.id)}')">پاسخ</button>`}</div>`).join("") : `<p style="color:var(--mu);font-size:13px">هنوز تیکتی نیامده. یک کارت «تیکت» بساز و به یک دکمه وصل کن.</p>`}
           </div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       });
       const stSaveAdmins = guard(async (local) => {
         const admins = $("tkAd").value.split(/[،,\s]+/).map((x) => x.trim()).filter(Boolean);
@@ -2115,7 +2260,7 @@
             <div class="item" onclick="closeSheet();go('bot','${esc(botId)}')"><span class="sq">${ic("open")}</span><div class="g"><b>پنل کلاسیک</b><small>دستورها، افزونه‌ها، کاربران</small></div>${ic("next")}</div>
             <label style="margin-top:16px">ذخیرهٔ خودکار</label><div class="sw ${st.autosave ? "on" : ""}" onclick="stAuto(this)"></div>
           </div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       const stAuto = (el) => { st.autosave = !st.autosave; el.classList.toggle("on", st.autosave); localStorage.st_autosave = st.autosave ? "1" : "0"; stStatus(); };
       /* نقشهٔ محلیِ دور ریخته‌شده را برمی‌گرداند: فعلی در gs_flowbak می‌ماند */
@@ -2132,13 +2277,13 @@
         stIssues = stValidate();
         $("sheet").innerHTML = `<div class="sh-h"><span>بررسی نقشه</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b">${stIssues.length ? stIssues.map((i, k) => `<div class="item static" ${i.nd ? `onclick="stJump('${i.nd.id}')" style="cursor:pointer"` : ""}><span class="sq" style="color:var(--${i.lv === "err" ? "red" : "amber"})">${ic(i.lv === "err" ? "x" : "help")}</span><div class="g"><b>${esc(i.m)}</b><small>${i.nd ? esc(ST_KIND[i.nd.kind].t + " · " + stTitle(i.nd)) : "ساختار"}</small></div>${i.nd ? ic("next") : ""}</div>`).join("") : `<p style="color:var(--ok);font-size:13.5px">همه‌چیز مرتب است ✓</p>`}</div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       function stJump(id) { closeSheet(); stCenter(id); }
       function stBots() {
         $("sheet").innerHTML = `<div class="sh-h"><span>تغییر ربات</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b">${bots.map((b) => `<div class="item" onclick="stSwitchBot('${b.bot_id}')"><span class="av2 grad">${esc((b.bot_username || "?").slice(0, 1).toUpperCase())}<i class="live ${b.is_running ? "on" : ""}"></i></span><div class="g"><b class="mono">@${esc(b.bot_username || "—")}</b><small>${n(b.stats?.unique_users)} کاربر · ${b.is_running ? "روشن" : "خاموش"}</small></div>${b.bot_id === botId ? `<span class="badge on">فعال</span>` : ""}</div>`).join("")}</div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       const stSwitchBot = guard(async (id) => { closeSheet(); await stGuardedLoad(id); });
       const stGuardedLoad = (id) => vStudio(id);
@@ -2153,7 +2298,7 @@
             <div class="item static"><div class="g"><b>ربات روشن</b><small>برای پاسخ‌گویی لازم است</small></div><div class="sw ${bot.is_running ? "on" : ""}" onclick="stPower(this)"></div></div>
           </div>
           <div class="sh-f"><button class="btn" onclick="stSaveSettings()">ذخیره</button></div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       const stCfg = guard(async (k, el) => { const v = k === "auto_menu" ? !el.classList.contains("on") : el; el.classList.toggle("on", k === "auto_menu" ? v : undefined); const r = await api(`/api/bots/${botId}/config`, { method: "PATCH", body: { [k]: v } }); bot[k] = r[k]; toast("ذخیره شد"); if (k === "auto_menu" && v) { try { await api(`/api/bots/${botId}/sync-menu`, { method: "POST" }); } catch (e) {} } });
       const stPower = guard(async (el) => { const on = !el.classList.contains("on"); el.classList.toggle("on", on); const r = await api(`/api/bots/${botId}/toggle`, { method: "PATCH", body: { active: on } }); bot.is_running = r.is_running; toast(r.is_running ? "ربات روشن شد" : "ربات خاموش شد"); });
@@ -2181,7 +2326,7 @@
             • <b>گروه</b> = پوشه‌ای از دکمه‌ها؛ به هر کارتی وصلش کنی، عضوهایش روی پیام آن کارت می‌آیند.</p>
             <p style="margin-top:12px;color:var(--mu);font-size:13px">اشاره: دو انگشت = زوم، حالت «انتخاب» = چند کارت را با هم بگیر، کشیدن دور کارت‌ها = انتخاب دسته‌ای.</p>
           </div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
 
       /* ── بک‌آپ کامل ── */
@@ -2218,7 +2363,7 @@
           <label>یا چسباندن JSON</label><textarea class="in ltr mono" id="rsJ" rows="5" style="font-size:11.5px" placeholder='{"version": 3, ...}' oninput="st.impJson=this.value"></textarea></div>
           <div class="sh-f"><button class="btn" onclick="stDoRestore()">بازگردانی</button></div>`;
         st.impJson = "";
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       function stReadFile(f) { if (!f) return; const r = new FileReader(); r.onload = () => { st.impJson = String(r.result || ""); const t = $("rsJ"); if (t) t.value = st.impJson; toast("فایل خوانده شد"); }; r.readAsText(f); }
       const stDoRestore = guard(async () => {
@@ -2279,14 +2424,14 @@
           <div class="sh-b"><p style="color:var(--mu);font-size:13px">کلید کپی در iOS WebView در دسترس نیست؛ متن زیر را دستی کپی کن.</p>
           <textarea class="in ltr mono" rows="6" readonly onclick="this.select()">${esc(text)}</textarea></div>
           <div class="sh-f"><button class="btn" onclick="closeSheet()">بستن</button></div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
       }
       function impJson() {
         $("sheet").innerHTML = `<div class="sh-h"><span>ورودی JSON دستورها</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b"><p style="color:var(--mu);font-size:13px">محتوای JSON را در کادر زیر بچسبان و تأیید کن.</p>
           <textarea class="in ltr mono" id="impTA" rows="8" placeholder='{"start": {...}, "help": {...}}'></textarea></div>
           <div class="sh-f"><button class="btn line" onclick="closeSheet()">انصراف</button><button class="btn" id="impOk">بازگردانی</button></div>`;
-        $("scrim").classList.add("on");
+        openSheetDone();
         $("impOk").onclick = async () => {
           const s = ($("impTA")?.value || "").trim();
           if (!s) return toast("JSON خالی است", 1);
@@ -2306,8 +2451,7 @@
       const nb = () => ({ text: "", id: "", r: "", o: 0, url: "", t: "cb" });
       function openCmd(i) { const k = i < 0 ? "" : ck[i], c = i < 0 ? {} : cmds[k], cb = c.callbacks || {};
         ed = { name: k, isNew: i < 0, response: c.response || "", description: c.description || "", cb, m: c.media?.url ? { ...c.media } : c.photo ? { type: "photo", url: c.photo } : { type: "photo", url: "" }, b: (c.buttons || []).map((r) => r.map((x) => ({ ...x, t: x.url ? "url" : "cb", r: cb[x.id] || "", o: 0 }))) };
-        drawCmd(); $("scrim").classList.add("on"); }
-      const closeSheet = () => $("scrim").classList.remove("on");
+        drawCmd(); openSheetDone(); }
       function prev() { const p = $("pv"); if (!p) return; const rows = ed.b.map((r) => r.filter((x) => x.text.trim())).filter((r) => r.length); p.innerHTML = (ed.m.url ? `<div style="color:var(--mu);font-size:11.5px;margin-bottom:6px">${ic("image")} ${MT[ed.m.type]}</div>` : "") + `<div class="bub">${esc(ed.response) || '<span style="color:var(--mu)">پیش‌نمایش پاسخ…</span>'}</div>` + rows.map((r) => `<div class="bubrow">${r.map((x) => `<i>${x.t === "url" ? "🔗 " : ""}${esc(x.text)}</i>`).join("")}</div>`).join(""); }
       const rmBtn = (r, b) => { ed.b[r].splice(b, 1); if (!ed.b[r].length) ed.b.splice(r, 1); drawCmd(); };
       function setBType(ri, bi, t) { ed.b[ri][bi].t = t; if (t === "url") ed.b[ri][bi].o = 0; drawCmd(); }
@@ -2371,6 +2515,11 @@
         /* وقتی صفحه‌کلید تلگرام باز/بسته می‌شود یا viewport تغییر می‌کند، چیدمان را دوباره بکش
            تا نقشهٔ جریان و شیت‌های ویرایش روی گوشی بدریخت/بریده نشوند */
         tg.onEvent && tg.onEvent("viewportChanged", () => { if (STG && $("fc")) stRender(); });
+        /* هماهنگی زنده با تم تلگرام: کاربر تم گوشی‌اش را عوض کرد → همین حالا اعمال می‌شود */
+        tg.onEvent && tg.onEvent("themeChanged", () => {
+          applyTheme(tg.colorScheme === "light" ? "light" : "dark");
+          if (STG && $("fc")) stRender();
+        });
       }
       applyTheme(localStorage.getItem("gs_theme") || (tg?.colorScheme === "light" ? "light" : "dark"));
       boot(false);
