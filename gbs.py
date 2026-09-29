@@ -1363,9 +1363,9 @@ FLOW_VERSION = 4
 PORT_RUN = "run"               # پورت پیش‌فرض — هر یال/کارتی که پورت ندارد این را می‌گیرد
 TICKET_TTL = 900                 # ۱۵ دقیقه مهلت نوشتن متن تیکت
 CB_PREFIX = "gs:"                # پیشوند callbackهای زندهٔ جریان
-KINDS = {"cmd", "reply", "image", "link", "ticket", "trigger", "condition", "setvar",
-         "input", "random", "notify", "menu", "keyboard", "api", "ai"}
-LOGIC_KINDS = {"condition", "setvar", "random", "notify",
+KINDS = {"cmd", "reply", "image", "album", "link", "ticket", "trigger", "condition", "setvar",
+         "input", "random", "notify", "menu", "keyboard", "delay", "api", "ai"}
+LOGIC_KINDS = {"condition", "setvar", "random", "notify", "delay",
                "api", "ai"}  # پیام نیستند: اجرا می‌شوند، نتیجه در temp می‌گذارند، مسیر می‌سازند
 INT_KINDS = {"api", "ai"}    # کارت‌های یکپارچه‌سازی — شبکه/await لازم دارند
 # ── کارت‌های تعاملی جدید: منو و کیبورد دائمی ──
@@ -1386,6 +1386,7 @@ CARD_REGISTRY = {
     "cmd":       {"ports": None, "cat": "msg",  "label": "دستور",       "icon": "code"},
     "reply":     {"ports": None, "cat": "msg",  "label": "پاسخ",        "icon": "msg"},
     "image":     {"ports": None, "cat": "msg",  "label": "رسانه",       "icon": "image"},
+    "album":     {"ports": None, "cat": "msg",  "label": "آلبوم",       "icon": "layers"},
     "link":      {"ports": None, "cat": "msg",  "label": "پیوند",       "icon": "link"},
     "ticket":    {"ports": None, "cat": "io",   "label": "تیکت",        "icon": "ticket"},
     "trigger":   {"ports": None, "cat": "io",   "label": "کلیدواژه",    "icon": "spark"},
@@ -1401,6 +1402,7 @@ CARD_REGISTRY = {
                             {"id": "p5", "label": "مسیر ۵"}],
                   "cat": "logic", "label": "شاخهٔ تصادفی", "icon": "dice"},
     "notify":    {"ports": None, "cat": "logic", "label": "اعلان به ادمین", "icon": "bell"},
+    "delay":     {"ports": None, "cat": "logic", "label": "تاخیر و تایپ",  "icon": "clock"},
     # ── فاز ۴: کارت‌های یکپارچه‌سازی ──
     "api":       {"ports": [{"id": "ok",   "label": "پاسخ موفق"},
                             {"id": "fail", "label": "خطا"}],
@@ -1665,6 +1667,10 @@ class Flow:
                 btns.append((t, tp))
             elif k == "image" and t.get("url") and media is None:
                 media = t
+            elif k == "album" and (t.get("items") or []) and media is None:
+                media = t                      # آلبوم چندتایی به‌عنوان رسانهٔ پیام
+            elif k == "delay":
+                continue                       # تاخیر دکمه نیست — فقط مسیر را کند می‌کند
             elif k == "reply" and t.get("role") == "group" and depth < 3:
                 sub_b, sub_u, sub_m = self.parts(t, depth + 1)
                 btns.extend(sub_b)
@@ -1824,7 +1830,7 @@ class Flow:
             if not nd:
                 return None
         kind = nd.get("kind")
-        if kind not in ("cmd", "reply", "image", "ticket", "trigger", "input",
+        if kind not in ("cmd", "reply", "image", "album", "ticket", "trigger", "input",
                         "menu", "keyboard"):
             return None
         chain = chain or set()
@@ -1842,6 +1848,22 @@ class Flow:
                     "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": [],
                     "spoiler": bool(nd.get("spoiler")), "asFile": bool(nd.get("asFile")),
                     "node": nd}
+
+        if kind == "album":
+            # آلبوم چندتایی: تلگرام sendMediaGroup می‌خواهد — حداقل ۲ رسانه
+            items = [it for it in (nd.get("items") or [])
+                     if isinstance(it, dict) and str(it.get("url") or "").startswith(("http://", "https://"))]
+            if len(items) < 2:
+                # یک رسانهٔ تنها → مثل کارت رسانهٔ معمولی رفتار کن
+                if len(items) == 1:
+                    it = items[0]
+                    return {"mtype": str(it.get("type") or "photo"), "url": it["url"],
+                            "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": [],
+                            "spoiler": False, "asFile": False, "node": nd}
+                return None
+            return {"mtype": "album", "url": None, "album": items,
+                    "text": _tpl(_html(nd.get("caption") or ""), ctx), "cb": [], "urlb": [],
+                    "spoiler": False, "asFile": False, "node": nd}
 
         if kind == "ticket":
             words = [str(w).strip() for w in (nd.get("words") or []) if str(w).strip()]
@@ -2154,6 +2176,36 @@ class Engine:
                 await fn(chat_id, msg["url"], caption=text or None,
                          has_spoiler=bool(msg.get("spoiler")) or None,
                          **send_kw)
+            elif msg.get("mtype") == "album" and msg.get("album"):
+                # آلبوم چندتایی — تلگرام sendMediaGroup؛ کپشن روی اولین رسانه
+                from telegram import (InputMediaPhoto, InputMediaVideo,
+                                      InputMediaDocument, InputMediaAnimation)
+                grp = []
+                for i, it in enumerate(msg["album"][:10]):
+                    t = str(it.get("type") or "photo")
+                    u = str(it.get("url") or "")
+                    if not u:
+                        continue
+                    cap = text if i == 0 else None
+                    if t == "video":
+                        grp.append(InputMediaVideo(media=u, caption=cap, parse_mode=pm))
+                    elif t == "animation":
+                        grp.append(InputMediaAnimation(media=u, caption=cap, parse_mode=pm))
+                    elif t == "document":
+                        grp.append(InputMediaDocument(media=u, caption=cap, parse_mode=pm))
+                    else:
+                        grp.append(InputMediaPhoto(media=u, caption=cap, parse_mode=pm))
+                if len(grp) >= 2:
+                    await ctx.bot.send_media_group(chat_id, grp,
+                                                   disable_notification=silent or None,
+                                                   protect_content=protect or None)
+                elif grp:
+                    it = msg["album"][0]
+                    fn = {"video": ctx.bot.send_video,
+                          "animation": ctx.bot.send_animation,
+                          "document": ctx.bot.send_document}.get(
+                              str(it.get("type") or "photo"), ctx.bot.send_photo)
+                    await fn(chat_id, it["url"], caption=text or None, **send_kw)
             elif message is not None and edit_mode == "edit":
                 # ویرایش پیام قبلی — کیبورد دائمی روی پیام ویرایش‌شده جا نمی‌شود
                 await message.edit_text(text or "…", reply_markup=kb, parse_mode=pm)
@@ -2272,6 +2324,8 @@ class Engine:
         """اجرای واقعیِ درخواست — api یا ai. خروجی: {ok, data/text, error}"""
         kind = nd.get("kind")
         try:
+            if kind == "delay":
+                return await self._do_delay(nd, vctx)
             if kind == "api":
                 return await self._do_api(nd, vctx)
             if kind == "ai":
@@ -2280,6 +2334,24 @@ class Engine:
             log.error(f"❌ integration {self.bot_id}: {e}")
             return {"ok": False, "error": str(e)[:200]}
         return {"ok": False, "error": "نوع ناشناخته"}
+
+    async def _do_delay(self, nd, vctx):
+        """تاخیر و حالت «در حال تایپ…» — مسیر را کند می‌کند تا طبیعی‌تر شود.
+        حداکثر ۱۰ ثانیه (در _clean_flow محدود شده). پیام نمی‌فرستد، فقط صبر می‌کند."""
+        try:
+            secs = float(nd.get("secs") or 1)
+        except (TypeError, ValueError):
+            secs = 1.0
+        secs = max(0.0, min(10.0, secs))
+        chat = (vctx or {}).get("chat_id")
+        bot = (vctx or {}).get("bot")
+        if nd.get("typing", True) and bot is not None and chat:
+            try:
+                await bot.send_chat_action(chat_id=chat, action="typing")
+            except Exception:
+                pass
+        await asyncio.sleep(secs)
+        return {"ok": True, "skip": True}
 
     async def _do_api(self, nd, vctx):
         """فراخوانی HTTP ساده — GET/POST. پاسخ در temp.api_result."""
@@ -3839,6 +3911,31 @@ def _clean_flow(raw):
             clean["btnStyle"] = s(nd.get("btnStyle"), 12) or "default"
             if clean["btnStyle"] not in BTN_STYLES:
                 clean["btnStyle"] = "default"
+        elif kind == "album":
+            # آلبوم چندتایی: تا ۱۰ رسانه با کپشن مشترک
+            raw_items = nd.get("items")
+            items = []
+            if isinstance(raw_items, list):
+                for it in raw_items[:10]:
+                    if not isinstance(it, dict):
+                        continue
+                    u = s(it.get("url"), 500).strip()
+                    if not u.startswith(("http://", "https://")):
+                        continue
+                    items.append({"type": s(it.get("type"), 12) or "photo", "url": u})
+            if not items:
+                return None, f"کارت «{nid}»: آلبوم خالی است — حداقل یک رسانه لازم است"
+            clean["items"] = items
+            clean["caption"] = s(nd.get("caption"), 1000)
+            clean["silent"] = bool(nd.get("silent"))
+        elif kind == "delay":
+            # تاخیر و حالت «در حال تایپ…» — حداکثر ۱۰ ثانیه (محافظت از سوءاستفاده)
+            try:
+                secs = float(nd.get("secs") or 1)
+            except (TypeError, ValueError):
+                secs = 1.0
+            clean["secs"] = max(0.5, min(10.0, secs))
+            clean["typing"] = bool(nd.get("typing", True))
         elif kind == "image":
             url = s(nd.get("url"), 500).strip()
             if url and not url.startswith(("http://", "https://")):
