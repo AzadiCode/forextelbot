@@ -393,6 +393,11 @@
       .node.menu { border-style: dashed; border-color: color-mix(in srgb, #22c55e 45%, transparent); }
       .node.kbd .nicon { background: color-mix(in srgb, #0ea5e9 18%, transparent); color: #38bdf8; }
       .node.kbd { border-style: dashed; border-color: color-mix(in srgb, #0ea5e9 45%, transparent); }
+      /* ── کارت‌های آلبوم و تاخیر ── */
+      .node.alb .nicon { background: color-mix(in srgb, #d97706 18%, transparent); color: #f59e0b; }
+      .node.alb { border-style: dashed; border-color: color-mix(in srgb, #d97706 45%, transparent); }
+      .node.dly .nicon { background: color-mix(in srgb, #8b5cf6 18%, transparent); color: #a78bfa; }
+      .node.dly { border-style: dashed; border-color: color-mix(in srgb, #8b5cf6 45%, transparent); }
       /* سوییچِ داخل شیت ویرایش (استفاده از .sw روی .item) */
       .item.static .sw { flex: none; }
       /* انتخابگر حالتِ چندگانه — کنار هم، عرض کامل */
@@ -415,6 +420,71 @@
       .port.out { border-color: var(--ac); }
       .port.in { border-style: dashed; }
       .st-canvas .flow-empty { inset: 26% 12% auto; }
+      /* ── شبیه‌ساز چت زنده — پیش‌نمایش واقعی ربات کنار ویرایشگر ── */
+      .st-sim { position: fixed; inset: 0 0 0 auto; width: min(100%, 430px); z-index: 70; display: flex; flex-direction: column;
+        background: color-mix(in srgb, var(--bg) 96%, var(--panel)); border-left: 1px solid var(--hair);
+        box-shadow: -18px 0 44px -26px rgba(0,0,0,.75); transform: translateX(102%); transition: transform .26s cubic-bezier(.3,.8,.3,1); }
+      .st-sim.on { transform: translateX(0); }
+      .st-sim-h { display: flex; align-items: center; gap: 9px; padding: 13px 14px; border-bottom: 1px solid var(--hair);
+        padding-top: max(13px, env(safe-area-inset-top)); background: var(--panel); }
+      .st-sim-h .ava { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px;
+        background: var(--grad-ac); color: #04121a; flex: none; font-weight: 800; }
+      .st-sim-h b { font-size: 13.5px; }
+      .st-sim-h small { display: block; font-size: 11px; color: var(--ok); }
+      .st-sim-h .ib { margin-right: auto; }
+      .st-sim-b { flex: 1; overflow-y: auto; padding: 14px 12px calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 7px; }
+      .st-sim-f { padding: 9px 12px calc(9px + env(safe-area-inset-bottom)); border-top: 1px solid var(--hair); display: flex; gap: 7px; background: var(--panel); }
+      .st-sim-f .in { flex: 1; height: 42px; }
+      .st-sim-f .btn { width: 42px; padding: 0; flex: none; }
+      /* قاب چت تلگرام‌مانند */
+      .chat-bub { max-width: 82%; padding: 8px 11px; border-radius: 14px; font-size: 13.5px; line-height: 1.55; word-break: break-word;
+        background: var(--panel); border: 1px solid var(--hair); animation: bubIn .26s cubic-bezier(.3,.8,.3,1) both; }
+      .chat-bub.me { align-self: flex-end; background: color-mix(in srgb, var(--ac) 16%, var(--panel)); border-color: color-mix(in srgb, var(--ac) 30%, transparent); }
+      .chat-bub.bot { align-self: flex-start; border-bottom-left-radius: 5px; }
+      .chat-bub.me { border-bottom-right-radius: 5px; }
+      .chat-bub .cb-media { margin: -3px -4px 5px; border-radius: 10px; overflow: hidden; max-width: 240px; }
+      .chat-bub .cb-media img, .chat-bub .cb-media video { width: 100%; display: block; }
+      .chat-bub time { display: block; text-align: left; font: 500 9.5px/1 var(--mono); color: var(--mu); margin-top: 4px; }
+      @keyframes bubIn { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+      .chat-kb { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-end; max-width: 92%; }
+      .chat-kb button { font: 600 12.5px/1 var(--font); padding: 9px 13px; border-radius: 11px; background: var(--panel);
+        border: 1px solid var(--hair2); color: var(--tx); cursor: pointer; transition: .12s; }
+      .chat-kb button:active { transform: scale(.96); background: var(--ac-soft); border-color: var(--ac); }
+      .chat-typing { align-self: flex-start; display: flex; gap: 4px; padding: 11px 13px; border-radius: 14px 14px 14px 5px;
+        background: var(--panel); border: 1px solid var(--hair); }
+      .chat-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--mu); animation: typDot 1.1s infinite; }
+      .chat-typing i:nth-child(2) { animation-delay: .18s; }
+      .chat-typing i:nth-child(3) { animation-delay: .36s; }
+      @keyframes typDot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+      .chat-day { align-self: center; font: 600 10.5px/1 var(--mono); color: var(--mu); background: var(--panel2);
+        border: 1px solid var(--hair); border-radius: 9px; padding: 5px 10px; margin: 4px 0; }
+      /* ── گالری قالب‌های آماده ── */
+      .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+      .tpl-card { position: relative; text-align: right; padding: 13px; border-radius: var(--r); background: var(--panel);
+        border: 1px solid var(--hair); cursor: pointer; transition: .15s; overflow: hidden; }
+      .tpl-card:active { transform: scale(.97); }
+      .tpl-card.on { border-color: var(--ac); box-shadow: 0 0 0 2px var(--ac-soft); }
+      .tpl-card .tpl-i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 9px;
+        background: var(--ac-soft); color: var(--ac); }
+      .tpl-card b { display: block; font-size: 13.5px; }
+      .tpl-card small { display: block; font-size: 11.5px; color: var(--mu); margin-top: 3px; line-height: 1.45; }
+      .tpl-card .tpl-n { position: absolute; top: 9px; left: 9px; font: 600 10px/1 var(--mono); color: var(--mu);
+        background: var(--panel2); border: 1px solid var(--hair); border-radius: 7px; padding: 4px 6px; }
+      /* ── جستجو در کارت‌ها + حالت ساده/پیشرفته ── */
+      .st-search { display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 38px; border-radius: 11px;
+        background: var(--panel); border: 1px solid var(--hair); }
+      .st-search input { flex: 1; border: 0; background: transparent; outline: none; color: var(--tx); font: 500 13px/1 var(--font); min-width: 0; }
+      .st-search .ib { flex: none; }
+      .pal.hide { display: none; }                       /* کارت‌های فیلترشده در حالت جستجو */
+      .node.dim { opacity: .22; filter: grayscale(.7); transition: opacity .18s; }
+      .st-mode { display: flex; gap: 3px; padding: 3px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--hair); }
+      .st-mode button { font: 600 11.5px/1 var(--font); padding: 7px 11px; border-radius: 8px; background: transparent;
+        border: 0; color: var(--mu); cursor: pointer; transition: .14s; }
+      .st-mode button.on { background: var(--panel); color: var(--tx); box-shadow: var(--sh); }
+      .st-adv { display: none; }                          /* فیلدهای پیشرفته — فقط در حالت پیشرفته */
+      .st-adv.on { display: block; }
+      .st-badge-live { position: absolute; top: -6px; right: -6px; width: 15px; height: 15px; border-radius: 50%;
+        background: var(--ok); border: 2.5px solid var(--bg); z-index: 6; }
       /* شیتِ ویرایش کارت */
       .rel { background: var(--panel); border: 1px solid var(--hair); border-radius: var(--r); padding: 12px; margin-top: 6px; }
       .rel .rel-h { font-size: 11px; color: var(--mu); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 7px; }
@@ -500,7 +570,16 @@
         pencil: '<path d="M4 20l1-4.8L15.3 4.9a1.8 1.8 0 012.6 0l1.2 1.2a1.8 1.8 0 010 2.6L8.8 19 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>',
         menu: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 14h4M7 16.5h7"/>',
         kbd: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/>',
-        globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.4 4 5.7 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.7-4-9s1.4-6.6 4-9z"/>'
+        globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.4 4 5.7 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.7-4-9s1.4-6.6 4-9z"/>',
+        /* ── آیکون‌های قابلیت‌های جدید استودیو ── */
+        clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>',                 /* تاخیر */
+        chat: '<path d="M21 12a8 8 0 01-8 8H8l-5 3 1.4-4.4A8 8 0 1121 12z"/>',                /* شبیه‌ساز چت */
+        store: '<path d="M4 9l1.5-5h13L20 9M4 9h16v10a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M9 13h6"/>',  /* فروشگاه/قالب */
+        wand: '<path d="M15 4V2M15 14v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M3 21l9-9"/>',      /* ویزارد جادویی */
+        send2: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>',                                  /* ارسال در شبیه‌ساز */
+        layers: '<path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/>',    /* آلبوم چندتایی */
+        robot: '<rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4M8 13h.01M16 13h.01M9.5 19v2M14.5 19v2"/>', /* ربات تست */
+        grid: '<rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/>'
       };
 
       const ic = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -578,7 +657,11 @@
         mbBound = null;
         const v = curView();
         if (v === "home") { const b = $("mk"); if (b) { mbShow(b.textContent.trim() || "اتصال و ساخت", () => b.click()); bbHide(); return; } }
-        if (v === "studio") { mbShow("اعمال روی ربات", () => stPersist(true)); bbShow(() => { go("home"); return false; }); return; }
+        if (v === "studio") {
+          mbShow(st.simOpen ? "بستن شبیه‌ساز" : "اعمال روی ربات", () => { if (st.simOpen) stSimToggle(); else stPersist(true); });
+          bbShow(() => { if (st.simOpen) { stSimToggle(); return false; } go("home"); return false; });
+          return;
+        }
         mbHide();
         if (v === "bot" || v === "admin") { bbShow(() => { go("home"); return false; }); return; }
         bbHide();
@@ -871,9 +954,11 @@
         reply:   { t: "پاسخ",    ic: "msg",   d: "متن و دکمهٔ پیام" },
         group:   { t: "گروه",    ic: "folder", d: "دستهٔ دکمه‌ها و پیوندها" },
         image:   { t: "رسانه",   ic: "image", d: "عکس، ویدیو، صوت، فایل" },
+        album:   { t: "آلبوم",   ic: "layers", d: "چند رسانه را پشت سر هم بفرست" },
         link:    { t: "پیوند",   ic: "link",  d: "دکمهٔ لینک‌دار، شیشه‌ای یا اشتراک" },
         ticket:  { t: "تیکت",    ic: "ticket", d: "دریافت پیام کاربر و alert ادمین" },
         trigger: { t: "کلیدواژه", ic: "spark", d: "پاسخ خودکار به متن کاربر" },
+        delay:   { t: "تاخیر و تایپ", ic: "clock", d: "صبر کن و حالت «در حال تایپ…» نشان بده" },
         condition: { t: "شرط",   ic: "branch", d: "مسیر را بر اساس متغیر دو شاخه کن" },
         setvar:  { t: "متغیر",   ic: "var",   d: "روی کاربر یک مقدار ذخیره/تغییر بده" },
         input:   { t: "دریافت ورودی", ic: "pencil", d: "پیام بعدیِ کاربر را بگیر و در متغیر ذخیره کن" },
@@ -884,14 +969,16 @@
         api:     { t: "فراخوانی API", ic: "globe", d: "یک آدرس HTTP را GET/POST بزن و نتیجه را ذخیره کن" },
         ai:      { t: "هوش مصنوعی",  ic: "spark",  d: "متن را به هوش مصنوعی بده و پاسخ بگیر" },
       };
+      /* کارت‌هایی که در «حالت ساده» پنهان می‌شوند — کاربر معمولی نیازی به منطق/یکپارچه‌سازی ندارد */
+      const ST_ADVANCED = new Set(["condition", "setvar", "random", "notify", "api", "ai", "delay", "group"]);
       /* دسته‌بندی پالت برای نمایش گروه‌بندی‌شده: پیام‌ها / تعامل / منطق و داده / یکپارچه‌سازی */
-      const ST_CAT = { cmd: "msg", reply: "msg", group: "msg", image: "msg", link: "msg",
+      const ST_CAT = { cmd: "msg", reply: "msg", group: "msg", image: "msg", album: "msg", link: "msg",
                         ticket: "io", trigger: "io", input: "io", menu: "io", keyboard: "io",
-                        condition: "logic", setvar: "logic", random: "logic", notify: "logic",
+                        condition: "logic", setvar: "logic", random: "logic", notify: "logic", delay: "logic",
                         api: "intg", ai: "intg" };
       const ST_CAT_LABEL = { msg: "پیام", io: "تعامل", logic: "منطق و داده", intg: "یکپارچه‌سازی" };
-      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1 };
-      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1 };
+      const ST_SEND = { cmd: 1, reply: 1, group: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1, delay: 1 };
+      const ST_RECV = { cmd: 1, reply: 1, group: 1, image: 1, album: 1, link: 1, ticket: 1, trigger: 1, condition: 1, setvar: 1, input: 1, random: 1, notify: 1, menu: 1, keyboard: 1, api: 1, ai: 1, delay: 1 };
       const VAR_OPS = { eq: "برابر با", neq: "نابرابر با", contains: "شامل", gt: "بزرگ‌تر از", lt: "کوچک‌تر از", exists: "تعریف‌شده", nexists: "تعریف‌نشده" };
       const SET_OPS = { set: "قرار بده", inc: "افزایش بده", dec: "کاهش بده", append: "بچسبان" };
       /* ── کارت‌های تعاملی جدید: مقادیر مجاز (هماهنگ با بک‌اند) ── */
@@ -908,7 +995,8 @@
       const canRecv = (nd) => !!nd && ST_RECV[nd.kind] ? 1 : 0;
 
       let STG = { nodes: [], edges: [], view: { x: 0, y: 0, z: 1 } };   /* هرگز null نمی‌شود */
-      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "", offline: false, recover: null, mirrorCount: 0 };
+      let st = { mode: "link", sel: [], hist: [], redo: [], dirty: false, derived: false, timer: 0, ps: null, act: null, pinch: null, editing: null, saved: "", autosave: true, vdirty: true, pendingParent: null, impJson: "", offline: false, recover: null, mirrorCount: 0,
+                 advanced: localStorage.st_advanced === "1", q: "", sim: null, simOpen: false };
       let stIssues = [];
       const stCur = () => STG && st.sel.length === 1 ? STG.nodes.find((n) => n.id === st.sel[0]) : null;
       const nid = () => "n" + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
@@ -937,9 +1025,12 @@
           ["name", "description", "text", "caption", "label", "url", "mediaType", "mode", "role", "var", "op", "value",
            "act", "webapp", "shareText", "btnStyle", "btnMode", "editMode", "silent", "parseMode", "protect",
            "aliases", "showInMenu", "department", "priority", "autoReply", "acceptPhoto", "spoiler", "asFile",
-           "resize", "oneTime", "title", "method", "body", "save_to"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
+           "resize", "oneTime", "title", "method", "body", "save_to", "secs", "typing", "items"].forEach((k) => { if (nd[k] != null) c[k] = nd[k]; });
           if (Array.isArray(nd.keywords)) c.keywords = nd.keywords.map(String);
           if (Array.isArray(nd.words)) c.words = nd.words.map(String);
+          if (Array.isArray(nd.items)) c.items = nd.items.filter((x) => x && typeof x === "object").map((x) => ({
+            type: String(x.type || "photo"), url: String(x.url || "").slice(0, ST_LIM.url),
+            caption: x.caption != null ? String(x.caption).slice(0, 1000) : undefined }));
           if (kind === "group") { c.kind = "reply"; c.role = "group"; }
           g.nodes.push(c);
         }
@@ -965,6 +1056,177 @@
         const w = c ? (c.clientWidth / 2 - STG.view.x) / z : 120, h = c ? (c.clientHeight / 2 - STG.view.y) / z : 120;
         return { x: Math.round(w - 100 + (STG.nodes.length % 5) * 22), y: Math.round(h - 40 + (STG.nodes.length % 7) * 18) };
       };
+
+      /* ═══ جستجوی زندهٔ کارت‌ها + حالت ساده/پیشرفته ═══
+         جستجو کارت‌های منطبق را برجسته و بقیه را کم‌رنگ می‌کند؛
+         حالت ساده، کارت‌های منطقی/یکپارچه‌سازی را از پالت پنهان می‌کند. */
+      function stSearchNodes(q) {
+        st.q = String(q || "").trim();
+        const pal = $("stPal");
+        if (pal) {
+          pal.querySelectorAll(".pal").forEach((b) => {
+            const name = (b.dataset.name || "") + " " + (b.dataset.k || "");
+            const hit = !st.q || name.toLowerCase().includes(st.q.toLowerCase());
+            b.classList.toggle("hide", !hit);
+          });
+          const cats = pal.querySelectorAll(".pal-cat");
+          cats.forEach((c) => {
+            let any = false;
+            let n = c.nextElementSibling;
+            while (n && n.classList.contains("pal")) { if (!n.classList.contains("hide")) any = true; n = n.nextElementSibling; }
+            c.style.display = any ? "" : "none";
+          });
+        }
+        /* برجسته‌سازی روی خود نقشه */
+        const low = st.q.toLowerCase();
+        STG.nodes.forEach((nd) => {
+          const hay = [ST_KIND[nd.kind] && ST_KIND[nd.kind].t, nd.name, nd.label, nd.text, nd.url, nd.var].filter(Boolean).join(" ").toLowerCase();
+          const el = document.querySelector(`.node[data-id="${nd.id}"]`);
+          if (el) el.classList.toggle("dim", !!(st.q && !hay.includes(low)));
+        });
+      }
+      function stSetMode(advanced) {
+        st.advanced = !!advanced;
+        localStorage.st_advanced = st.advanced ? "1" : "0";
+        const pal = $("stPal");
+        if (pal) {
+          pal.querySelectorAll(".pal").forEach((b) => {
+            b.classList.toggle("hide", !st.advanced && ST_ADVANCED.has(b.dataset.k));
+          });
+          /* در حالت ساده، دسته‌های خالی هم پنهان می‌شوند */
+          pal.querySelectorAll(".pal-cat").forEach((c) => {
+            let any = false, n = c.nextElementSibling;
+            while (n && n.classList.contains("pal")) { if (!n.classList.contains("hide")) any = true; n = n.nextElementSibling; }
+            c.style.display = any ? "" : "none";
+          });
+        }
+        document.querySelectorAll(".st-mode button").forEach((b, i) => b.classList.toggle("on", (i === 1) === st.advanced));
+        hap("light");
+        toast(st.advanced ? "حالت پیشرفته: منطق، متغیر و یکپارچه‌سازی فعال شد" : "حالت ساده: فقط کارت‌های اصلی — برای منطق، «پیشرفته» را بزن");
+      }
+
+      /* ═══ ویزارد شروع سریع: ۳ سوال ساده → اسکلت ربات ═══ */
+      const ST_WIZARD = [
+        { k: "biz", t: "رباتت برای چیه؟", d: "نوع فعالیت اصلی ربات را انتخاب کن", opts: [
+          { v: "shop", t: "فروشگاه آنلاین", d: "نمایش محصولات، سفارش و پرداخت" },
+          { v: "support", t: "پشتیبانی", d: "تیکت، سوالات متداول و پاسخ سریع" },
+          { v: "edu", t: "آموزش", d: "دوره‌ها، محتوا و آزمون" },
+          { v: "channel", t: "کانال‌محور", d: "عضویت اجباری و انتشار محتوا" },
+          { v: "fun", t: "سرگرمی", d: "بازی، جوک و محتوای شانسی" },
+          { v: "blank", t: "از صفر بسازم", d: "بدون قالب، خودم می‌سازم" } ] },
+        { k: "tone", t: "لحن ربات چطور باشه؟", d: "نحوه صحبت ربات با کاربر", opts: [
+          { v: "formal", t: "رسمی و محترمانه", d: "«سلام خدمت شما»" },
+          { v: "friendly", t: "صمیمی و دوستانه", d: "«سلام رفیق!»" },
+          { v: "playful", t: "شوخ و پرانرژی", d: "ایموجی و شوخی" } ] },
+        { k: "name", t: "اسم ربات چی باشه؟", d: "با این اسم در پیام‌ها صدات می‌زنیم", input: true, ph: "مثلاً ربات فروشگاهی من" }
+      ];
+      const stWizard = () => {
+        if (!STG) return;
+        const w = { biz: "shop", tone: "friendly", name: (bot && bot.bot_username) || "ربات من" }, step = { i: 0 };
+        const draw = () => {
+          const s = ST_WIZARD[step.i];
+          $("sheet").innerHTML = `<div class="sh-h"><span>ساخت سریع ربات · ${n(step.i + 1)} از ${n(ST_WIZARD.length)}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+            <div class="sh-b">
+              <h2 style="font-size:17px;margin-bottom:4px">${esc(s.t)}</h2>
+              <p style="color:var(--mu);font-size:12.5px;margin-bottom:14px">${esc(s.d)}</p>
+              ${s.input
+                ? `<input class="in" id="wzName" maxlength="40" value="${esc(w.name)}" placeholder="${esc(s.ph)}" oninput="wzNameOk()">`
+                : s.opts.map((o) => `<div class="item ${w[s.k] === o.v ? "on" : ""}" data-v="${o.v}" onclick="wzPick('${s.k}','${o.v}')"><span class="sq">${ic(w[s.k] === o.v ? "check" : "spark")}</span><div class="g"><b>${esc(o.t)}</b><small>${esc(o.d)}</small></div></div>`).join("")}
+            </div>
+            <div class="sh-f">
+              ${step.i > 0 ? `<button class="btn line" style="width:110px" onclick="wzBack()">بازگشت</button>` : ""}
+              <button class="btn" id="wzNext" onclick="wzNext()">${step.i === ST_WIZARD.length - 1 ? ic("wand") + " ساخت ربات" : "بعدی"}</button>
+            </div>`;
+          openSheetDone();
+        };
+        window.wzPick = (k, v) => { w[k] = v; hap("light"); draw(); };
+        window.wzBack = () => { if (step.i > 0) { step.i--; draw(); } };
+        window.wzNameOk = () => { w.name = $("wzName").value; };
+        window.wzNext = () => {
+          if (step.i === ST_WIZARD.length - 1) { wzNameOk(); stWizardBuild(w); return; }
+          step.i++; hap("light"); draw();
+        };
+        draw();
+      };
+      /* تبدیل پاسخ‌های ویزارد به یک گراف کاملِ قابل اجرا */
+      const stWizardBuild = (w) => {
+        const hi = { formal: "سلام خدمت شما", friendly: "سلام رفیق!", playful: "هووووو! سلام! 🎉" }[w.tone] || "سلام";
+        const greet = w.biz === "blank" ? `${hi} به ربات ${esc(w.name)} خوش آمدی!` :
+          w.biz === "shop" ? `${hi} به فروشگاه ${esc(w.name)} خوش آمدی! 🛍\nاز منوی زیر انتخاب کن:` :
+          w.biz === "support" ? `${hi} به بخش پشتیبانی ${esc(w.name)} خوش آمدی! 🎧\nمشکلتی داشتی؟` :
+          w.biz === "edu" ? `${hi} به آکادمی ${esc(w.name)} خوش آمدی! 📚\nچه چیزی یاد می‌گیری؟` :
+          w.biz === "channel" ? `${hi} به ${esc(w.name)} خوش آمدی! 📢\nبرای دیدن مطالب عضو کانال شو.` :
+          `${hi} به ${esc(w.name)} خوش آمدی! 🎮`;
+        const mk = (kind, over) => Object.assign({ id: nid(), kind, x: 0, y: 0 }, over);
+        const start = mk("cmd", { name: "start", text: greet, description: "شروع ربات", parseMode: "HTML", btnStyle: "default", btnMode: "inline", editMode: "new", showInMenu: true });
+        const nodes = [start], edges = [];
+        const add = (parent, nd, port) => { nodes.push(nd); edges.push({ from: parent.id, to: nd.id, ...(port ? { from_port: port } : {}) }); return nd; };
+        if (w.biz === "shop") {
+          const cat = add(start, mk("reply", { label: "🛒 محصولات", text: "لیست محصولات ما:\n\n۱. محصول اول — ۱۰۰٬۰۰۰ تومان\n۲. محصول دوم — ۲۰۰٬۰۰۰ تومان\n\nبرای سفارش روی «سفارش» بزن.", parseMode: "HTML" }));
+          add(cat, mk("reply", { label: "📦 سفارش", text: "لطفاً نام و آدرس خود را بفرست تا سفارشت را ثبت کنم." }));
+          add(cat, mk("link", { text: "🌐 سایت", url: "https://example.com", act: "url" }));
+          add(start, mk("ticket", { text: "مشکلتی داشتی؟ برام بنویس، سریع جواب می‌دم.", words: ["مشکل", "کمک", "پشتیبانی"], priority: "normal" }));
+        } else if (w.biz === "support") {
+          const faq = add(start, mk("reply", { label: "❓ سوالات متداول", text: "۱. چطور سفارش بدم؟\n۲. چطور پرداخت کنم؟\n۳. کالام کی می‌رسد؟\n\nبرای جزئیات روی سوال بزن." }));
+          add(faq, mk("reply", { label: "💳 پرداخت", text: "پرداخت از طریق درگاه امن انجام می‌شود. بعد از سفارش لینک پرداخت برات میاد." }));
+          add(start, mk("ticket", { text: "با کالای پشتیبان در ارتباط باش:", words: ["پشتیبان", "اضطراری", "فوری"], priority: "high" }));
+        } else if (w.biz === "edu") {
+          const c1 = add(start, mk("reply", { label: "📚 دوره‌ها", text: "دوره‌های ما:\n\n۱. دوره مقدماتی\n۲. دوره پیشرفته\n\nبرای ثبت‌نام روی دوره بزن." }));
+          add(c1, mk("reply", { label: "✍️ ثبت‌نام", text: "برای ثبت‌نام، اسم و شماره موبایلت را بفرست." }));
+          add(start, mk("trigger", { keywords: ["دوره", "قیمت", "هزینه"], mode: "contains", label: "قیمت", text: "قیمت دوره‌ها:\nمقدماتی: ۵۰۰٬۰۰۰ تومان\nپیشرفته: ۹۰۰٬۰۰۰ تومان" }));
+        } else if (w.biz === "channel") {
+          add(start, mk("link", { text: "📢 عضویت در کانال", url: "https://t.me/yourchannel", act: "url" }));
+          add(start, mk("trigger", { keywords: ["جدید", "آخرین", "پست"], mode: "contains", label: "آخرین مطالب", text: "آخرین مطالب ما در کانال منتشر می‌شود — عضو شو تا جا نمونی!" }));
+        } else if (w.biz === "fun") {
+          add(start, mk("trigger", { keywords: ["جوک", "خنده"], mode: "contains", label: "جوک", text: "چرا برنامه‌نویس‌ها هالووین دوست دارن؟ چون باگ‌ها رو می‌ترسونن! 🎃" }));
+          add(start, mk("random", { label: "شانس" }));
+        } else {
+          add(start, mk("reply", { label: "دکمه نمونه", text: "این یک دکمه نمونه است. روش بزن تا ببینی چطور کار می‌کنه!" }));
+        }
+        /* همیشه یک پاسخ ناشناختهٔ دوستانه */
+        const unk = mk("trigger", { keywords: ["سلام", "hi", "hello"], mode: "contains", label: "سلام", text: `${hi} دوباره! از منوی ربات استفاده کن.` });
+        nodes.push(unk);
+        st.hist.push(JSON.stringify({ nodes: STG.nodes, edges: STG.edges }));
+        STG = { nodes, edges, view: { x: 0, y: 0, z: 1 } };
+        autoLayout(STG.nodes, STG.edges, true);
+        st.sel = []; stDirty(1); stRender(); stFit();
+        closeSheet();
+        toast(`ربات ${esc(w.name)} ساخته شد — ${n(nodes.length)} کارت آماده!`);
+      };
+
+      /* ═══ گالری قالب‌های آماده ═══ */
+      const ST_TEMPLATES = [
+        { id: "shop", ic: "store", t: "فروشگاه", d: "محصولات، سفارش و پشتیبانی", biz: "shop" },
+        { id: "support", ic: "ticket", t: "پشتیبانی", d: "تیکت و سوالات متداول", biz: "support" },
+        { id: "edu", ic: "pencil", t: "آموزش", d: "دوره‌ها و ثبت‌نام", biz: "edu" },
+        { id: "channel", ic: "bell", t: "کانال‌محور", d: "عضویت اجباری و انتشار", biz: "channel" },
+        { id: "fun", ic: "dice", t: "سرگرمی", d: "جوک، بازی و شانس", biz: "fun" },
+        { id: "faq", ic: "help", t: "پرسش و پاسخ", d: "سوالات پرتکرار", biz: "support" },
+        { id: "register", ic: "shield", t: "ثبت‌نام", d: "گرفتن اطلاعات کاربر", biz: "edu" },
+        { id: "blank", ic: "wand", t: "شروع از صفر", d: "یک کارت خالی بساز", biz: "blank" }
+      ];
+      function stTemplates() {
+        $("sheet").innerHTML = `<div class="sh-h"><span>قالب‌های آماده</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
+          <div class="sh-b">
+            <p style="color:var(--mu);font-size:12.5px;margin-bottom:12px">یک قالب انتخاب کن تا کل ساختار ربات در یک ثانیه ساخته شود. بعد هر بخشش را دلخواه ویرایش کن.</p>
+            <div class="tpl-grid">
+              ${ST_TEMPLATES.map((t) => `<div class="tpl-card" onclick="stUseTpl('${t.id}')"><span class="tpl-n">${ic(t.ic)}</span><div class="tpl-i">${ic(t.ic)}</div><b>${esc(t.t)}</b><small>${esc(t.d)}</small></div>`).join("")}
+            </div>
+          </div>`;
+        openSheetDone();
+      }
+      function stUseTpl(id) {
+        const t = ST_TEMPLATES.find((x) => x.id === id);
+        if (!t) return;
+        if (t.id === "blank") {
+          closeSheet();
+          stEdit(null, "cmd");
+          return toast("یک کارت دستور خالی باز شد — متنش را بنویس", 1);
+        }
+        sure(`قالب «${esc(t.t)}» جایگزین نقشهٔ فعلی می‌شود؟ (نقشهٔ فعلی در «بازیابی» می‌ماند)`, () => {
+          stWizardBuild({ biz: t.biz, tone: "friendly", name: (bot && bot.bot_username) || "ربات من" });
+        });
+      }
       const stAddNode = (kind, at) => {
         const p = at || stPos();
         const nd = { id: nid(), kind, x: p.x, y: p.y };
@@ -972,6 +1234,8 @@
         if (kind === "group") { nd.kind = "reply"; nd.role = "group"; nd.label = "گروه"; }
         if (kind === "link") { nd.text = ""; nd.url = ""; nd.act = "url"; nd.btnStyle = "default"; }
         if (kind === "image") { nd.mediaType = "photo"; nd.url = ""; nd.caption = ""; }
+        if (kind === "album") { nd.items = []; nd.caption = ""; }
+        if (kind === "delay") { nd.secs = 1; nd.typing = true; nd.label = ""; }
         if (kind === "ticket") { nd.text = ""; nd.words = []; nd.priority = "normal"; }
         if (kind === "trigger") { nd.keywords = []; nd.mode = "contains"; nd.text = ""; nd.label = ""; }
         if (kind === "cmd") { nd.name = ""; nd.text = ""; nd.description = ""; nd.btnStyle = "default"; nd.btnMode = "inline"; nd.editMode = "new"; nd.parseMode = "HTML"; nd.showInMenu = true; }
@@ -1039,7 +1303,7 @@
         "keywords", "words", "var", "op", "value", "act", "webapp", "shareText", "btnStyle", "btnMode",
         "editMode", "silent", "parseMode", "protect", "aliases", "showInMenu", "department", "priority",
         "autoReply", "acceptPhoto", "spoiler", "asFile", "resize", "oneTime", "title",
-        "method", "body", "save_to"];
+        "method", "body", "save_to", "secs", "typing", "items"];
 
       function exportGraph(g) {
         return {
@@ -1065,6 +1329,7 @@
         for (const t of outOf(nd.id)) {
           if (t.kind === "link" && (t.url || t.webapp)) urls.push(t);
           else if (t.kind === "image" && t.url && !media) media = t;
+          else if (t.kind === "album" && (t.items || []).length && !media) media = t;
           else if (isGroup(t) && depth < 3) {
             const s = stParts(t, depth + 1);
             btns.push(...s.btns); urls.push(...s.urls);
@@ -1154,6 +1419,16 @@
             if (!(nd.text || "").trim()) iss.push({ lv: "warn", m: "پیوند بدون متن دکمه", nd });
           }
           if (nd.kind === "image" && !/^https?:\/\//.test(nd.url || "")) iss.push({ lv: "err", m: "رسانه بدون فایل/آدرس", nd });
+          if (nd.kind === "album") {
+            const items = (nd.items || []).filter((it) => it && /^https?:\/\//.test(it.url || ""));
+            if (!items.length) iss.push({ lv: "err", m: "آلبوم خالی است — حداقل یک رسانه بده", nd });
+            else if (items.length > 10) iss.push({ lv: "err", m: `آلبوم ${n(items.length)} رسانه دارد — حداکثر ۱۰`, nd });
+          }
+          if (nd.kind === "delay") {
+            const s = +nd.secs || 0;
+            if (!s) iss.push({ lv: "err", m: "تاخیر صفر است — بی‌فایده است", nd });
+            else if (s > 10) iss.push({ lv: "err", m: `تاخیر ${n(s)} ثانیه زیاد است — حداکثر ۱۰`, nd });
+          }
           if (nd.kind === "trigger" && !(nd.keywords || []).filter((k) => String(k).trim()).length) iss.push({ lv: "err", m: "کلیدواژه‌ای وارد نشده", nd });
           if (nd.kind === "api" && !/^https?:\/\//.test(nd.url || "")) iss.push({ lv: "err", m: "فراخوانی API بدون آدرس معتبر", nd });
           if (nd.kind === "ai" && !(nd.text || "").trim()) iss.push({ lv: "err", m: "هوش مصنوعی بدون پرامپت", nd });
@@ -1289,6 +1564,7 @@
         let c = 0;
         for (const x of outOf(nd.id)) {
           if (x.kind === "image") c++;
+          else if (x.kind === "album") c += Math.min(10, (x.items || []).length);
           else if (isGroup(x) && (depth || 0) < 3) c += stMedia(x, (depth || 0) + 1);
         }
         return c;
@@ -1323,6 +1599,231 @@
           });
         });
         return { nodes, edges, view: { x: 0, y: 0, z: 1 } };
+      }
+
+      /* ═══ شبیه‌ساز چت زنده — قاب تلگرام‌مانند، هر تغییر فوراً دیده می‌شود ═══
+         موتور کوچک اجرای گراف روی کلاینت: همان منطق سرور را دنبال می‌کند
+         (cmd → reply/link/image/ticket/trigger → گروه‌ها → منطق) تا کاربر قبل از
+         ذخیره، ربات واقعی را امتحان کند. دکمه‌ها قابل کلیک هستند. */
+      const stSimVars = () => (st.sim && st.sim.vars) || {};
+      const stSimSetVar = (k, v) => { if (st.sim) st.sim.vars[k] = v; };
+      /* جای‌گذاری متغیرهای هوشمند — مثل سرور: {{input}}، {{var.x}}، {{user.x}}، {{date}}، {{time}} */
+      function stSimTpl(t, input) {
+        return String(t || "").replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, k) => {
+          k = String(k || "").trim();
+          if (k === "input") return input != null ? String(input) : "";
+          if (k.startsWith("var.")) return String(stSimVars()[k.slice(4)] ?? "");
+          if (k.startsWith("user.")) {
+            const f = k.slice(5);
+            return f === "name" ? (user && user.full_name) || "کاربر" : f === "username" ? (user && user.username) || "" : f === "id" ? String((user && user.uid) || 0) : "";
+          }
+          if (k === "date") return now_ir().toLocaleDateString("fa-IR");
+          if (k === "time") return now_ir().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
+          return m;
+        });
+      }
+      const stSimNow = () => { const d = now_ir(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+      /* پاکسازی HTML کاربر برای شبیه‌ساز — فقط تگ‌های مجاز تلگرام، بدون XSS */
+      const stSimHtml = (t) => String(t || "")
+        .replace(/<\s*(script|iframe|object|embed|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, "")
+        .replace(/<\s*(?!\/?)(b|i|u|s|code|pre|a|blockquote|tg-spoiler)(\s|>|\/)/gi, "<$1$2");
+      /* خروجیِ یک کارت: متن + دکمه‌ها + رسانه — برای شبیه‌ساز */
+      function stSimParts(nd) {
+        const out = { text: "", btns: [], urls: [], media: null };
+        if (!nd) return out;
+        const kids = (pid) => STG.edges.filter((e) => e.from === nd.id && (!pid || e.from_port === pid)).map((e) => nSt(e.to)).filter(Boolean);
+        if (nd.kind === "cmd" || nd.kind === "reply" || nd.kind === "trigger" || nd.kind === "ticket" || nd.kind === "input") {
+          out.text = stSimTpl(nd.text, st.sim && st.sim.lastInput);
+        } else if (nd.kind === "image") {
+          out.media = { type: nd.mediaType || "photo", url: nd.url, caption: stSimTpl(nd.caption || nd.text, st.sim && st.sim.lastInput) };
+        } else if (nd.kind === "album") {
+          out.album = (nd.items || []).filter((x) => x && x.url);
+        } else if (nd.kind === "link") {
+          const act = nd.act || "url";
+          if (act === "url") out.urls.push({ text: nd.text || "لینک", url: nd.url });
+          else out.btns.push({ text: nd.text || "دکمه", act, url: nd.url, webapp: nd.webapp });
+        }
+        /* دکمه‌های فرزند مستقیم (reply/link/image/ticket/trigger) */
+        for (const k of kids()) {
+          if (k.kind === "reply" && k.role !== "group") out.btns.push({ text: k.label || "دکمه", node: k });
+          else if (k.kind === "link") {
+            const a = k.act || "url";
+            if (a === "url") out.urls.push({ text: k.text || "لینک", url: k.url });
+            else out.btns.push({ text: k.text || "دکمه", act: a, url: k.url, webapp: k.webapp });
+          } else if (k.kind === "image" && !out.media) out.media = { type: k.mediaType || "photo", url: k.url, caption: stSimTpl(k.caption || "", "") };
+          else if (k.kind === "ticket") out.btns.push({ text: "🎫 پشتیبانی", node: k });
+          else if (k.kind === "trigger") out.btns.push({ text: k.label || "کلیدواژه", node: k });
+          else if (k.kind === "album" && !out.album) out.album = (k.items || []).filter((x) => x && x.url);
+        }
+        return out;
+      }
+      /* یک پیام ربات را در شبیه‌ساز می‌کشد — با تاخیر و حالت تایپ واقعی */
+      async function stSimBot(nd, input) {
+        if (!st.sim || !nd) return;
+        const b = $("stSimBody"); if (!b) return;
+        /* کارت تاخیر: صبر کن و حالت «در حال تایپ…» نشان بده */
+        if (nd.kind === "delay") {
+          const secs = Math.min(10, Math.max(0, +nd.secs || 1));
+          if (nd.typing) {
+            const tp = document.createElement("div");
+            tp.className = "chat-typing"; tp.innerHTML = "<i></i><i></i><i></i>";
+            b.appendChild(tp); b.scrollTop = b.scrollHeight;
+            await new Promise((r) => setTimeout(r, Math.min(secs, 4) * 1000));
+            tp.remove();
+          } else {
+            await new Promise((r) => setTimeout(r, secs * 1000));
+          }
+          return;
+        }
+        const p = stSimParts(nd);
+        const bub = document.createElement("div");
+        bub.className = "chat-bub bot";
+        let inner = "";
+        if (p.media && p.media.url && p.media.type === "photo") {
+          inner += `<div class="cb-media"><img src="${esc(p.media.url)}" alt="" onerror="this.remove()"></div>`;
+        } else if (p.media && p.media.url) {
+          inner += `<div class="cb-media" style="padding:14px;color:var(--mu);font-size:12px;text-align:center">${ic("image")} ${esc(p.media.type)} — پیش‌نمایش در تلگرام</div>`;
+        }
+        if (p.album && p.album.length) {
+          inner += `<div class="cb-media" style="display:grid;grid-template-columns:1fr 1fr;gap:3px">` +
+            p.album.slice(0, 4).map((it) => `<img src="${esc(it.url)}" alt="" style="aspect-ratio:1;object-fit:cover" onerror="this.remove()">`).join("") + `</div>`;
+        }
+        if (p.text) inner += `<span>${stSimHtml(p.text)}</span>`;
+        if (!inner) inner = `<span style="color:var(--mu);font-size:12px">پیام خالی — متن کارت را بنویس</span>`;
+        inner += `<time>${stSimNow()}</time>`;
+        bub.innerHTML = inner;
+        b.appendChild(bub);
+        /* دکمه‌های اینلاین زیر حباب */
+        if (p.btns.length || p.urls.length) {
+          const kb = document.createElement("div");
+          kb.className = "chat-kb";
+          p.urls.forEach((u) => {
+            const btn = document.createElement("button");
+            btn.textContent = u.text;
+            btn.onclick = () => { hap("light"); toast("در تلگرام واقعی این لینک باز می‌شود"); };
+            kb.appendChild(btn);
+          });
+          p.btns.forEach((bt) => {
+            const btn = document.createElement("button");
+            btn.textContent = bt.text;
+            btn.onclick = () => { hap("light"); if (bt.node) stSimBot(bt.node); };
+            kb.appendChild(btn);
+          });
+          b.appendChild(kb);
+        }
+        b.scrollTop = b.scrollHeight;
+        hap("light");
+      }
+      /* مسیر را از یک کارت شروع می‌کند: خودش + فرزندانش (یک سطح، مثل رفتار سرور) */
+      async function stSimRun(nd, input) {
+        if (!nd) return;
+        st.sim.lastInput = input;
+        if (nd.kind === "input") { stSimSetVar(nd.var || "input", input); st.sim.pendingInput = null; }
+        if (nd.kind === "setvar") stSimSetVar(nd.var, stSimTpl(nd.value, input));
+        await stSimBot(nd, input);
+        /* فرزندان غیردکمه‌ای را هم اجرا کن (مثل تاخیر بعد از پیام) */
+        const kids = STG.edges.filter((e) => e.from === nd.id).map((e) => nSt(e.to)).filter(Boolean);
+        for (const k of kids) {
+          if (k.kind === "delay") await stSimBot(k, input);
+          else if (k.kind === "setvar") stSimSetVar(k.var, stSimTpl(k.value, input));
+        }
+      }
+      /* باز/بسته کردن پنل شبیه‌ساز */
+      function stSimToggle() {
+        if (!st.simOpen) {
+          st.sim = { vars: {}, lastInput: "", log: [], pendingInput: null };
+          st.simOpen = true;
+          let p = document.getElementById("stSim");
+          if (!p) {
+            p = document.createElement("div");
+            p.id = "stSim"; p.className = "st-sim";
+            p.innerHTML = `<div class="st-sim-h">
+                <span class="ava">${esc(((bot && bot.bot_username) || "B").charAt(0).toUpperCase())}</span>
+                <div style="min-width:0"><b>${esc((bot && bot.bot_username) || "ربات")}</b><small>● آنلاین — شبیه‌ساز</small></div>
+                <div class="ib" onclick="stSimClear()" title="پاک کردن چت">${ic("sync")}</div>
+                <div class="ib" onclick="stSimToggle()" title="بستن">${ic("x")}</div>
+              </div>
+              <div class="st-sim-b" id="stSimBody"></div>
+              <div class="st-sim-f">
+                <input class="in" id="stSimIn" placeholder="پیامت را بنویس…" onkeydown="if(event.key==='Enter')stSimSend()" autocomplete="off">
+                <button class="btn" onclick="stSimSend()">${ic("send2")}</button>
+              </div>`;
+            document.body.appendChild(p);
+          }
+          requestAnimationFrame(() => p.classList.add("on"));
+          setTimeout(() => { const i = $("stSimIn"); if (i) i.focus({ preventScroll: true }); }, 300);
+          stSimWelcome();
+        } else {
+          const p = $("stSim");
+          if (p) { p.classList.remove("on"); setTimeout(() => p.remove(), 280); }
+          st.simOpen = false; st.sim = null;
+        }
+        hap("light");
+      }
+      /* پیام خوش‌آمدگویی شبیه‌ساز — از کارت start واقعی گراف */
+      function stSimWelcome() {
+        const b = $("stSimBody"); if (!b) return;
+        const day = document.createElement("div");
+        day.className = "chat-day"; day.textContent = now_ir().toLocaleDateString("fa-IR", { weekday: "long", day: "numeric", month: "long" });
+        b.appendChild(day);
+        const start = STG.nodes.find((x) => x.kind === "cmd" && x.name === "start") || STG.nodes.find((x) => x.kind === "cmd");
+        if (start) stSimRun(start, "");
+        else {
+          const e = document.createElement("div");
+          e.className = "chat-bub bot";
+          e.innerHTML = `<span style="color:var(--mu);font-size:12.5px">هنوز کارت <b>/start</b> نساخته‌ای. از پالت بالا یک «دستور» اضافه کن.</span><time>${stSimNow()}</time>`;
+          b.appendChild(e);
+        }
+        b.scrollTop = b.scrollHeight;
+      }
+      const stSimClear = () => { const b = $("stSimBody"); if (b) { b.innerHTML = ""; st.sim = { vars: {}, lastInput: "", log: [], pendingInput: null }; stSimWelcome(); } };
+      /* ارسال پیام کاربر در شبیه‌ساز → تطبیق با دستورها/کلیدواژه‌ها */
+      async function stSimSend() {
+        const inp = $("stSimIn"); if (!inp) return;
+        const text = inp.value.trim();
+        if (!text) return;
+        inp.value = "";
+        const b = $("stSimBody"); if (!b) return;
+        const me = document.createElement("div");
+        me.className = "chat-bub me";
+        me.innerHTML = `${esc(text)}<time>${stSimNow()}</time>`;
+        b.appendChild(me);
+        b.scrollTop = b.scrollHeight;
+        hap("light");
+        st.sim.lastInput = text;
+        /* ۱) کارت ورودی در انتظار — بالاترین اولویت */
+        if (st.sim.pendingInput) { const pi = st.sim.pendingInput; st.sim.pendingInput = null; await stSimRun(pi, text); return; }
+        /* ۲) دستور دقیق */
+        const cmd = STG.nodes.find((x) => x.kind === "cmd" && ("/" + x.name === text || (x.aliases || []).some((a) => "/" + a === text)));
+        if (cmd) { await stSimRun(cmd, text); return; }
+        /* ۳) کلیدواژه */
+        const trg = STG.nodes.find((x) => {
+          if (x.kind !== "trigger") return false;
+          const kws = (x.keywords || []).filter((k) => String(k).trim());
+          return kws.some((k) => {
+            if (x.mode === "exact") return text === k;
+            if (x.mode === "regex") { try { return new RegExp(k).test(text); } catch (e) { return false; } }
+            return text.includes(k);
+          });
+        });
+        if (trg) { await stSimRun(trg, text); return; }
+        /* ۴) پاسخ ناشناخته */
+        const unk = (bot && bot.unknown_reply) || "متوجه نشدم! از منوی ربات استفاده کن یا /start را بزن.";
+        const e = document.createElement("div");
+        e.className = "chat-bub bot";
+        e.innerHTML = `${esc(unk)}<time>${stSimNow()}</time>`;
+        b.appendChild(e);
+        b.scrollTop = b.scrollHeight;
+      }
+      /* دکمه «امتحان ربات» — ربات واقعی را در تلگرام باز می‌کند */
+      function stTestBot() {
+        if (!bot || !bot.bot_username) return toast("ربات هنوز وصل نشده", 1);
+        if (st.dirty) toast("ابتدا ذخیره کن — تغییرات هنوز روی ربات اعمال نشده", 1);
+        const u = `https://t.me/${esc(bot.bot_username)}?start=studio_test`;
+        if (tg && tg.openTelegramLink) { try { tg.openTelegramLink(u); } catch (e) { window.open(u, "_blank"); } }
+        else window.open(u, "_blank");
+        hap("light");
       }
 
       /* ── ورود و پوسته ── */
@@ -1368,7 +1869,12 @@
         if (st.derived && !STG.nodes.length) STG.nodes.push({ id: nid(), kind: "cmd", name: "start", text: (cmds.start || {}).response || "", description: (cmds.start || {}).description || "", x: 40, y: 40 });
         autoLayout(STG.nodes, STG.edges, true);
         st.hist = []; st.redo = []; st.sel = []; st.dirty = false; st.saved = ""; st.vdirty = true; st.autosave = localStorage.st_autosave !== "0";
+        st.q = "";                                     /* جستجوی کارت‌ها را ریست کن */
         stMirror();                                    /* در صورت وجود st.recover خودش کنار می‌کشد */
+        /* حالت ساده/پیشرفته را روی پالت اعمال کن (بعد از رسم) */
+        setTimeout(() => stSetMode(st.advanced), 0);
+        /* شبیه‌سازِ باز را با گراف تازه به‌روز کن */
+        if (st.simOpen) { st.sim = { vars: {}, lastInput: "", log: [], pendingInput: null }; setTimeout(stSimWelcome, 60); }
         if (preferLocal) {
           stDirty(2); clearTimeout(st.timer);   /* ذخیرهٔ خودکار قبل از تصمیم کاربر اجرا نشود */
           setTimeout(() => sure("نقشه‌ای که محلی ساخته‌ای (" + n(STG.nodes.length) + " کارت) روی سرور نیست؛ همین حالا اعمال شود؟", () => stPersist(true)), 300);
@@ -1384,11 +1890,25 @@
               <small class="mono">@${esc(bot.bot_username || "—")}${st.derived ? " · از دستورها" : ""}</small>
             </div>
             <span class="st-status" id="stStatus"></span>
+            <div class="ib" onclick="stSimToggle()" title="شبیه‌ساز چت زنده">${ic("chat")}</div>
+            <div class="ib" onclick="stTestBot()" title="امتحان ربات واقعی">${ic("robot")}</div>
+            <div class="ib" onclick="stTemplates()" title="قالب‌های آماده">${ic("store")}</div>
             <div class="ib" onclick="stMenu()" title="منو">${ic("more")}</div>
           </div>
           <div class="st-pal" id="stPal">
             ${["msg", "io", "logic", "intg"].map((cat) => `<span class="pal-cat">${esc(ST_CAT_LABEL[cat])}</span>` +
-              Object.entries(ST_KIND).filter(([k]) => ST_CAT[k] === cat).map(([k, v]) => `<button class="pal" data-k="${k}" title="${esc(v.d)}"><span class="pal-i">${ic(v.ic)}</span><span>${v.t}</span></button>`).join("")).join("")}
+              Object.entries(ST_KIND).filter(([k]) => ST_CAT[k] === cat).map(([k, v]) => `<button class="pal" data-k="${k}" data-name="${esc(v.t)}" title="${esc(v.d)}"><span class="pal-i">${ic(v.ic)}</span><span>${v.t}</span></button>`).join("")).join("")}
+          </div>
+          <div class="st-pal" style="padding-top:2px;gap:6px">
+            <div class="st-search" style="flex:1;min-width:0">
+              <span style="color:var(--mu);flex:none">${ic("search")}</span>
+              <input id="stSearch" placeholder="جستجوی کارت‌ها…" oninput="stSearchNodes(this.value)" autocomplete="off">
+              ${$("stSearch") && $("stSearch").value ? `<div class="ib" onclick="stSearchNodes('');$('stSearch').value=''">${ic("x")}</div>` : ""}
+            </div>
+            <div class="st-mode" title="حالت نمایش">
+              <button class="${st.advanced ? "" : "on"}" onclick="stSetMode(false)">ساده</button>
+              <button class="${st.advanced ? "on" : ""}" onclick="stSetMode(true)">پیشرفته</button>
+            </div>
           </div>
           <div class="flow-canvas st-canvas" id="fc">
             <div class="flow-world" id="fw"></div>
@@ -1444,6 +1964,8 @@
         if (nd.kind === "reply") return { title: nd.label || "پاسخ", sub: nd.text || "بی‌متن", badge: "reply", icon: "msg", tone: "cmd" };
         if (nd.kind === "link") return { title: nd.text || "پیوند", sub: nd.url || "بی‌آدرس", badge: "url", icon: "link", tone: "url" };
         if (nd.kind === "image") return { title: ({ photo: "تصویر", video: "ویدیو", audio: "صوت", animation: "انیمیشن", document: "فایل" })[nd.mediaType] || "رسانه", sub: nd.caption || (nd.url || "").replace(/^https?:\/\//, "").slice(0, 38) || "بی‌فایل", badge: nd.mediaType || "photo", icon: "image", tone: "img" };
+        if (nd.kind === "album") return { title: "آلبوم", sub: (nd.items || []).length ? `${n(nd.items.length)} رسانه · ${(nd.caption || "").slice(0, 30)}` : "خالی — رسانه اضافه کن", badge: `${n((nd.items || []).length)}×`, icon: "layers", tone: "alb" };
+        if (nd.kind === "delay") return { title: "تاخیر", sub: `${n(nd.secs != null ? nd.secs : 1)} ثانیه${nd.typing ? " + در حال تایپ…" : ""}`, badge: "⏱", icon: "clock", tone: "dly" };
         if (nd.kind === "ticket") return { title: "تیکت", sub: nd.text || "دریافت پیام کاربر", badge: (nd.words || []).length ? `pass ${n(nd.words.length)}` : "ticket", icon: "ticket", tone: "ticket" };
         if (nd.kind === "condition") return { title: nd.label || "شرط", sub: nd.var ? `${nd.var} ${VAR_OPS[nd.op] || ""} ${nd.value || ""}`.trim() : "متغیری انتخاب نشده", badge: "if", icon: "branch", tone: "cnd" };
         if (nd.kind === "setvar") return { title: nd.label || "متغیر", sub: nd.var ? `${SET_OPS[nd.op] || ""} ${nd.var} = ${nd.value || ""}`.trim() : "متغیری انتخاب نشده", badge: "var", icon: "var", tone: "vset" };
@@ -1472,6 +1994,9 @@
           if (btns.length) chips.push(`<span class="nchip">${n(btns.filter((x) => x.kind === "reply" || x.kind === "cmd" || x.kind === "ticket" || x.kind === "trigger" || x.kind === "condition" || x.kind === "setvar" || x.kind === "input" || x.kind === "random" || x.kind === "notify" || x.kind === "menu" || x.kind === "keyboard").length)} btn</span>`);
           if (btns.some((x) => x.kind === "link")) chips.push(`<span class="nchip u">${n(btns.filter((x) => x.kind === "link").length)} url</span>`);
           if (btns.some((x) => x.kind === "image")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "image").length)} media</span>`);
+          if (btns.some((x) => x.kind === "album")) chips.push(`<span class="nchip m">${n(btns.filter((x) => x.kind === "album").reduce((a, x) => a + ((x.items || []).length), 0))} media</span>`);
+          if (btns.some((x) => x.kind === "delay")) chips.push(`<span class="nchip u">⏱ ${n(btns.filter((x) => x.kind === "delay").length)}</span>`);
+          if (nd.kind === "album" && (nd.items || []).length) chips.push(`<span class="nchip m">${n(nd.items.length)} فایل</span>`);
           if (nd.kind === "menu" && nd.mode) chips.push(`<span class="nchip i">${esc(nd.mode)}</span>`);
           if ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply") chips.push(`<span class="nchip i">kbd</span>`);
           /* کارت‌های چندپورتی: نشان بده کدام پورت‌ها وصل‌اند (فاز ۱) */
@@ -1812,6 +2337,9 @@
         if (!canRecv(b)) return toast(`${ST_KIND[b.kind].t} فقط مبدأ است، نمی‌شود به آن وصل کرد`, 1);
         if (a.kind === "image") return toast("کارت رسانه فقط مقصد است", 1);
         if (a.kind === "cmd" && b.kind === "image" && outOf(a.id).some((x) => x.kind === "image")) return toast("روی یک پیام فقط یک رسانه مجاز است", 1);
+        if (a.kind === "cmd" && b.kind === "album" && outOf(a.id).some((x) => x.kind === "album")) return toast("روی یک پیام فقط یک آلبوم مجاز است", 1);
+        if (a.kind === "cmd" && b.kind === "album" && outOf(a.id).some((x) => x.kind === "image")) return toast("رسانه و آلبوم با هم روی یک پیام مجاز نیست", 1);
+        if (a.kind === "cmd" && b.kind === "image" && outOf(a.id).some((x) => x.kind === "album")) return toast("رسانه و آلبوم با هم روی یک پیام مجاز نیست", 1);
         const ports = stPortsOf(a);
         /* کارت چندپورتی: اگر پورتی گفته نشد، اولین پورتِ خالی را بگیر.
            این یعنی وصل کردنِ شرط به ترتیب yes بعد no — مثل رفتار قدیمی. */
@@ -1969,6 +2497,17 @@
             + stToggle("ارسال به‌عنوان فایل", "asFile", "رسانه به‌جای نوع اصلی، به‌عنوان فایل ارسال می‌شود.")
             + stToggle("متن پنهان (اسپویلر)", "spoiler", "رسانه تا زمان لمس کاربر محو/پنهان می‌ماند.")
             + `<div id="ePrev"></div>`;
+        } else if (K === "album") {
+          /* آلبوم چندتایی: لیست رسانه‌ها با افزودن/حذف */
+          body = stField("رسانه‌های آلبوم", `<div id="eAlbum"></div>`)
+            + `<div style="display:flex;gap:8px;margin-top:8px"><input type="file" id="eFile" hidden multiple onchange="stUpAlbum(this.files)"><button class="btn line sm" style="flex:1" onclick="$('eFile').click()">${ic("download")} افزودن فایل</button></div>`
+            + stField("کپشن مشترک (اختیاری)", `<textarea class="in" id="eText" rows="2" oninput="st.editing.nd.caption=this.value;stUpdPrev()">${esc(nd.caption || "")}</textarea>`)
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">تا ۱۰ رسانه پشت سر هم فرستاده می‌شوند. تلگرام آن‌ها را به‌صورت یک آلبوم یکپارچه نشان می‌دهد.</p>`;
+        } else if (K === "delay") {
+          /* تاخیر و حالت «در حال تایپ…» */
+          body = stField("مدت تاخیر (ثانیه)", `<input class="in ltr mono" id="eSecs" type="number" min="0" max="10" step="0.5" value="${esc(nd.secs != null ? nd.secs : 1)}" oninput="st.editing.nd.secs=Math.min(10,Math.max(0,+this.value||0));stUpdPrev()">`)
+            + stToggle("نشان دادن «در حال تایپ…»", "typing", "ربات قبل از پیام بعدی، حالت تایپ کردن نشان می‌دهد — طبیعی‌تر به نظر می‌رسد.")
+            + `<p style="color:var(--mu);font-size:12px;margin-top:6px">این کارت پیام ندارد: مسیر را برای مدت تعیین‌شده متوقف می‌کند. حداکثر ۱۰ ثانیه. سیم خروجی‌اش را به پیام بعدی وصل کن.</p>`;
         } else if (K === "ticket") {
           body = stField("متن درخواست از کاربر", `<textarea class="in" id="eText" rows="3" oninput="st.editing.nd.text=this.value;stUpdPrev()" placeholder="مشکل خود را بنویسید…">${esc(nd.text || "")}</textarea>`)
             + stField("کلمات عبور (اختیاری)", `<input class="in" id="eW" value="${esc((nd.words || []).join("، "))}" placeholder="پشتیبانی، اضطراری" oninput="st.editing.nd.words=this.value.split(/[،,]+/).map(x=>x.trim()).filter(Boolean);stUpdPrev()">`)
@@ -2049,15 +2588,16 @@
             ${canSend(nd) ? `<button class="btn line sm" style="margin-top:10px;width:100%" onclick="stQuickAdd('${nd.id}')">${ic("plus")} ساخت و اتصال کارت جدید</button>` : ""}
           </div>`;
         $("sheet").innerHTML = `<div class="sh-h"><span>${isGroup(nd) ? "گروه" : (ST_KIND[K] || {}).t || "کارت"}${isNew ? " تازه" : ""}</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
-          <div class="sh-b" id="shb">${body}${rel}${K !== "link" && K !== "image" ? stPrevBox("ePv") : ""}${K === "image" ? `<div id="ePrev"></div>` : ""}</div>
+          <div class="sh-b" id="shb">${body}${rel}${K !== "link" && K !== "image" && K !== "album" && K !== "delay" ? stPrevBox("ePv") : ""}${K === "image" ? `<div id="ePrev"></div>` : ""}</div>
           <div class="sh-f">
             ${!isNew ? `<div class="ib" style="width:46px;color:var(--red)" onclick="stDelFromEdit('${nd.id}')">${ic("trash")}</div>` : ""}
             <button class="btn" onclick="stSaveEdit()">${isNew ? "ساخت کارت" : "ذخیره"}</button>
           </div>`;
         stUpdPrev();
         if (K === "image") stImgPrev();
+        if (K === "album") stDrawAlbum();
       }
-      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || nd.title || (nd.kind === "image" ? "رسانه" : nd.kind === "link" ? "پیوند" : (nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input") ? (nd.var ? "⚙ " + nd.var : (nd.kind === "condition" ? "شرط" : nd.kind === "input" ? "دریافت ورودی" : "متغیر")) : nd.kind === "random" ? "شاخهٔ تصادفی" : nd.kind === "notify" ? "اعلان به ادمین" : nd.kind === "menu" ? "منوی تعاملی" : nd.kind === "keyboard" ? "کیبورد دائمی" : "کارت"));
+      const stTitle = (nd) => nd.kind === "cmd" ? "/" + (nd.name || "…") : (nd.label || nd.text || nd.title || (nd.kind === "image" ? "رسانه" : nd.kind === "album" ? `آلبوم · ${n((nd.items || []).length)} رسانه` : nd.kind === "delay" ? `تاخیر ${n(nd.secs != null ? nd.secs : 1)} ثانیه` : nd.kind === "link" ? "پیوند" : (nd.kind === "condition" || nd.kind === "setvar" || nd.kind === "input") ? (nd.var ? "⚙ " + nd.var : (nd.kind === "condition" ? "شرط" : nd.kind === "input" ? "دریافت ورودی" : "متغیر")) : nd.kind === "random" ? "شاخهٔ تصادفی" : nd.kind === "notify" ? "اعلان به ادمین" : nd.kind === "menu" ? "منوی تعاملی" : nd.kind === "keyboard" ? "کیبورد دائمی" : "کارت"));
       function stSetVal(el, key, v) { const e = $(el); if (e) e.value = v; st.editing.nd[key] = v; }
       function stUpdPrev() {
         const E = st.editing; if (!E) return;
@@ -2078,10 +2618,61 @@
           (nd.kind === "setvar" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⚙ ${esc(SET_OPS[nd.op] || "")} <span class="kw">${esc(nd.var || "…")}</span> = ${esc(nd.value || "")} و بی‌صدا ادامه می‌دهد</div>` : "") +
           (nd.kind === "menu" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🎛 حالت: <span class="kw">${esc(MENU_MODES[nd.mode] || "شیشه‌ای")}</span>${nd.mode === "glass" && nd.webapp ? ` · <span class="mono ltr">${esc(nd.webapp.slice(0, 40))}</span>` : ""}</div>` : "") +
           (nd.kind === "keyboard" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⌨ دکمه‌ها زیر صفحه چت ${nd.oneTime ? "(یک‌بار مصرف)" : "(دائمی)"}</div>` : "") +
-          ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⌨ دکمه‌ها زیر صفحه چت می‌روند (کیبورد دائمی)</div>` : "");
+          ((nd.kind === "reply" || nd.kind === "cmd") && nd.btnMode === "reply" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⌨ دکمه‌ها زیر صفحه چت می‌روند (کیبورد دائمی)</div>` : "") +
+          (nd.kind === "delay" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">⏱ ${n(nd.secs != null ? nd.secs : 1)} ثانیه مکث${nd.typing ? " + حالت «در حال تایپ…»" : ""} — بعد مسیر خروجی اجرا می‌شود</div>` : "") +
+          (nd.kind === "album" ? `<div style="color:var(--mu);font-size:12px;margin-top:8px">🖼 ${n((nd.items || []).length)} رسانه آماده — تلگرام به‌صورت یک آلبوم یکپارچه نشان می‌دهد</div>` : "");
         }
       function stImgPrev() { const e = $("ePrev"), nd = st.editing.nd; const u = nd.url || ""; if (e) e.innerHTML = /^https?:\/\//.test(u) ? (nd.mediaType === "photo" ? `<div style="margin-top:12px"><img src="${esc(u)}" style="max-width:100%;border-radius:12px;border:1px solid var(--hair)" onerror="this.replaceWith(Object.assign(document.createElement('i'),{textContent:'پیش‌نمایش در دسترس نیست',style:'color:var(--mu);font-size:12px'}))"/></div>` : `<div style="color:var(--mu);font-size:12px;margin-top:10px">${ic("link")} <span class="mono ltr">${esc(u.slice(0, 70))}</span></div>`) : ""; }
       const stUpFile = guard(async (f) => { if (!f) return; toast("در حال آپلود…"); const d = await _upload(f); st.editing.nd.url = d.url; st.editing.nd.mediaType = d.type; stDrawEdit(); toast("آپلود شد"); });
+
+      /* ═══ آلبوم چندتایی — افزودن/حذف/جابه‌جایی رسانه‌ها ═══ */
+      function stDrawAlbum() {
+        const box = $("eAlbum"); if (!box || !st.editing) return;
+        const nd = st.editing.nd, items = nd.items || [];
+        box.innerHTML = items.length
+          ? items.map((it, i) => `<div class="rel-r">
+              <span class="sq" style="flex:none;color:var(--mu)">${ic(it.type === "photo" ? "image" : "file")}</span>
+              <b class="mono ltr" style="flex:1;min-width:0;font-size:11.5px">${esc(String(it.url || "").split("/").pop() || it.url)}</b>
+              <div class="ib" style="width:30px" onclick="stAlbumMove(${i},-1)" title="بالا">${ic("undo")}</div>
+              <div class="ib" style="width:30px" onclick="stAlbumMove(${i},1)" title="پایین">${ic("redo")}</div>
+              <div class="ib" style="width:30px;color:var(--red)" onclick="stAlbumDel(${i})" title="حذف">${ic("trash")}</div>
+            </div>`).join("")
+          : `<p style="color:var(--mu);font-size:12.5px;padding:8px 0">هنوز رسانه‌ای اضافه نشده. فایل‌ها را آپلود کن یا آدرس بده.</p>`;
+        if (items.length < 10) {
+          box.innerHTML += `<div style="display:flex;gap:6px;margin-top:8px"><input class="in ltr mono" id="eAlbumUrl" placeholder="https://…" style="flex:1"><select class="in" id="eAlbumType" style="flex:0 0 86px">${Object.entries(MT).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><button class="btn line sm" onclick="stAlbumAddUrl()">افزودن</button></div>`;
+        } else {
+          box.innerHTML += `<p style="color:var(--amber);font-size:12px;margin-top:6px">حداکثر ۱۰ رسانه در هر آلبوم.</p>`;
+        }
+      }
+      const stAlbumDel = (i) => { st.editing.nd.items.splice(i, 1); stDirty(3); stDrawAlbum(); stUpdPrev(); };
+      const stAlbumMove = (i, d) => {
+        const a = st.editing.nd.items, j = i + d;
+        if (j < 0 || j >= a.length) return;
+        [a[i], a[j]] = [a[j], a[i]];
+        stDirty(3); stDrawAlbum(); stUpdPrev();
+      };
+      const stAlbumAddUrl = () => {
+        const u = ($("eAlbumUrl") && $("eAlbumUrl").value || "").trim();
+        if (!/^https?:\/\//.test(u)) return toast("آدرس معتبر وارد کن", 1);
+        if (!st.editing.nd.items) st.editing.nd.items = [];
+        if (st.editing.nd.items.length >= 10) return toast("حداکثر ۱۰ رسانه", 1);
+        st.editing.nd.items.push({ type: $("eAlbumType") ? $("eAlbumType").value : "photo", url: u.slice(0, ST_LIM.url) });
+        stDirty(3); stDrawAlbum(); stUpdPrev(); toast("افزوده شد");
+      };
+      const stUpAlbum = guard(async (fs) => {
+        if (!fs || !fs.length) return;
+        const list = Array.from(fs).slice(0, 10 - ((st.editing.nd.items || []).length));
+        if (!list.length) return toast("آلبوم پر است — حداکثر ۱۰ رسانه", 1);
+        toast(`در حال آپلود ${n(list.length)} فایل…`);
+        for (const f of list) {
+          try {
+            const d = await _upload(f);
+            if (!st.editing.nd.items) st.editing.nd.items = [];
+            st.editing.nd.items.push({ type: d.type || "photo", url: d.url });
+          } catch (e) { toast("خطا در آپلود یک فایل", 1); }
+        }
+        stDirty(3); stDrawAlbum(); stUpdPrev(); toast("آلبوم به‌روز شد");
+      });
       function stQuickAdd(fromId) {
         const host = $("sheet");
         const src = nSt(fromId);
@@ -2145,6 +2736,18 @@
         if (nd.kind === "image") {
           let u = (nd.url || "").trim(); if (!/^https?:\/\//.test(u)) return toast("فایل را آپلود کن یا آدرس معتبر بده", 1);
           nd.url = u.slice(0, 500);
+        }
+        if (nd.kind === "album") {
+          nd.items = (nd.items || []).filter((it) => it && /^https?:\/\//.test(it.url || ""))
+            .map((it) => ({ type: String(it.type || "photo"), url: String(it.url).slice(0, ST_LIM.url) }))
+            .slice(0, 10);
+          if (!nd.items.length) return toast("حداقل یک رسانه به آلبوم اضافه کن", 1);
+          nd.caption = String(nd.caption || "").slice(0, 1000);
+        }
+        if (nd.kind === "delay") {
+          nd.secs = Math.min(10, Math.max(0, +nd.secs || 0));
+          if (!nd.secs) return toast("مدت تاخیر را بیشتر از صفر بگذار", 1);
+          nd.typing = !!nd.typing;
         }
         if (nd.kind === "trigger") {
           nd.keywords = (nd.keywords || []).map((k) => String(k).trim().slice(0, 60)).filter(Boolean).slice(0, ST_LIM.kw);
@@ -2247,6 +2850,10 @@
         $("sheet").innerHTML = `<div class="sh-h"><span>استودیو — منو</span><div class="ib" onclick="closeSheet()">${ic("x")}</div></div>
           <div class="sh-b">
             ${st.offline ? `<div class="item static" style="background:var(--ac-soft);border-color:transparent;margin-bottom:10px"><span class="sq">${ic("help")}</span><div class="g"><b>حالت سازگار</b><small>بک‌اند فعلی مسیر /flow را ندارد. نقشه محلی می‌ماند و با «اعمال» به صورت دستور نوشته می‌شود. با استقرار gbs.py تازه، تیکت و کلیدواژه هم فعال می‌شوند.</small></div></div>` : ""}
+            <div class="item" onclick="closeSheet();stWizard()"><span class="sq" style="color:var(--ac)">${ic("wand")}</span><div class="g"><b>ساخت سریع ربات</b><small>۳ سوال → اسکلت کامل ربات</small></div>${ic("next")}</div>
+            <div class="item" onclick="closeSheet();stTemplates()"><span class="sq">${ic("store")}</span><div class="g"><b>قالب‌های آماده</b><small>فروشگاه، پشتیبانی، آموزش و…</small></div>${ic("next")}</div>
+            <div class="item" onclick="closeSheet();stSimToggle()"><span class="sq">${ic("chat")}</span><div class="g"><b>شبیه‌ساز چت زنده</b><small>ربات را همینجا امتحان کن</small></div>${ic("next")}</div>
+            <div class="item" onclick="closeSheet();stTestBot()"><span class="sq">${ic("robot")}</span><div class="g"><b>امتحان ربات واقعی</b><small>ربات را در تلگرام باز کن</small></div>${ic("next")}</div>
             <div class="item" onclick="closeSheet();stBots()"><span class="sq">${ic("bot")}</span><div class="g"><b>تغییر ربات</b><small>${n(bots.length)} ربات در دسترس</small></div>${ic("next")}</div>
             ${st.recover ? `<div class="item" style="border-color:var(--ac)" onclick="closeSheet();stRecover()"><span class="sq" style="color:var(--ac)">${ic("undo")}</span><div class="g"><b>بازیابی نقشهٔ محلی</b><small>${n((st.recover.nodes || []).length)} کارت روی این دستگاه ذخیره شده و روی سرور نیست</small></div>${ic("next")}</div>` : ""}
             <div class="item" onclick="closeSheet();stTickets()"><span class="sq">${ic("ticket")}</span><div class="g"><b>صندوق تیکت‌ها</b><small>پاسخ‌دهی و پذیرنده‌ها</small></div>${ic("next")}</div>
@@ -2504,8 +3111,10 @@
         if (e.key === "f" || e.key === "F") { stFit(); return; }
         if (e.key === "v" || e.key === "V") { st.mode = "select"; $("stSel") && $("stSel").classList.add("on"); $("fc").classList.add("selmode"); return; }
         if (e.key === "l" || e.key === "L") { st.mode = "link"; $("stSel") && $("stSel").classList.remove("on"); $("fc").classList.remove("selmode"); return; }
-        const quick = { c: "cmd", r: "reply", g: "group", i: "image", k: "link", t: "ticket", w: "trigger" }[e.key.toLowerCase()];
+        const quick = { c: "cmd", r: "reply", g: "group", i: "image", a: "album", k: "link", t: "ticket", w: "trigger", d: "delay" }[e.key.toLowerCase()];
         if (quick) { e.preventDefault(); stEdit(null, quick); }
+        /* T = شبیه‌ساز چت زنده */
+        if (e.key.toLowerCase() === "t" && e.shiftKey) { e.preventDefault(); stSimToggle(); }
       });
       window.addEventListener("beforeunload", (e) => { if (STG && st.dirty) { e.preventDefault(); e.returnValue = ""; } });
 
